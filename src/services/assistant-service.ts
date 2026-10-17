@@ -55,6 +55,12 @@ Rules you must always follow:
 // questions and refused to propose for explicit requests, because the "answer
 // only from the excerpts" rules have recency and override the tool instruction.
 // On its own prompt the same model scored 8/8 on the same cases.
+//
+// Do not add "set a goal for" (or similar) to it. That was tried when
+// create_goal arrived: the tool description alone already routes goal requests
+// 10/10, and the extra wording made the model propose a goal for the plain
+// question "what tasks do I have for my thesis goal" and stop recognising
+// "Write down that …" as a note (notes 1/2 → 0/2).
 const ACTION_DECISION_PROMPT = `Decide whether the user is asking you to CREATE something in their workspace.
 
 Call a tool only when they are clearly asking you to add, create, schedule, book, remind them of, or write down something new. If they are asking for more than one distinct thing — "add three tasks: X, Y, Z" or "break this into tasks" — call the tool once per item, not once for the whole request.
@@ -69,8 +75,15 @@ const MAX_PROPOSALS_PER_TURN = 8;
 // A cheap prefilter so plain questions never pay for the decision call at all.
 // It only decides whether to *ask* the model; the model still makes the call, so
 // a false positive here costs a little time and nothing else.
+//
+// "set … goal" and "new goal" are here because "Set a goal to land an
+// internship" and "New goal: publish a paper" contain none of the other verbs
+// and never reached the model: 7 of 10 goal phrasings got through before, 10 of
+// 10 do now. Widening it was measured, not assumed — of 6 plain questions that
+// the new pattern newly admits ("did I set a goal for June", "do I have a new
+// goal this month", …) the model proposed on none.
 const ACTION_HINT =
-  /\b(add|create|schedule|book|remind|note down|write down|make|set up|put|plan|draft)\b/i;
+  /\b(add|create|schedule|book|remind|note down|write down|make|set up|put|plan|draft|set\b[^.?!]{0,25}\bgoals?|new goal)\b/i;
 
 /**
  * Asks whether the user's message is a request to create something, and returns

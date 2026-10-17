@@ -11,6 +11,7 @@ const KIND_LABEL: Record<string, string> = {
   event: "Event",
   project: "Project",
   course: "Course",
+  goal: "Goal",
 };
 
 function isType(value: string): value is EmbeddableSourceType {
@@ -38,9 +39,9 @@ export default async function SearchPage({
       <header className="mb-5">
         <h1 className="text-2xl font-semibold tracking-tight text-text">Search</h1>
         <p className="mt-1 text-sm text-text-muted">
-          Searches notes, tasks, events, projects and courses by meaning
-          rather than wording. For exact matches, the command palette (⌘K) is
-          faster.
+          Searches notes, tasks, events, projects, courses and goals by
+          meaning rather than wording. For exact matches, the command palette
+          (⌘K) is faster.
         </p>
       </header>
 

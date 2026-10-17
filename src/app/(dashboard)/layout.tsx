@@ -13,6 +13,7 @@ const NAV_ITEMS: { href: string; label: string; hue: Hue }[] = [
   { href: "/notes", label: "Notes", hue: "purple" },
   { href: "/tasks", label: "Tasks", hue: "rose" },
   { href: "/calendar", label: "Calendar", hue: "gold" },
+  { href: "/goals", label: "Goals", hue: "gold" },
   { href: "/projects", label: "Projects", hue: "green" },
   { href: "/courses", label: "Courses", hue: "peach" },
   { href: "/search", label: "Search", hue: "blue" },

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUserId } from "@/lib/session";
 import { listProjects } from "@/repositories/project-repository";
+import { listGoalOptions } from "@/repositories/goal-repository";
 import { ProjectForm } from "@/components/project-form";
 import { createProjectAction } from "@/actions/projects";
 import { hueForCategory, tintClass } from "@/lib/card-color";
@@ -9,7 +10,10 @@ export const metadata = { title: "Projects · Nexus" };
 
 export default async function ProjectsPage() {
   const userId = await requireUserId();
-  const projects = await listProjects(userId);
+  const [projects, goals] = await Promise.all([
+    listProjects(userId),
+    listGoalOptions(userId),
+  ]);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -25,6 +29,7 @@ export default async function ProjectsPage() {
       <ProjectForm
         action={createProjectAction}
         submitLabel="Create project"
+        goals={goals}
         resetOnSuccess
       />
 

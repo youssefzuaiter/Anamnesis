@@ -7,6 +7,7 @@ const KIND_LABEL: Record<string, string> = {
   event: "Event",
   project: "Project",
   course: "Course",
+  goal: "Goal",
 };
 
 /**

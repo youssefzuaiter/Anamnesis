@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { TASK_PRIORITIES } from "@/lib/domain";
+import {
+  PROJECT_CATEGORIES,
+  TASK_PRIORITIES,
+  type ProjectCategory,
+} from "@/lib/domain";
 
 // The complete set of things the assistant may ever ask for. Anything not named
 // here cannot be requested, so widening the agent's reach is a deliberate edit to
@@ -7,7 +11,12 @@ import { TASK_PRIORITIES } from "@/lib/domain";
 //
 // Deliberately create-only: nothing here can update or delete, so the worst a
 // fully hijacked model can achieve is proposing clutter the user then declines.
-export const AI_TOOLS = ["create_task", "create_event", "create_note"] as const;
+export const AI_TOOLS = [
+  "create_task",
+  "create_event",
+  "create_note",
+  "create_goal",
+] as const;
 export type AiTool = (typeof AI_TOOLS)[number];
 
 const isoDate = z.iso.datetime();
@@ -31,6 +40,14 @@ export const proposalSchema = z.discriminatedUnion("kind", [
     kind: z.literal("note"),
     title: z.string().trim().min(1).max(200),
     content: z.string().max(100_000).default(""),
+  }),
+  // No target date: a goal is named, not scheduled, and a 3B model is no better
+  // at "by June" than it is at "next Friday". The user sets one on the goal page
+  // after confirming, the same way they would for any goal made by hand.
+  z.object({
+    kind: z.literal("goal"),
+    title: z.string().trim().min(1).max(200),
+    category: z.enum(PROJECT_CATEGORIES).default("University"),
   }),
 ]);
 
@@ -101,6 +118,28 @@ export const OLLAMA_TOOLS = [
       },
     },
   },
+  // Deliberately terse. A longer description that spelled out "a single thing to
+  // do is a task, not a goal" scored no better on goal routing (10/10 either
+  // way) and proposed a goal for "I need to set up my thesis proposal this
+  // week", one of 8 "set …" requests that are really tasks, events or notes;
+  // this wording proposed none of the 8. It also keeps "Add three tasks: …" at
+  // the one proposal it gave before this tool existed.
+  {
+    type: "function",
+    function: {
+      name: "create_goal",
+      description:
+        "Propose a new long-term goal for the user to confirm. Use only when they explicitly ask you to set or add a goal or objective.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "The goal, in the user's own words" },
+          category: { type: "string", enum: ["University", "Career", "Personal"] },
+        },
+        required: ["title"],
+      },
+    },
+  },
 ] as const;
 
 const DEFAULT_EVENT_MINUTES = 60;
@@ -115,6 +154,20 @@ function normalizedMinutes(value: unknown): number {
   return typeof n === "number" && Number.isFinite(n) && n >= 1
     ? n
     : DEFAULT_TASK_MINUTES;
+}
+
+// A model asked to pick from three words will still sometimes hand back "career"
+// or "Career goal". Matching case-insensitively and falling back to the default
+// repairs that, rather than letting the enum reject — and silently drop — a
+// proposal whose title was perfectly good. The user sees the category on the
+// card before confirming, so a wrong guess costs a decline, not bad data.
+function normalizedCategory(value: unknown): ProjectCategory {
+  if (typeof value === "string") {
+    const wanted = value.trim().toLowerCase();
+    const match = PROJECT_CATEGORIES.find((c) => c.toLowerCase() === wanted);
+    if (match) return match;
+  }
+  return "University";
 }
 
 /**
@@ -159,6 +212,15 @@ export function toProposal(
       startTime: new Date(start).toISOString(),
       endTime: new Date(end).toISOString(),
       location: args.location ?? null,
+    });
+    return result.success ? result.data : null;
+  }
+
+  if (name === "create_goal") {
+    const result = proposalSchema.safeParse({
+      kind: "goal",
+      title: args.title,
+      category: normalizedCategory(args.category),
     });
     return result.success ? result.data : null;
   }

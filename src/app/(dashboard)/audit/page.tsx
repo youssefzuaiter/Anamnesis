@@ -14,6 +14,7 @@ const ENTITY_HREF_PREFIX: Record<string, string> = {
   Task: "/tasks",
   Event: "/calendar",
   Note: "/notes",
+  Goal: "/goals",
 };
 
 function proposedTitle(entry: AuditEntry): string | null {
@@ -40,6 +41,7 @@ function describe(entry: AuditEntry): { label: string; href: string | null } {
     case "TASK_CREATED":
     case "EVENT_CREATED":
     case "NOTE_CREATED":
+    case "GOAL_CREATED":
       return {
         label: `Created ${entry.entityType.toLowerCase()}`,
         href: `${ENTITY_HREF_PREFIX[entry.entityType]}/${entry.entityId}`,

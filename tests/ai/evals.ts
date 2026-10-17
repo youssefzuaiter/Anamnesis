@@ -19,6 +19,9 @@ import * as eventService from "@/services/event-service";
 import * as eventRepository from "@/repositories/event-repository";
 import * as projectService from "@/services/project-service";
 import * as projectRepository from "@/repositories/project-repository";
+import * as goalService from "@/services/goal-service";
+import * as goalRepository from "@/repositories/goal-repository";
+import { reindexEverything } from "@/services/reindex-service";
 import * as dashboardService from "@/services/dashboard-service";
 import * as linkRepository from "@/repositories/link-repository";
 import { parseWikiLinks } from "@/lib/wiki-links";
@@ -441,6 +444,7 @@ async function main() {
       estimatedMinutes: 120,
       projectId: null,
       courseId: null,
+      goalId: null,
       scheduledStart: null,
       scheduledEnd: null,
     });
@@ -495,6 +499,7 @@ async function main() {
           estimatedMinutes: 5,
           projectId: null,
           courseId: null,
+          goalId: null,
           scheduledStart: null,
           scheduledEnd: null,
         }),
@@ -716,6 +721,7 @@ async function main() {
     const project = await projectService.createProject(owner.id, {
       title: "Graduation thesis",
       category: "University",
+      goalId: null,
     });
     check("new project starts at zero progress", project.progress === 0);
 
@@ -731,6 +737,7 @@ async function main() {
           estimatedMinutes: 60,
           projectId: project.id,
           courseId: null,
+          goalId: null,
           scheduledStart: null,
           scheduledEnd: null,
         }),
@@ -802,6 +809,7 @@ async function main() {
     const intruderProject = await projectService.createProject(intruder.id, {
       title: "Someone else's project",
       category: "Career",
+      goalId: null,
     });
     check(
       "a note cannot be attached to another tenant's project",
@@ -828,6 +836,7 @@ async function main() {
           estimatedMinutes: 5,
           projectId: intruderProject.id,
           courseId: null,
+          goalId: null,
           scheduledStart: null,
           scheduledEnd: null,
         }),
@@ -885,9 +894,347 @@ async function main() {
       (await projectRepository.listProjects(owner.id)).every((p) => p.id !== project.id),
     );
 
+    // Deleting detached every task but left the stored 67% untouched, so a
+    // restored project used to come back claiming progress on nothing.
+    const restoredProject = await projectService.restoreProject(owner.id, project.id);
+    check(
+      "a restored project does not claim progress for tasks it no longer holds",
+      restoredProject.progress === 0,
+      `${restoredProject.progress}%`,
+    );
+    await projectService.deleteProject(owner.id, project.id);
+
     await noteService.deleteNote(owner.id, projectNote.id);
     for (const t of projectTasks.slice(0, 3)) {
       await taskService.deleteTask(owner.id, t.id).catch(() => {});
+    }
+
+    section("Goals: derived progress across projects and tasks");
+    const goal = await goalService.createGoal(owner.id, {
+      title: "Graduate with a strong AI portfolio",
+      description: null,
+      category: "University",
+      targetDate: null,
+    });
+    check("new goal starts at zero progress", goal.progress === 0);
+
+    // Two tasks linked straight to the goal, no project involved.
+    const directTasks = [];
+    for (const title of ["Ship the RAG assistant", "Write the thesis"]) {
+      directTasks.push(
+        await taskService.createTask(owner.id, {
+          title,
+          description: null,
+          priority: "medium",
+          tags: [],
+          dueDate: null,
+          estimatedMinutes: 60,
+          projectId: null,
+          courseId: null,
+          goalId: goal.id,
+          scheduledStart: null,
+          scheduledEnd: null,
+        }),
+      );
+    }
+    check(
+      "adding direct tasks keeps progress at zero until one is done",
+      (await goalRepository.getGoal(owner.id, goal.id))?.progress === 0,
+    );
+
+    await taskService.setTaskStatus(owner.id, directTasks[0].id, "done");
+    check(
+      "completing one of two direct tasks gives 50%",
+      (await goalRepository.getGoal(owner.id, goal.id))?.progress === 50,
+    );
+
+    // Now link a whole project to the same goal — its tasks must roll up too,
+    // one level up from how the project already rolls up its own tasks.
+    const goalProject = await projectService.createProject(owner.id, {
+      title: "Deepfake detector",
+      category: "Personal",
+      goalId: goal.id,
+    });
+    check(
+      "linking an empty project leaves the goal's tally unchanged",
+      (await goalRepository.getGoal(owner.id, goal.id))?.progress === 50,
+    );
+
+    const projectTasksUnderGoal = [];
+    for (const title of ["Collect dataset", "Train baseline"]) {
+      projectTasksUnderGoal.push(
+        await taskService.createTask(owner.id, {
+          title,
+          description: null,
+          priority: "medium",
+          tags: [],
+          dueDate: null,
+          estimatedMinutes: 60,
+          projectId: goalProject.id,
+          courseId: null,
+          goalId: null,
+          scheduledStart: null,
+          scheduledEnd: null,
+        }),
+      );
+    }
+    // 1 of 2 direct tasks done, plus 0 of 2 project tasks: 1/4 = 25%.
+    check(
+      "a linked project's tasks roll up into the goal too",
+      (await goalRepository.getGoal(owner.id, goal.id))?.progress === 25,
+      `${(await goalRepository.getGoal(owner.id, goal.id))?.progress}%`,
+    );
+
+    await taskService.setTaskStatus(owner.id, projectTasksUnderGoal[0].id, "done");
+    check(
+      "completing a task inside the linked project updates the goal, not just the project",
+      (await goalRepository.getGoal(owner.id, goal.id))?.progress === 50,
+      `${(await goalRepository.getGoal(owner.id, goal.id))?.progress}%`,
+    );
+    check(
+      "the linked project's own progress also updated, independently",
+      (await projectRepository.getProject(owner.id, goalProject.id))?.progress === 50,
+    );
+
+    // Unlinking a direct task recalculates the goal without averaging away
+    // from raw task counts.
+    await taskService.updateTask(owner.id, directTasks[1].id, {
+      title: directTasks[1].title,
+      description: null,
+      priority: "medium",
+      tags: [],
+      dueDate: null,
+      estimatedMinutes: 60,
+      projectId: null,
+      courseId: null,
+      goalId: null,
+      scheduledStart: null,
+      scheduledEnd: null,
+    });
+    check(
+      "unlinking a direct task recalculates the goal without it",
+      (await goalRepository.getGoal(owner.id, goal.id))?.progress === 67,
+      `${(await goalRepository.getGoal(owner.id, goal.id))?.progress}%`,
+    );
+
+    const taskTotals = await goalRepository.getGoalTaskTotals(owner.id, goal.id);
+    check(
+      "getGoalTaskTotals matches the stored percentage's own done/total, direct plus via-project",
+      taskTotals.done === 2 && taskTotals.total === 3,
+      `${taskTotals.done}/${taskTotals.total}`,
+    );
+
+    const goalContents = await goalRepository.getGoalContents(owner.id, goal.id);
+    check(
+      "goal contents list the linked project",
+      goalContents.projects.some((p) => p.id === goalProject.id),
+    );
+    check(
+      "goal contents list only the remaining direct task",
+      goalContents.tasks.length === 1 && goalContents.tasks[0].id === directTasks[0].id,
+    );
+
+    const goalSummaries = await goalRepository.listGoals(owner.id);
+    const goalSummary = goalSummaries.find((g) => g.id === goal.id);
+    check("goal summary counts its linked project", goalSummary?.counts.projects === 1);
+    check(
+      "goal summary counts its own direct tasks, not the project's",
+      goalSummary?.counts.tasks === 1,
+      `${goalSummary?.counts.tasks}`,
+    );
+
+    const goalHits = await searchWorkspaceVectors(
+      owner.id,
+      await embedQuery("how is my AI portfolio coming along"),
+      5,
+      ["goal"],
+    );
+    check(
+      "goals are retrievable by meaning",
+      goalHits.some((h) => h.sourceId === goal.id),
+      `${goalHits.length} goal hits`,
+    );
+
+    // A client-supplied goalId must be rejected if it belongs to someone else.
+    const intruderGoal = await goalService.createGoal(intruder.id, {
+      title: "Someone else's goal",
+      description: null,
+      category: "Career",
+      targetDate: null,
+    });
+    check(
+      "a project cannot be attached to another tenant's goal",
+      await expectAppError("RESOURCE_NOT_FOUND", () =>
+        projectService.createProject(owner.id, {
+          title: "Smuggled",
+          category: "Personal",
+          goalId: intruderGoal.id,
+        }),
+      ),
+    );
+    check(
+      "a task cannot be attached to another tenant's goal",
+      await expectAppError("RESOURCE_NOT_FOUND", () =>
+        taskService.createTask(owner.id, {
+          title: "Smuggled",
+          description: null,
+          priority: "low",
+          tags: [],
+          dueDate: null,
+          estimatedMinutes: 5,
+          projectId: null,
+          courseId: null,
+          goalId: intruderGoal.id,
+          scheduledStart: null,
+          scheduledEnd: null,
+        }),
+      ),
+    );
+    check(
+      "another user cannot read the goal",
+      (await goalRepository.getGoal(intruder.id, goal.id)) === null,
+    );
+    check(
+      "another user cannot delete the goal",
+      await expectAppError("RESOURCE_NOT_FOUND", () =>
+        goalService.deleteGoal(intruder.id, goal.id),
+      ),
+    );
+
+    // Deleting a goal must never take its projects and tasks with it.
+    await goalService.deleteGoal(owner.id, goal.id);
+    check(
+      "deleting a goal keeps its project, detached",
+      await (async () => {
+        const p = await projectRepository.getProject(owner.id, goalProject.id);
+        return p !== null && p.goalId === null;
+      })(),
+    );
+    check(
+      "deleting a goal keeps its direct task, detached",
+      await (async () => {
+        const t = await taskRepository.getTask(owner.id, directTasks[0].id);
+        return t !== null && t.goalId === null;
+      })(),
+    );
+    check(
+      "deleting a goal removes it from the index",
+      (await prisma.workspaceEmbedding.count({
+        where: { userId: owner.id, sourceType: "goal", sourceId: goal.id },
+      })) === 0,
+    );
+    check(
+      "deleted goal is gone from listings",
+      (await goalRepository.listGoals(owner.id)).every((g) => g.id !== goal.id),
+    );
+
+    // Same trap as projects: deleting detached everything but left the stored
+    // 67% untouched, so a restored goal would claim progress on nothing.
+    const restoredGoal = await goalService.restoreGoal(owner.id, goal.id);
+    check(
+      "a restored goal does not claim progress for work that is no longer attached",
+      restoredGoal.progress === 0,
+      `${restoredGoal.progress}%`,
+    );
+    check(
+      "a restored goal is searchable again, with the corrected figure in its text",
+      await (async () => {
+        const rows = await prisma.workspaceEmbedding.findMany({
+          where: { userId: owner.id, sourceType: "goal", sourceId: goal.id },
+          select: { contentChunk: true },
+        });
+        // The comma matters: "100% complete" contains "0% complete".
+        return rows.length > 0 && rows.every((r) => r.contentChunk.includes("goal, 0% complete"));
+      })(),
+    );
+    await goalService.deleteGoal(owner.id, goal.id);
+
+    await projectService.deleteProject(owner.id, goalProject.id).catch(() => {});
+    for (const t of [...directTasks, ...projectTasksUnderGoal]) {
+      await taskService.deleteTask(owner.id, t.id).catch(() => {});
+    }
+
+    section("Re-index and export cover goals");
+    // "Rebuild search index" exists to repair an entity saved while Ollama was
+    // down. It iterated five entity types and skipped goals, so it could not
+    // repair the one type added most recently. A fresh user keeps this check
+    // independent of everything the shared owner has accumulated by now.
+    const reindexUser = await prisma.user.create({
+      data: { email: `reindex-${randomUUID()}@test.local`, passwordHash: "eval" },
+    });
+    try {
+      const reindexGoal = await goalService.createGoal(reindexUser.id, {
+        title: "Ship a portfolio",
+        description: "Three polished projects I can show in an interview.",
+        category: "Career",
+        targetDate: new Date(2027, 5, 30, 23, 59, 59, 999),
+      });
+      await projectService.createProject(reindexUser.id, {
+        title: "Deepfake detector",
+        category: "Personal",
+        goalId: reindexGoal.id,
+      });
+      await taskService.createTask(reindexUser.id, {
+        title: "Write the README",
+        description: null,
+        priority: "medium",
+        tags: [],
+        dueDate: null,
+        estimatedMinutes: 30,
+        projectId: null,
+        courseId: null,
+        goalId: reindexGoal.id,
+        scheduledStart: null,
+        scheduledEnd: null,
+      });
+
+      const goalChunks = async () =>
+        (
+          await prisma.workspaceEmbedding.findMany({
+            where: {
+              userId: reindexUser.id,
+              sourceType: "goal",
+              sourceId: reindexGoal.id,
+            },
+            select: { contentChunk: true },
+            orderBy: { contentChunk: "asc" },
+          })
+        ).map((row) => row.contentChunk);
+
+      const writtenChunks = await goalChunks();
+      check(
+        "a goal is indexed at write time, with its project and task rundown",
+        writtenChunks.length > 0 &&
+          writtenChunks.join(" ").includes("Deepfake detector") &&
+          writtenChunks.join(" ").includes("Write the README"),
+        `${writtenChunks.length} chunk(s)`,
+      );
+
+      await deleteEntityEmbeddings(reindexUser.id, "goal", reindexGoal.id);
+      check(
+        "precondition: the goal's embeddings are gone, as after a save made while Ollama was down",
+        (await goalChunks()).length === 0,
+      );
+
+      const report = await reindexEverything(reindexUser.id);
+      const rebuiltChunks = await goalChunks();
+      check(
+        "rebuilding the index restores a goal that had lost its embeddings",
+        rebuiltChunks.length > 0,
+        `${rebuiltChunks.length} chunk(s)`,
+      );
+      check(
+        "the rebuilt goal text is byte-identical to what the write path embedded",
+        JSON.stringify(rebuiltChunks) === JSON.stringify(writtenChunks),
+        "two copies of a measured phrasing would drift, and the only symptom would be quietly worse retrieval",
+      );
+      check(
+        "the rebuild report counts goals",
+        report.byType.goal === 1 && report.failed === 0,
+        JSON.stringify(report.byType),
+      );
+    } finally {
+      await prisma.user.delete({ where: { id: reindexUser.id } });
     }
 
     section("Time blocking");
@@ -902,6 +1249,7 @@ async function main() {
         dueDate: null,
         projectId: null,
         courseId: null,
+        goalId: null,
       };
 
       const unscheduled = await taskService.createTask(blockUser.id, {
@@ -1195,6 +1543,7 @@ async function main() {
           estimatedMinutes: 30,
           projectId: null,
           courseId: null,
+          goalId: null,
           scheduledStart: new Date(2026, 8, 18, 20, 0),
           scheduledEnd: new Date(2026, 8, 18, 20, 30),
         },
@@ -1225,6 +1574,7 @@ async function main() {
             estimatedMinutes: 30,
             projectId: null,
             courseId: null,
+            goalId: null,
             scheduledStart: null,
             scheduledEnd: null,
           },
@@ -1354,6 +1704,7 @@ async function main() {
       const project = await projectService.createProject(exportUser.id, {
         title: "Export project",
         category: "Personal",
+        goalId: null,
       });
       const note = await noteService.createNote(exportUser.id, {
         title: "Export note",
@@ -1372,6 +1723,7 @@ async function main() {
         estimatedMinutes: 60,
         projectId: null,
         courseId: null,
+        goalId: null,
         scheduledStart: null,
         scheduledEnd: null,
       });
@@ -1384,6 +1736,25 @@ async function main() {
         courseId: null,
       });
       await noteService.deleteNote(exportUser.id, trashedNote.id);
+
+      const exportGoal = await goalService.createGoal(exportUser.id, {
+        title: "Export goal",
+        description: null,
+        category: "Personal",
+        targetDate: null,
+      });
+      const trashedGoal = await goalService.createGoal(exportUser.id, {
+        title: "Trashed goal",
+        description: null,
+        category: "Personal",
+        targetDate: null,
+      });
+      await goalService.deleteGoal(exportUser.id, trashedGoal.id);
+      await projectService.createProject(exportUser.id, {
+        title: "Goal-linked export project",
+        category: "Personal",
+        goalId: exportGoal.id,
+      });
 
       const dump = await buildFullExport(exportUser.id);
       check(
@@ -1408,6 +1779,26 @@ async function main() {
         dump.tasks.some((t) => t.id === task.id) &&
           dump.projects.some((p) => p.id === project.id),
       );
+      check(
+        "a real goal appears in the export",
+        dump.goals.some((g) => g.id === exportGoal.id && g.title === "Export goal"),
+      );
+      check(
+        "a soft-deleted goal does not appear in the export",
+        dump.goals.every((g) => g.id !== trashedGoal.id),
+      );
+      check(
+        "every goalId on an exported project or task points at an exported goal",
+        (() => {
+          const exportedGoalIds = new Set(dump.goals.map((g) => g.id));
+          const rows = [...dump.projects, ...dump.tasks];
+          return (
+            rows.some((row) => row.goalId === exportGoal.id) &&
+            rows.every((row) => row.goalId === null || exportedGoalIds.has(row.goalId))
+          );
+        })(),
+        "without the goal rows, those ids would point at nothing in the file",
+      );
 
       const otherUser = await prisma.user.create({
         data: { email: `export-other-${randomUUID()}@test.local`, passwordHash: "eval" },
@@ -1426,7 +1817,8 @@ async function main() {
           "another account's export never includes this user's data",
           otherDump.notes.every((n) => n.id !== note.id) &&
             otherDump.tasks.every((t) => t.id !== task.id) &&
-            otherDump.projects.every((p) => p.id !== project.id),
+            otherDump.projects.every((p) => p.id !== project.id) &&
+            otherDump.goals.every((g) => g.id !== exportGoal.id),
         );
       } finally {
         await prisma.user.delete({ where: { id: otherUser.id } });
@@ -1547,6 +1939,50 @@ async function main() {
       "a model cannot smuggle a userId through the tool call",
     );
 
+    check(
+      "a goal proposal validates, defaulting the category",
+      (() => {
+        const p = toProposal("create_goal", { title: "Land an internship" });
+        return p?.kind === "goal" && p.category === "University";
+      })(),
+    );
+    check(
+      "a goal's category is matched case-insensitively",
+      (() => {
+        const p = toProposal("create_goal", { title: "x", category: "  career " });
+        return p?.kind === "goal" && p.category === "Career";
+      })(),
+      "a model handed three words will still write \"career\" — the enum used to be able to reject the whole proposal over it",
+    );
+    check(
+      "an invented goal category is repaired to the default, not rejected",
+      (() => {
+        const p = toProposal("create_goal", { title: "x", category: "Hobby" });
+        return p?.kind === "goal" && p.category === "University";
+      })(),
+    );
+    check(
+      "a goal with no title is refused",
+      toProposal("create_goal", { category: "Career" }) === null &&
+        toProposal("create_goal", { title: "   " }) === null,
+    );
+    check(
+      "an over-long goal title is refused",
+      toProposal("create_goal", { title: "x".repeat(201) }) === null,
+    );
+    check(
+      "a goal proposal carries nothing the model smuggled in",
+      (() => {
+        const p = toProposal("create_goal", {
+          title: "Legit",
+          userId: "some-other-user",
+          targetDate: "2020-01-01T00:00:00.000Z",
+        });
+        return p !== null && !("userId" in p) && !("targetDate" in p);
+      })(),
+      "goal proposals have no date field at all, so a model-invented one cannot reach the database",
+    );
+
     section("Proposal execution, approval and audit");
     const agentUser = await prisma.user.create({
       data: { email: `agent-${randomUUID()}@test.local`, passwordHash: "eval" },
@@ -1640,6 +2076,81 @@ async function main() {
         (await prisma.task.count({ where: { userId: agentUser.id } })) === 2,
       );
 
+      // The same machinery carries goals: propose, confirm, audit, replay.
+      const goalProposal = toProposal("create_goal", {
+        title: "Land an AI internship by June",
+        category: "career",
+      })!;
+      const goalProposalId = randomUUID();
+      await actionService.recordProposed(agentUser.id, goalProposalId, goalProposal, "assistant");
+      check(
+        "proposing a goal creates nothing",
+        (await prisma.goal.count({ where: { userId: agentUser.id } })) === 0,
+      );
+
+      const goalApplied = await actionService.executeProposal(
+        agentUser.id,
+        goalProposalId,
+        goalProposal,
+        "assistant",
+      );
+      const createdGoal = await prisma.goal.findFirst({
+        where: { userId: agentUser.id, id: goalApplied.entityId },
+      });
+      check(
+        "confirming creates the goal for the confirming user, with the repaired category",
+        createdGoal?.title === "Land an AI internship by June" &&
+          createdGoal.category === "Career" &&
+          createdGoal.targetDate === null,
+        createdGoal?.category,
+      );
+      check(
+        "the confirmation points at the goal's own page",
+        goalApplied.entityType === "Goal" &&
+          goalApplied.href === `/goals/${goalApplied.entityId}`,
+        goalApplied.href,
+      );
+      check(
+        "goal creation is audited as an AI action on a Goal",
+        await (async () => {
+          const entry = await prisma.auditEvent.findFirst({
+            where: { userId: agentUser.id, action: "GOAL_CREATED" },
+          });
+          return (
+            entry?.actorType === "AI_AGENT" &&
+            entry.entityType === "Goal" &&
+            entry.entityId === goalApplied.entityId
+          );
+        })(),
+      );
+      check(
+        "an assistant-created goal is indexed exactly like one made by hand",
+        (await prisma.workspaceEmbedding.count({
+          where: { userId: agentUser.id, sourceType: "goal", sourceId: goalApplied.entityId },
+        })) > 0,
+      );
+
+      const goalReplay = await actionService.executeProposal(
+        agentUser.id,
+        goalProposalId,
+        goalProposal,
+        "assistant",
+      );
+      check(
+        "a replayed goal confirmation is recognised, with the same entity and link",
+        goalReplay.replayed === true &&
+          goalReplay.entityId === goalApplied.entityId &&
+          goalReplay.href === goalApplied.href,
+        goalReplay.href,
+      );
+      check(
+        "a replayed goal confirmation creates no second goal and no second audit entry",
+        (await prisma.goal.count({ where: { userId: agentUser.id } })) === 1 &&
+          (await prisma.auditEvent.count({
+            where: { userId: agentUser.id, action: "GOAL_CREATED" },
+          })) === 1,
+      );
+
       // The audit trail is per-account like everything else.
       const otherTrail = await actionService.listAuditTrail(owner.id);
       check(
@@ -1684,6 +2195,12 @@ async function main() {
         "what did I write about optimizers",
         "summarise my notes from this week",
         "when is my exam",
+        // These three reach the model — "set up" and "new goal" are in the
+        // prefilter — which is the point: they are the plain questions most
+        // likely to be mistaken for a request to create a goal.
+        "what goals did I set up for this semester",
+        "did I set a goal for June",
+        "do I have a new goal this month",
       ];
       const ACTIONS = [
         "Add a task to book my exam slot",
@@ -1771,10 +2288,41 @@ async function main() {
         `  NOTE  a three-item request produced ${multi.length} proposal(s) — a 3B model does not reliably call a tool per item`,
       );
 
+      // Before create_goal existed, "Add a goal to …" came back as a *note*
+      // proposal — 9 of 10 goal phrasings in a measurement taken at the time,
+      // because a note was the nearest tool. Reported rather than asserted, like
+      // every other phrasing-dependent routing number in this section.
+      const GOAL_REQUESTS = [
+        "Set a goal to land an AI internship by June",
+        "Add a goal to finish my thesis this semester",
+        "Create a goal: run a half marathon this year",
+        "I want to set a new goal: graduate with honours",
+        "New goal: publish a paper before I graduate",
+      ];
+      let goalRouted = 0;
+      let goalAsNote = 0;
+      for (const request of GOAL_REQUESTS) {
+        const [first] = await assistantService.decideAction(
+          request,
+          new Date(2026, 5, 15, 10),
+        );
+        if (first?.kind === "goal") goalRouted++;
+        else if (first?.kind === "note") goalAsNote++;
+      }
+      console.log(
+        `  NOTE  goal requests proposed as a goal ${goalRouted}/${GOAL_REQUESTS.length}, as a note ${goalAsNote}/${GOAL_REQUESTS.length}`,
+      );
+      check(
+        "at least some goal requests are recognised as goals",
+        goalRouted > 0,
+        `${goalRouted}/${GOAL_REQUESTS.length}`,
+      );
+
       check(
         "no proposal was executed while routing",
         (await prisma.task.count({ where: { userId: routingUser.id } })) === 0 &&
-          (await prisma.event.count({ where: { userId: routingUser.id } })) === 0,
+          (await prisma.event.count({ where: { userId: routingUser.id } })) === 0 &&
+          (await prisma.goal.count({ where: { userId: routingUser.id } })) === 0,
       );
     } finally {
       await prisma.user.delete({ where: { id: routingUser.id } });
@@ -2122,6 +2670,7 @@ async function main() {
           estimatedMinutes: 30,
           projectId: null,
           courseId: null,
+          goalId: null,
           scheduledStart: null,
           scheduledEnd: null,
         });
@@ -2217,6 +2766,7 @@ async function main() {
       const finished = await projectService.createProject(dashUser.id, {
         title: "Finished project",
         category: "Personal",
+        goalId: null,
       });
       const finishedTask = await taskService.createTask(dashUser.id, {
         title: "The only task",
@@ -2227,6 +2777,7 @@ async function main() {
         estimatedMinutes: 10,
         projectId: finished.id,
         courseId: null,
+        goalId: null,
         scheduledStart: null,
         scheduledEnd: null,
       });
@@ -2234,6 +2785,7 @@ async function main() {
       await projectService.createProject(dashUser.id, {
         title: "Ongoing project",
         category: "University",
+        goalId: null,
       });
 
       const full = await dashboardService.getDashboard(dashUser.id, noon);

@@ -114,6 +114,7 @@ export default async function DashboardPage() {
     nextEvent,
     recentNotes,
     activeProjects,
+    activeGoals,
     indexedChunks,
   } = await getDashboard(userId, now);
 
@@ -124,7 +125,8 @@ export default async function DashboardPage() {
     todayEvents.length === 0 &&
     todayBlocks.length === 0 &&
     recentNotes.length === 0 &&
-    activeProjects.length === 0;
+    activeProjects.length === 0 &&
+    activeGoals.length === 0;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -310,6 +312,49 @@ export default async function DashboardPage() {
               )}
             </Panel>
           </div>
+
+          <Panel title="Active goals" href="/goals" linkLabel="All goals">
+            {activeGoals.length === 0 ? (
+              <Empty>No active goals.</Empty>
+            ) : (
+              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {activeGoals.map((goal) => (
+                  <li key={goal.id}>
+                    <Link
+                      href={`/goals/${goal.id}`}
+                      className="block rounded-xl border border-border-subtle bg-surface px-3.5 py-2.5 transition-colors hover:border-border-strong"
+                    >
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="truncate text-sm font-medium text-text">
+                          {goal.title}
+                        </p>
+                        <span className="shrink-0 text-xs tabular-nums text-text-muted">
+                          {goal.progress}%
+                        </span>
+                      </div>
+                      <div
+                        className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-raised"
+                        role="progressbar"
+                        aria-valuenow={goal.progress}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label={`${goal.title} progress`}
+                      >
+                        <div
+                          className="h-full rounded-full bg-accent"
+                          style={{ width: `${goal.progress}%` }}
+                        />
+                      </div>
+                      <p className="mt-1.5 text-xs text-text-faint">
+                        {goal.counts.projects} projects · {goal.counts.tasks}{" "}
+                        direct tasks
+                      </p>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
 
           <p className="text-center text-xs text-text-faint">
             <Link href="/ai" className="transition-colors hover:text-accent">

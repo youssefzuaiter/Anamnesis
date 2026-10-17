@@ -11,6 +11,7 @@ export const EMBEDDABLE_SOURCE_TYPES = [
   "event",
   "project",
   "course",
+  "goal",
 ] as const;
 
 export type EmbeddableSourceType = (typeof EMBEDDABLE_SOURCE_TYPES)[number];

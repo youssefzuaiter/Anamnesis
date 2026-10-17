@@ -73,6 +73,10 @@ const taskSchema = z.object({
     emptyToNull,
     z.uuid().nullable().default(null),
   ),
+  goalId: z.preprocess(
+    emptyToNull,
+    z.uuid().nullable().default(null),
+  ),
   scheduledStart: z.preprocess(
     emptyToNull,
     z.string().regex(LOCAL_DATETIME, "Pick a valid start time.").nullable().default(null),
@@ -105,6 +109,7 @@ function parseForm(formData: FormData) {
     estimatedMinutes: formData.get("estimatedMinutes") ?? 60,
     projectId: formData.get("projectId") ?? "",
     courseId: formData.get("courseId") ?? "",
+    goalId: formData.get("goalId") ?? "",
     scheduledStart: formData.get("scheduledStart") ?? "",
     scheduledEnd: formData.get("scheduledEnd") ?? "",
     recurrenceFrequency: formData.get("recurrenceFrequency") ?? "",
@@ -140,6 +145,7 @@ function revalidateTaskViews(taskId?: string) {
   if (taskId) revalidatePath(`/tasks/${taskId}`);
   revalidatePath("/projects");
   revalidatePath("/calendar");
+  revalidatePath("/goals");
   revalidatePath("/");
 }
 
@@ -194,6 +200,7 @@ export async function updateTaskAction(
     scheduledEnd,
     tags,
     courseId,
+    goalId,
   } = parsed.data;
 
   try {
@@ -204,6 +211,7 @@ export async function updateTaskAction(
       priority,
       tags,
       courseId,
+      goalId,
       dueDate,
       estimatedMinutes,
       projectId,

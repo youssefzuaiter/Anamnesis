@@ -34,6 +34,7 @@ model User {
   conversations Conversation[]
   messages     Message[]
   attachments  Attachment[]
+  goals        Goal[]
 }
 
 model UserProfile {
@@ -57,6 +58,7 @@ model UserProfile {
 model Project {
   id        String    @id @default(uuid())
   userId    String
+  goalId    String?
   title     String
   category  String
   progress  Int       @default(0)
@@ -65,9 +67,37 @@ model Project {
   deletedAt DateTime?
 
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goal   Goal?   @relation(fields: [goalId], references: [id], onDelete: SetNull)
   notes  Note[]
   tasks  Task[]
   events Event[]
+
+  @@index([userId])
+  @@index([goalId])
+}
+
+/// A semester/long-term objective that Projects and Tasks roll up into — the
+/// same derived-progress pattern Project already runs over its own Tasks, one
+/// level up. `goalId` on both Project and Task is independent of the other
+/// (a Task keeps its own direct link even when it also sits under a Project),
+/// the same non-exclusive-association precedent Task already sets between its
+/// own `projectId` and `courseId`. Soft-deleted like Note/Task/Project — there
+/// is no special reason for Goal to be hard-deleted the way Event is.
+model Goal {
+  id          String    @id @default(uuid())
+  userId      String
+  title       String
+  description String?
+  category    String
+  targetDate  DateTime?
+  progress    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projects Project[]
+  tasks    Task[]
 
   @@index([userId])
 }
@@ -102,6 +132,7 @@ model Task {
   projectId        String?
   courseId         String?
   noteId           String?
+  goalId           String?
   title            String
   description      String?
   status           String    @default("todo")
@@ -124,10 +155,12 @@ model Task {
   project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   course  Course?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
   note    Note?    @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  goal    Goal?    @relation(fields: [goalId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([dueDate])
   @@index([recurrenceId])
+  @@index([goalId])
 }
 
 model Event {

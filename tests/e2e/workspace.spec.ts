@@ -274,8 +274,73 @@ test("an assistant thread is saved and survives a reload", async ({
   await expect(main(page)).toContainText(question);
 });
 
+test("a goal rolls up a linked task, survives deletion's detach, and restores honestly", async ({
+  page,
+}) => {
+  const stamp = Date.now();
+  const goalTitle = `Ship the thesis ${stamp}`;
+  const taskTitle = `Draft chapter ${stamp}`;
+
+  await page.goto("/goals");
+  await page.fill('input[name="title"]', goalTitle);
+  await main(page).getByRole("button", { name: /create goal/i }).click();
+  await expect(main(page)).toContainText(goalTitle);
+
+  // Link a task to it from the ordinary task form — the goal picker only
+  // appears once at least one goal exists.
+  await page.goto("/tasks");
+  await page.fill('input[name="title"]', taskTitle);
+  await page.selectOption('select[name="goalId"]', { label: goalTitle });
+  await main(page).getByRole("button", { name: /add task/i }).click();
+  await expect(main(page)).toContainText(taskTitle);
+
+  await page.goto("/goals");
+  await main(page).getByRole("link", { name: new RegExp(goalTitle) }).click();
+  await page.waitForURL(/\/goals\/[0-9a-f-]{36}$/);
+
+  const progress = main(page).getByRole("progressbar", { name: /goal progress/i });
+  await expect(progress).toHaveAttribute("aria-valuenow", "0");
+  await expect(main(page)).toContainText(taskTitle);
+
+  // Completing the task from the goal's own page rolls up to 100% in place,
+  // with no reload — the page is a server component, so this is also what
+  // proves the action's revalidation reaches /goals/[id], not just /goals.
+  await main(page)
+    .getByRole("button", { name: new RegExp(`complete ${taskTitle}`, "i") })
+    .click();
+  await expect(progress).toHaveAttribute("aria-valuenow", "100");
+
+  // Deleting goes through the app's native confirm(), which Playwright can
+  // answer — the browser automation used for manual checks could not.
+  page.once("dialog", (dialog) => dialog.accept());
+  await main(page).getByRole("button", { name: /delete goal/i }).click();
+  await page.waitForURL(/\/goals$/);
+  expect(await mainText(page)).not.toContain(goalTitle.toLowerCase());
+
+  // Deleting a goal detaches its work rather than taking it along.
+  await page.goto("/tasks");
+  await expect(main(page)).toContainText(taskTitle);
+
+  await page.goto("/trash");
+  await expect(main(page)).toContainText(goalTitle);
+  await main(page)
+    .getByRole("listitem")
+    .filter({ hasText: goalTitle })
+    .getByRole("button", { name: /restore/i })
+    .click();
+  await expect(main(page)).not.toContainText(goalTitle);
+
+  // The goal was at 100% when deleted. Its task is no longer attached, so it
+  // must come back at 0%, not at the figure it was holding.
+  await page.goto("/goals");
+  await expect(
+    main(page).getByRole("progressbar", { name: `${goalTitle} progress` }),
+  ).toHaveAttribute("aria-valuenow", "0");
+});
+
 test("navigation reaches every section", async ({ page }) => {
   for (const [path, heading] of [
+    ["/goals", /goals/i],
     ["/search", /search/i],
     ["/cards", /cards/i],
     ["/review", /weekly review/i],

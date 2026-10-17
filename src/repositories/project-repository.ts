@@ -12,6 +12,7 @@ import type { ProjectCategory } from "@/lib/domain";
 export type ProjectInput = {
   title: string;
   category: ProjectCategory;
+  goalId: string | null;
 };
 
 export type ProjectSummary = Project & {

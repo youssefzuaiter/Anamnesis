@@ -3,7 +3,8 @@
 import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import type { ApiResponse } from "@/lib/api-response";
-import { PROJECT_CATEGORIES, type ProjectCategory } from "@/lib/domain";
+import { PROJECT_CATEGORIES, type ProjectCategory, type GoalOption } from "@/lib/domain";
+import { GoalSelect } from "@/components/goal-select";
 
 type ProjectAction = (
   prevState: ApiResponse<null> | null,
@@ -27,12 +28,14 @@ export function ProjectForm({
   action,
   submitLabel,
   initial,
+  goals,
   resetOnSuccess = false,
 }: {
   action: ProjectAction;
   submitLabel: string;
   resetOnSuccess?: boolean;
-  initial?: { title: string; category: ProjectCategory };
+  goals: GoalOption[];
+  initial?: { title: string; category: ProjectCategory; goalId: string | null };
 }) {
   const [state, formAction] = useActionState(action, null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -72,6 +75,8 @@ export function ProjectForm({
           ))}
         </select>
       </label>
+
+      <GoalSelect goals={goals} defaultValue={initial?.goalId} />
 
       {state && !state.success && (
         <p

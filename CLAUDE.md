@@ -121,7 +121,7 @@ Where: …"` on every real question tried — "where is my exam being held" went
 and queries that already matched improved too. Phrase new entity types the same way.
 
 **Events are hard deleted** — `Event` is the one entity with no `deletedAt` column
-in the spec's schema. Notes, tasks and projects are soft deleted.
+in the spec's schema. Notes, tasks, projects and goals are soft deleted.
 
 **A multi-day event appears in every day cell it spans**, so anything counting
 events across a grid must count distinct ids, not cell occurrences.
@@ -288,7 +288,8 @@ refused with `VALIDATION_ERROR` rather than silently repeating from nothing.
 linked tasks and written only by `recalculateProgress()`, which every task
 mutation calls — including moving a task between projects, which changes both. `completedAt` is written only by
 `setTaskStatus`, from the status, so the two cannot drift apart. Do not expose it
-as an independently editable field.
+as an independently editable field. Goal `progress` follows the same rule, one
+level up — see "Goals" below.
 
 **Dates entered as `yyyy-mm-dd` are pinned to local end-of-day** before storage. A
 bare date string parses as UTC midnight, which lands on the *previous* day for
@@ -308,8 +309,8 @@ agenda instead — a day has room for the full list.
 
 ## Trash and soft-delete recovery
 
-`/trash` lists the three soft-deletable entities — `TRASH_KINDS` in
-`lib/domain.ts` is `["note", "task", "project"]`. `Event` never appears there
+`/trash` lists the soft-deletable entities — `TRASH_KINDS` in
+`lib/domain.ts` is `["note", "task", "project", "goal"]`. `Event` never appears there
 because it is hard-deleted (see "Events are hard deleted" above). That constant
 was moved out of `actions/trash.ts` and into `lib/domain.ts` because a
 `"use server"` module may only export async functions; exporting a plain array
@@ -320,6 +321,18 @@ from one made every restore and purge fail at runtime.
 `revalidatePath` alone leaves the row showing in an already-rendered list after
 it leaves the trash; the component calls `router.refresh()` itself once the
 action resolves.
+
+**Restoring a project or a goal recomputes its `progress`.** Deleting detaches
+everything the entity held — it nulls `projectId`/`goalId` on its tasks — but
+leaves the stored percentage as it was. A restore that only cleared
+`deletedAt` therefore brought back a goal deleted at 100% still reading 100%
+for work that was no longer attached to it, and a project deleted at 67% still
+reading 67% of nothing. Both restores now call the same recalculation every
+task mutation does, which also re-syncs the search index (the embedded text
+contains the percentage) and, for a project, cascades to its goal. The goal
+version was caught by writing the goals Playwright test, which deletes a goal
+at 100% and checks it after restoring; the project version is the same bug,
+fixed alongside it.
 
 ## Day planning
 
@@ -434,6 +447,79 @@ component tree: a course with a graded midterm, an unscored final due in
 three days, and two due flashcards rendered "Final in 3 days · current
 average 78% · best possible 63% · 2 flashcards due" in the actual server
 response.
+
+## Goals
+
+A goal is a semester- or career-length objective that projects and tasks roll
+up into — the pattern a project already runs over its tasks, one level up. It
+follows the same repository → service → action shape as every other entity and
+is soft-deleted like notes, tasks and projects (events are the one hard-deleted
+entity, for a reason that does not apply here). Its category reuses
+`PROJECT_CATEGORIES` rather than adding a second, near-identical enum.
+
+**`goalId` is an independent link on both `Project` and `Task`, not a
+hierarchy.** A task can count toward a goal directly — a "read twelve books"
+goal needs no project — or through a project that is itself linked to the goal,
+or both. That is the same non-exclusive precedent `Task` already sets between
+its own `projectId` and `courseId`. A task reached by both paths is still one
+row in the rollup query, so it is never counted twice.
+
+**Progress is a raw task count, not an average of percentages.**
+`recalculateGoalProgress` — the only writer of `Goal.progress` — takes every
+live task that is linked directly *or* sits under a live linked project and
+stores `done / total`. Averaging each project's own percentage would let a
+one-task project weigh as much as a forty-task one. `getGoalTaskTotals` runs
+the same query read-only, so the goal page can show the fraction its
+percentage was computed from. An earlier header read "67% … 1/1 direct tasks",
+because it counted direct tasks only; that was found by clicking through the
+running app, not by any type check.
+
+**The cascade reuses a call every task mutation already makes.**
+`recalculateProgress` in `project-service.ts` runs after every task mutation
+and now ends by recalculating its project's goal, so "task under a project
+under a goal" needed no change in `task-service.ts`. Only a task's *direct*
+`goalId` is handled there, with the same before/after treatment `projectId`
+gets: create, update (old goal and new), status change, delete and restore.
+Moving a project between goals does the same in `updateProject`.
+
+**`goalId` is required on `TaskInput` and `ProjectInput` on purpose.**
+`updateTask` replaces the whole row — this codebase has no partial update — so
+an optional `goalId` would let a caller that merely forgot it silently unlink a
+task from its goal. `scheduleTask` (drag-to-calendar) rebuilds the full input
+from the existing row for exactly this reason and had to carry `goalId`
+through. Making the field required turns every omission into a compile error
+instead of lost data; adding it touched 20 call sites in the evals alone, and
+that is the price working as intended.
+
+**Deleting a goal detaches, it does not cascade** — the rule `deleteProject`
+follows one level down. Its projects and tasks keep existing with `goalId`
+nulled, and the goal leaves the search index at once. Restoring brings back an
+empty goal and recomputes its `progress` (see "Trash and soft-delete
+recovery"), since deletion leaves that column alone.
+
+**Search.** A goal is indexed as one text — title, category, target date and
+percentage, then a rundown of its projects (with their own percentages) and its
+direct tasks (`goalRollupSummary`). It is in `EMBEDDABLE_SOURCE_TYPES`, so the
+`/search` filters, `RelatedItems` and the assistant all see it. The command
+palette's literal `quickSearch` deliberately does not, exactly as with courses.
+In the assistant, citations for anything but a note render as plain text, so a
+cited goal is unlinked, as a cited task or project already is. The assistant can
+also *propose* one (see "Tool calling").
+
+**Counts.** The `N projects · M direct tasks` line on a goal card counts direct
+children only, which is what a project card reports about itself too; the
+percentage beside it is the authoritative rollup. The dashboard's "Active
+goals" panel shows the three most recently updated goals that are under 100%.
+
+**Tests.** The evals carry the logic: "Goals: derived progress across projects
+and tasks" (the rollup through every transition, cross-tenant attach, read and
+delete refusal, detach-on-delete, restore), "Re-index and export cover goals",
+and the `create_goal` cases in the tool-validation, execution and routing
+sections. A Playwright test drives the lifecycle through a real browser —
+create, link a task, complete it from the goal's own page, delete through the
+native `confirm()` (Playwright answers it with `page.once("dialog", …)`, which
+the ad-hoc browser automation used for manual checks could not), find it in the
+trash, restore it — and `/goals` is in the navigation-coverage list.
 
 ## Testing UI with Playwright
 
@@ -618,6 +704,55 @@ Detection is measured, not assumed, and the two directions are not equally
 serious: proposing on a plain question is intrusive and is asserted at zero;
 failing to propose is benign and only reported (currently ~2/3).
 
+**`create_goal` is the fourth tool, and it exists because of a measured
+misroute.** With only three tools, "Add a goal to finish my thesis" came back
+as a *note* proposal — 0 of 10 goal phrasings reached a goal and 9 became notes,
+because a note was the nearest thing on the list. With the tool, 10 of 10
+route to a goal and no single-request category got worse (the same 8 plain
+questions still produced no proposal; tasks went 3/6 → 4/6, events 1/2 → 2/2,
+notes stayed 1/2). `callWithTools` runs at temperature 0, so one phrasing gives
+one answer however often it is asked; the useful measurement is many
+*different* phrasings once each, not one phrasing many times.
+
+**Multi-item requests are the exception, and they are jittery.** Any change to
+the tool list reshuffles which of two "Add N tasks: …" phrasings gets a
+proposal: "Add three tasks: …" went 1 → 0 with one wording of this tool's
+description and held at 1 with another, while "Add two tasks: …" did the
+opposite. The total across three multi-item phrasings was 4 valid proposals in
+every configuration measured, so nothing is being systematically stolen, but a
+single phrasing is not a stable thing to assert on here — which is why the
+routing eval only reports this number.
+
+**The decision prompt is deliberately not amended to mention goals.** It was
+tried: goal routing stayed 10/10 — the tool description alone already does that
+job — but the model then proposed a goal for the plain question "what tasks do
+I have for my thesis goal" and stopped recognising "Write down that …" as a note
+(notes 1/2 → 0/2). That is the intrusive direction, so the wording stays out.
+The tool's own description is kept terse for the same reason: a longer version
+that added "a single thing to do is a task, not a goal" routed goals no better
+(10/10 either way) and proposed a goal for one of eight "set …" requests that
+were really tasks, events or notes ("I need to set up my thesis proposal this
+week"); the short one proposed none of the eight.
+The cheap `ACTION_HINT` prefilter *was* widened (`set … goal`, `new goal`),
+because it was blocking 3 of the 10 goal phrasings before the model ever saw
+them ("Set a goal to …", "… set a new goal: …", "New goal: …"). It now admits
+10 of 10, and of 6 plain questions it newly lets through ("did I set a goal for
+June", "do I have a new goal this month", …) the model proposed on none. The
+routing eval keeps three such questions asserted at zero, so a later change to
+the prefilter, the prompt or the tool list that makes it start proposing on
+them fails the suite rather than going unnoticed.
+
+A goal proposal is a title and a category and nothing else. There is no date
+field: a goal is named rather than scheduled, a 3B model is no better at "by
+June" than at "next Friday", and the user sets a target date on the goal page
+after confirming. The category is matched case-insensitively and falls back to
+`University` rather than being rejected — a model handed three words still
+writes "career", and the enum used to be able to drop an otherwise good
+proposal over it, the same repair-don't-reject stance the duration already
+gets. Confirming goes through the same `executeProposal` as the other kinds:
+ownership from the session, idempotent on `proposalId`, audited as
+`GOAL_CREATED` on a `Goal`, and indexed exactly like a goal made by hand.
+
 ## Reminders are polled, not pushed
 
 `dueRemindersAction` has no new schema behind it — it reads tasks due today
@@ -682,8 +817,9 @@ results" would need the whole result set scored anyway.
 
 ## Search index maintenance
 
-`services/embeddable-text.ts` centralises the note/task/event/project-to-prose
-phrasing that used to be duplicated inside each entity's own service. It
+`services/embeddable-text.ts` centralises the entity-to-prose phrasing (notes,
+tasks, events, projects, courses and goals) that used to be duplicated inside
+each entity's own service. It
 exists as its own module specifically so `services/reindex-service.ts` can
 produce byte-identical text to whatever the write path already embedded — two
 independently maintained copies of a measured phrasing (see "Embed entities as
@@ -699,6 +835,21 @@ in one sitting with no obvious sign anything is missing. `reindexEverything`
 re-embeds everything a user owns and keeps going if one row fails to embed,
 reporting a failed count alongside the succeeded one rather than abandoning
 the rest of the rebuild.
+
+**A rebuild must cover every embeddable type, and goals were missing from it
+when they first shipped.** `reindexEverything` iterated five types, so it
+could not repair the one added most recently — a goal saved while Ollama was
+down stayed invisible to semantic search and the assistant even after the
+button was pressed. It was found by checking each place the previous
+embeddable type (`course`) is wired against goals, which is worth repeating
+whenever a type is added. A goal embeds as one text that folds in a rundown of
+its projects and its own direct tasks, so the rebuild has to assemble that
+rundown in the *same order* as the write path or the two would embed different
+text for the same goal. Neither query had an `ORDER BY`, which left the order
+to Postgres; both now share `ROLLUP_ORDER` (`createdAt`, then `id`, since two
+rows can share a millisecond). An eval deletes a goal's embeddings, runs
+`reindexEverything`, and compares the rebuilt chunks to the written ones byte
+for byte.
 
 ## Calendar subscriptions (ICS import)
 
@@ -744,9 +895,21 @@ than a bare `findUnique`, so a later schema change can't silently start
 leaking it. `WorkspaceEmbedding` is skipped entirely: it's derived and
 regenerable from the content already in the export, and its `vector` column
 is a Prisma `Unsupported` type that cannot be selected into JSON regardless.
-Soft-deleted notes, tasks and projects are left out the same way every other
-read path in this app already treats `deletedAt` as gone; `/trash` (below) is
-where they are recovered or purged, not the export.
+Soft-deleted notes, tasks, projects and goals are left out the same way every
+other read path in this app already treats `deletedAt` as gone; `/trash` (below)
+is where they are recovered or purged, not the export.
+
+Goals are exported (`goals`) because projects and tasks carry a `goalId`, and
+an export without the goal rows would hold ids that point at nothing. An eval
+asserts that every `goalId` in the file resolves to an exported goal.
+
+**Known gap, older than goals:** `buildFullExport` still leaves out courses,
+assessments, flashcards, note versions, conversations and messages, attachments
+and calendar subscriptions, so "everything a user owns" is not yet literally
+true. It was not widened inside the goals change because each of those needs
+its own decision — attachment bytes live on disk and not in Postgres, a private
+calendar feed URL is usually a bearer secret, and version and message history
+are large — and none of that is about goals.
 
 ## Auth and route protection
 
@@ -787,10 +950,11 @@ src/
 │   ├── (auth)/              # Login, Register — redirects out if signed in
 │   ├── (dashboard)/         # Main protected shell — redirects to /login if not
 │   │   ├── layout.tsx       # Sidebar + Command Palette (⌘K)
-│   │   ├── page.tsx         # Dashboard home (Today, Schedule, Recent, Projects)
+│   │   ├── page.tsx         # Dashboard home (Today, Schedule, Recent, Projects, Goals)
 │   │   ├── calendar/        # Month/week/day views + Next up, event detail; calendar/subscriptions for ICS import
 │   │   ├── notes/           # List (paginated, bulk actions), editor, semantic search, wiki backlinks, graph view, PDF import
 │   │   ├── tasks/           # Buckets (Overdue/Today/Upcoming/Someday), detail
+│   │   ├── goals/           # Goals: progress rolled up from linked projects and direct tasks
 │   │   ├── projects/        # Hub with derived progress, linked contents
 │   │   ├── courses/         # Courses, assessments/grades, flashcard review
 │   │   ├── cards/           # Spaced-repetition flashcard review queue
@@ -799,7 +963,7 @@ src/
 │   │   ├── ai/              # RAG Assistant: saved threads, cited answers + proposals
 │   │   ├── focus/           # Opt-in writing telemetry and its controls
 │   │   ├── audit/           # Read-only AuditEvent trail (proposed/created/declined)
-│   │   ├── trash/           # Recover or purge soft-deleted notes/tasks/projects
+│   │   ├── trash/           # Recover or purge soft-deleted notes/tasks/projects/goals
 │   │   └── settings/        # Profile, focus-tracking toggle, manual reindex
 │   └── api/
 │       ├── ai/

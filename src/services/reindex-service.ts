@@ -5,7 +5,9 @@ import {
   embeddableTextFor,
   projectTaskSummary,
   courseAssessmentSummary,
+  goalRollupSummary,
 } from "@/services/embeddable-text";
+import { ROLLUP_ORDER } from "@/services/goal-service";
 
 export type ReindexReport = {
   indexed: number;
@@ -25,7 +27,7 @@ export type ReindexReport = {
 export async function reindexEverything(
   userId: string,
 ): Promise<ReindexReport> {
-  const [notes, tasks, events, projects, courses] = await Promise.all([
+  const [notes, tasks, events, projects, courses, goals] = await Promise.all([
     prisma.note.findMany({
       where: { userId, deletedAt: null },
       select: { id: true, title: true, content: true, tags: true },
@@ -67,12 +69,32 @@ export async function reindexEverything(
         },
       },
     }),
+    prisma.goal.findMany({
+      where: { userId, deletedAt: null },
+      select: {
+        id: true, title: true, description: true, category: true,
+        targetDate: true, progress: true,
+        // A goal's embedded text includes a rundown of its linked projects and
+        // of its own direct tasks. Ordered exactly as the write path orders
+        // them, or the rebuilt text could differ from what a save embeds.
+        projects: {
+          where: { deletedAt: null },
+          select: { title: true, progress: true },
+          orderBy: [...ROLLUP_ORDER],
+        },
+        tasks: {
+          where: { deletedAt: null },
+          select: { title: true, status: true },
+          orderBy: [...ROLLUP_ORDER],
+        },
+      },
+    }),
   ]);
 
   const report: ReindexReport = {
     indexed: 0,
     failed: 0,
-    byType: { note: 0, task: 0, event: 0, project: 0, course: 0 },
+    byType: { note: 0, task: 0, event: 0, project: 0, course: 0, goal: 0 },
   };
 
   const work = [
@@ -93,6 +115,14 @@ export async function reindexEverything(
           "course",
           row.id,
           embeddableTextFor.course(row, courseAssessmentSummary(row.assessments)),
+        ] as const,
+    ),
+    ...goals.map(
+      (row) =>
+        [
+          "goal",
+          row.id,
+          embeddableTextFor.goal(row, goalRollupSummary(row.projects, row.tasks)),
         ] as const,
     ),
   ];

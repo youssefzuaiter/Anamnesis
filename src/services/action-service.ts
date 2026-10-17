@@ -5,12 +5,13 @@ import type { ActionProposal } from "@/lib/ai-tools";
 import * as taskService from "@/services/task-service";
 import * as eventService from "@/services/event-service";
 import * as noteService from "@/services/note-service";
+import * as goalService from "@/services/goal-service";
 
 export type ActorType = "USER" | "AI_AGENT" | "SYSTEM";
 export type ActionSource = "assistant" | "capture";
 
 export type ExecutedAction = {
-  entityType: "Task" | "Event" | "Note";
+  entityType: "Task" | "Event" | "Note" | "Goal";
   entityId: string;
   href: string;
   /** True when an identical confirmation had already been applied. */
@@ -21,18 +22,21 @@ const ACTION_NAMES = {
   task: "TASK_CREATED",
   event: "EVENT_CREATED",
   note: "NOTE_CREATED",
+  goal: "GOAL_CREATED",
 } as const;
 
 const ENTITY_TYPES = {
   task: "Task",
   event: "Event",
   note: "Note",
+  goal: "Goal",
 } as const;
 
 const HREF_PREFIX = {
   task: "/tasks",
   event: "/calendar",
   note: "/notes",
+  goal: "/goals",
 } as const;
 
 /**
@@ -107,6 +111,7 @@ export async function executeProposal(
       priority: proposal.priority,
       tags: [],
       courseId: null,
+      goalId: null,
       dueDate: proposal.dueDate ? new Date(proposal.dueDate) : null,
       estimatedMinutes: proposal.estimatedMinutes,
       projectId: null,
@@ -132,6 +137,14 @@ export async function executeProposal(
       projectId: null,
     });
     entityId = event.id;
+  } else if (proposal.kind === "goal") {
+    const goal = await goalService.createGoal(userId, {
+      title: proposal.title,
+      description: null,
+      category: proposal.category,
+      targetDate: null,
+    });
+    entityId = goal.id;
   } else {
     const note = await noteService.createNote(userId, {
       title: proposal.title,

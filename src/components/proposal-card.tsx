@@ -9,6 +9,7 @@ const KIND_LABEL: Record<ActionProposal["kind"], string> = {
   task: "Task",
   event: "Event",
   note: "Note",
+  goal: "Goal",
 };
 
 const DATE_TIME = new Intl.DateTimeFormat("en-GB", {
@@ -39,6 +40,9 @@ function describe(proposal: ActionProposal): string {
     ]
       .filter(Boolean)
       .join(" · ");
+  }
+  if (proposal.kind === "goal") {
+    return `${proposal.category} · no target date yet`;
   }
   return "New note";
 }

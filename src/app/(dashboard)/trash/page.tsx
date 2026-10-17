@@ -2,6 +2,7 @@ import { requireUserId } from "@/lib/session";
 import { listDeletedNotes } from "@/repositories/note-repository";
 import { listDeletedTasks } from "@/repositories/task-repository";
 import { listDeletedProjects } from "@/repositories/project-repository";
+import { listDeletedGoals } from "@/repositories/goal-repository";
 import { TrashRow } from "@/components/trash-row";
 import type { TrashKind } from "@/lib/domain";
 
@@ -16,10 +17,11 @@ const WHEN = new Intl.DateTimeFormat("en-GB", {
 
 export default async function TrashPage() {
   const userId = await requireUserId();
-  const [notes, tasks, projects] = await Promise.all([
+  const [notes, tasks, projects, goals] = await Promise.all([
     listDeletedNotes(userId),
     listDeletedTasks(userId),
     listDeletedProjects(userId),
+    listDeletedGoals(userId),
   ]);
 
   const items: { kind: TrashKind; id: string; title: string; deletedAt: Date }[] = [
@@ -30,6 +32,7 @@ export default async function TrashPage() {
       ...p,
       deletedAt: p.deletedAt!,
     })),
+    ...goals.map((g) => ({ kind: "goal" as const, ...g, deletedAt: g.deletedAt! })),
   ].sort((a, b) => b.deletedAt.getTime() - a.deletedAt.getTime());
 
   return (
@@ -61,9 +64,9 @@ export default async function TrashPage() {
           </ul>
           <p className="mt-4 text-xs text-text-muted">
             Restoring a note puts it back in semantic search and re-resolves its
-            links. Restoring a project does not re-attach the notes, tasks and
-            events it held — deleting it detached them, and that association is
-            not kept anywhere.
+            links. Restoring a project or goal does not re-attach what it held
+            — deleting it detached them, and that association is not kept
+            anywhere.
           </p>
         </>
       )}

@@ -16,6 +16,7 @@ export async function buildFullExport(userId: string) {
     user,
     profile,
     projects,
+    goals,
     notes,
     tasks,
     events,
@@ -32,6 +33,9 @@ export async function buildFullExport(userId: string) {
       select: { university: true, program: true, studentId: true, focusTrackingEnabled: true },
     }),
     prisma.project.findMany({ where: { userId, deletedAt: null } }),
+    // Exported alongside projects and tasks, which carry a `goalId` — without
+    // the goal rows those ids would point at nothing in the file.
+    prisma.goal.findMany({ where: { userId, deletedAt: null } }),
     prisma.note.findMany({ where: { userId, deletedAt: null } }),
     prisma.task.findMany({ where: { userId, deletedAt: null } }),
     prisma.event.findMany({ where: { userId } }),
@@ -45,6 +49,7 @@ export async function buildFullExport(userId: string) {
     user,
     profile,
     projects,
+    goals,
     notes,
     tasks,
     events,

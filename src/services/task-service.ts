@@ -5,6 +5,7 @@ import { AppError } from "@/lib/api-response";
 import * as taskRepository from "@/repositories/task-repository";
 import { assertProjectOwned, recalculateProgress } from "@/services/project-service";
 import { assertCourseOwned } from "@/services/course-service";
+import { assertGoalOwned, recalculateGoalProgress } from "@/services/goal-service";
 import { generateOccurrences, type RecurrenceFrequency } from "@/lib/recurrence";
 import { embeddableTextFor } from "@/services/embeddable-text";
 import type { TaskInput, TaskStatus, TaskPriority } from "@/repositories/task-repository";
@@ -110,9 +111,13 @@ export async function createTask(
 ): Promise<Task> {
   await assertProjectOwned(userId, input.projectId);
   await assertCourseOwned(userId, input.courseId);
+  await assertGoalOwned(userId, input.goalId);
   const task = await taskRepository.createTask(userId, resolveSchedule(input));
   await syncTaskIndex(userId, task);
   await recalculateProgress(userId, task.projectId);
+  // A task's direct goalId is independent of its project's — recalculateProgress
+  // above already cascades to the *project's* goal, not this one.
+  await recalculateGoalProgress(userId, task.goalId);
   return task;
 }
 
@@ -123,6 +128,7 @@ export async function updateTask(
 ): Promise<Task> {
   await assertProjectOwned(userId, input.projectId);
   await assertCourseOwned(userId, input.courseId);
+  await assertGoalOwned(userId, input.goalId);
 
   const before = await taskRepository.getTask(userId, taskId);
   const task = await taskRepository.updateTask(userId, taskId, resolveSchedule(input));
@@ -135,6 +141,11 @@ export async function updateTask(
   await recalculateProgress(userId, before?.projectId);
   if (before?.projectId !== task.projectId) {
     await recalculateProgress(userId, task.projectId);
+  }
+  // Same before/after handling for a direct goal link.
+  await recalculateGoalProgress(userId, before?.goalId);
+  if (before?.goalId !== task.goalId) {
+    await recalculateGoalProgress(userId, task.goalId);
   }
   return task;
 }
@@ -150,6 +161,7 @@ export async function setTaskStatus(
   }
   await syncTaskIndex(userId, task);
   await recalculateProgress(userId, task.projectId);
+  await recalculateGoalProgress(userId, task.goalId);
   return task;
 }
 
@@ -161,6 +173,7 @@ export async function deleteTask(userId: string, taskId: string): Promise<void> 
   }
   await deleteEntityEmbeddings(userId, "task", taskId);
   await recalculateProgress(userId, before?.projectId);
+  await recalculateGoalProgress(userId, before?.goalId);
 }
 
 /**
@@ -175,6 +188,7 @@ export async function restoreTask(userId: string, taskId: string): Promise<Task>
 
   await syncTaskIndex(userId, task);
   await recalculateProgress(userId, task.projectId);
+  await recalculateGoalProgress(userId, task.goalId);
   return task;
 }
 
@@ -267,6 +281,7 @@ export async function scheduleTask(
     priority: existing.priority as TaskPriority,
     tags: existing.tags,
     courseId: existing.courseId,
+    goalId: existing.goalId,
     dueDate: existing.dueDate,
     estimatedMinutes: existing.estimatedMinutes,
     projectId: existing.projectId,

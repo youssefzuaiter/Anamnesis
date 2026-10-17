@@ -5,6 +5,7 @@ import {
   getProject,
   getProjectContents,
 } from "@/repositories/project-repository";
+import { listGoalOptions } from "@/repositories/goal-repository";
 import type { ProjectCategory } from "@/lib/domain";
 import { ProjectForm } from "@/components/project-form";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
@@ -27,9 +28,15 @@ export default async function ProjectPage({
   const project = await getProject(userId, id);
   if (!project) notFound();
 
-  const { notes, tasks, events } = await getProjectContents(userId, id);
+  const [{ notes, tasks, events }, goals] = await Promise.all([
+    getProjectContents(userId, id),
+    listGoalOptions(userId),
+  ]);
   const openTasks = tasks.filter((task) => task.status !== "done");
   const doneTasks = tasks.filter((task) => task.status === "done");
+  const goal = project.goalId
+    ? goals.find((g) => g.id === project.goalId)
+    : null;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -43,6 +50,14 @@ export default async function ProjectPage({
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-text">
           {project.title}
         </h1>
+        {goal && (
+          <Link
+            href={`/goals/${goal.id}`}
+            className="mt-1 inline-block text-sm text-text-muted transition-colors hover:text-text"
+          >
+            Goal: {goal.title}
+          </Link>
+        )}
         <div className="mt-3 flex items-center gap-3">
           <div
             className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-raised"
@@ -140,9 +155,11 @@ export default async function ProjectPage({
       <ProjectForm
         action={updateProjectAction.bind(null, project.id)}
         submitLabel="Save changes"
+        goals={goals}
         initial={{
           title: project.title,
           category: project.category as ProjectCategory,
+          goalId: project.goalId,
         }}
       />
 

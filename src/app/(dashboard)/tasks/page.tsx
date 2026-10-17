@@ -5,6 +5,7 @@ import { TaskRow } from "@/components/task-row";
 import { createTaskAction } from "@/actions/tasks";
 import { listProjectOptions } from "@/repositories/project-repository";
 import { listCourseOptions } from "@/repositories/course-repository";
+import { listGoalOptions } from "@/repositories/goal-repository";
 import { listTaskTags } from "@/repositories/task-repository";
 import Link from "next/link";
 
@@ -44,11 +45,12 @@ export default async function TasksPage({
   const params = await searchParams;
   const tag = typeof params.tag === "string" ? params.tag : "";
 
-  const [grouped, projects, tags, courses] = await Promise.all([
+  const [grouped, projects, tags, courses, goals] = await Promise.all([
     groupTasks(userId, new Date(), { tag: tag || undefined }),
     listProjectOptions(userId),
     listTaskTags(userId),
     listCourseOptions(userId),
+    listGoalOptions(userId),
   ]);
 
   const openCount =
@@ -101,6 +103,7 @@ export default async function TasksPage({
         submitLabel="Add task"
         projects={projects}
         courses={courses}
+        goals={goals}
         resetOnSuccess
       />
 

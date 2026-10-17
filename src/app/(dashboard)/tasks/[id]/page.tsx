@@ -13,6 +13,7 @@ import {
 import type { TaskPriority } from "@/lib/domain";
 import { listProjectOptions } from "@/repositories/project-repository";
 import { listCourseOptions } from "@/repositories/course-repository";
+import { listGoalOptions } from "@/repositories/goal-repository";
 import { StudyTimer } from "@/components/study-timer";
 
 
@@ -37,9 +38,10 @@ export default async function TaskPage({ params }: PageProps<"/tasks/[id]">) {
   const task = await getTask(userId, id);
   if (!task) notFound();
 
-  const [projects, courses] = await Promise.all([
+  const [projects, courses, goals] = await Promise.all([
     listProjectOptions(userId),
     listCourseOptions(userId),
+    listGoalOptions(userId),
   ]);
 
   const done = task.status === "done";
@@ -94,6 +96,7 @@ export default async function TaskPage({ params }: PageProps<"/tasks/[id]">) {
         submitLabel="Save changes"
         projects={projects}
         courses={courses}
+        goals={goals}
         initial={{
           title: task.title,
           description: task.description,
@@ -103,6 +106,7 @@ export default async function TaskPage({ params }: PageProps<"/tasks/[id]">) {
           estimatedMinutes: task.estimatedMinutes,
           projectId: task.projectId,
           courseId: task.courseId,
+          goalId: task.goalId,
           scheduledStart: toDateTimeInput(task.scheduledStart),
           scheduledEnd: toDateTimeInput(task.scheduledEnd),
         }}

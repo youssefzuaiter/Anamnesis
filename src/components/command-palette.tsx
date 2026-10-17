@@ -19,13 +19,15 @@ const NAVIGATION: Command[] = [
   { id: "go-tasks", kind: "action", title: "Tasks", detail: "Go to", href: "/tasks" },
   { id: "go-calendar", kind: "action", title: "Calendar", detail: "Go to", href: "/calendar" },
   { id: "go-projects", kind: "action", title: "Projects", detail: "Go to", href: "/projects" },
+  { id: "go-goals", kind: "action", title: "Goals", detail: "Go to", href: "/goals" },
   { id: "go-ai", kind: "action", title: "Assistant", detail: "Go to", href: "/ai" },
   { id: "go-home", kind: "action", title: "Dashboard", detail: "Go to", href: "/" },
 ];
 
-// "course" is part of Command["kind"] only because it shares SearchHit's
-// type with the semantic /search page — quickSearch itself never returns it,
-// so this entry is dead in practice but keeps the Record exhaustive.
+// "course" and "goal" are part of Command["kind"] only because they share
+// SearchHit's type with the semantic /search page — quickSearch itself never
+// returns either, so these entries are dead in practice but keep the Record
+// exhaustive.
 const KIND_LABELS: Record<Command["kind"], string> = {
   action: "Go",
   note: "Note",
@@ -33,6 +35,7 @@ const KIND_LABELS: Record<Command["kind"], string> = {
   event: "Event",
   project: "Project",
   course: "Course",
+  goal: "Goal",
 };
 
 const DEBOUNCE_MS = 150;

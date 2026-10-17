@@ -8,9 +8,13 @@ import { type ApiResponse, ok, fail, toApiResponse } from "@/lib/api-response";
 import * as projectService from "@/services/project-service";
 import { PROJECT_CATEGORIES } from "@/lib/domain";
 
+const emptyToNull = (value: unknown) =>
+  typeof value === "string" && value.trim() === "" ? null : value;
+
 const projectSchema = z.object({
   title: z.string().trim().min(1, "Give the project a name.").max(200),
   category: z.enum(PROJECT_CATEGORIES).default("University"),
+  goalId: z.preprocess(emptyToNull, z.uuid().nullable().default(null)),
 });
 
 function firstIssue(error: z.ZodError): string {
@@ -23,6 +27,7 @@ function revalidateProjectViews(projectId?: string) {
   revalidatePath("/notes");
   revalidatePath("/tasks");
   revalidatePath("/calendar");
+  revalidatePath("/goals");
   revalidatePath("/");
 }
 
@@ -33,6 +38,7 @@ export async function createProjectAction(
   const parsed = projectSchema.safeParse({
     title: formData.get("title"),
     category: formData.get("category") ?? "University",
+    goalId: formData.get("goalId") ?? "",
   });
   if (!parsed.success) return fail("VALIDATION_ERROR", firstIssue(parsed.error));
 
@@ -55,6 +61,7 @@ export async function updateProjectAction(
   const parsed = projectSchema.safeParse({
     title: formData.get("title"),
     category: formData.get("category") ?? "University",
+    goalId: formData.get("goalId") ?? "",
   });
   if (!parsed.success) return fail("VALIDATION_ERROR", firstIssue(parsed.error));
 

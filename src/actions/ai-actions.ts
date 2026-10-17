@@ -35,6 +35,7 @@ export async function confirmProposalAction(
     revalidatePath("/tasks");
     revalidatePath("/calendar");
     revalidatePath("/notes");
+    revalidatePath("/goals");
 
     return ok({ href: result.href, replayed: result.replayed });
   } catch (error) {
