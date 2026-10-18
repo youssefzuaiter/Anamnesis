@@ -197,10 +197,12 @@ only a fallback for when stripping leaves nothing.
 
 **Voice input fills the same text box a typed capture would, and nothing
 more.** `components/quick-capture.tsx`'s mic button transcribes through the
-browser's own `SpeechRecognition` — free, on-device wiring with no server
-route or API key — and calls `setText()` with the result, so the transcript
-lands in the exact same input, subject to the exact same "review before it's
-sent" step, as anything typed by hand. There is no separate voice-to-proposal
+browser's own `SpeechRecognition`. The app adds no server route and no API
+key, but recognition is not on-device in Chrome: the browser sends the audio to
+Google's speech service, so privacy depends on the browser. The component calls
+`setText()` with the result, so the transcript lands in the exact same input,
+subject to the exact same "review before it's sent" step, as anything typed by
+hand. There is no separate voice-to-proposal
 path to keep in sync with the typed one. TypeScript's DOM lib does not
 include Web Speech API types, so the component declares the minimal shape it
 actually uses rather than pulling in a types package for one interface.
