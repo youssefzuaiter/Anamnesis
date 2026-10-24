@@ -1,0 +1,161 @@
+name: Publish and promote
+
+# How a change reaches production, and where you stay in control of it:
+#
+#   merge to main  ->  publish: build the image, push it as ghcr.io/<repo>:<commit>
+#                  ->  promote: WAITS for your approval (the `production` environment),
+#                      then moves the `production` tag onto that image.
+#
+# Nothing here reaches into your machine and no deploy credential lives in GitHub.
+# Your machine pulls: ops/update.sh notices the `production` tag moved, backs up,
+# migrates, swaps the app, smoke-checks it, and rolls back if that fails.
+#
+# To roll back, run this workflow by hand (Actions -> Publish and promote -> Run
+# workflow) with an earlier commit's sha. That re-promotes an image that was already
+# built; nothing is rebuilt.
+#
+# The image is built for arm64, which is what the production machine is. Running it
+# on an x86 server means adding linux/amd64 to the build.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: >-
+          Full commit sha to promote, for an image that was already published.
+          Leave empty to publish and promote the latest main.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    # Skipped when promoting an image that already exists.
+    if: ${{ inputs.sha == '' }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Registry names must be lowercase and the repository name is not.
+      - name: Name the image
+        run: echo "IMAGE=ghcr.io/$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          # The commit is baked into the image. The smoke check compares it with
+          # what is actually answering, so "the release I asked for is the one
+          # running" is something that gets verified rather than assumed.
+          build-args: APP_VERSION=${{ github.sha }}
+          # A plain manifest, not an index with an attestation attached, so the
+          # host's updater reads one simple digest.
+          provenance: false
+          cache-from: type=gha,scope=container
+          cache-to: type=gha,scope=container,mode=max
+
+  promote:
+    needs: publish
+    # Runs after publish, or on its own when publish was skipped (promoting an
+    # existing image). Does not run if publish failed.
+    if: ${{ always() && (needs.publish.result == 'success' || needs.publish.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # THE GATE. The job pauses here until the reviewer set on the `production`
+    # environment approves it, and the environment only accepts runs from main.
+    environment:
+      name: production
+    # One promotion at a time. A newer one replaces an older one that is still
+    # waiting for approval, so a stale release cannot be approved by accident.
+    concurrency:
+      group: production-promotion
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+      checks: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # Passed through the environment, never interpolated into a script: a
+      # workflow input is text somebody typed.
+      INPUT_SHA: ${{ inputs.sha }}
+      REQUIRED_CHECKS: checks e2e evals container
+    steps:
+      - name: Decide what is being promoted
+        run: |
+          SHA="${INPUT_SHA:-$GITHUB_SHA}"
+          if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::'$SHA' is not a full 40-character commit sha"
+            exit 1
+          fi
+          echo "SHA=$SHA" >> "$GITHUB_ENV"
+          echo "IMAGE=ghcr.io/$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
+      # Approving early must not be able to promote a commit that has not been
+      # fully tested. Waits for checks that are still running; fails on any that
+      # did not succeed.
+      - name: Require that every check passed on this commit
+        run: |
+          for name in $REQUIRED_CHECKS; do
+            for attempt in $(seq 1 60); do
+              state="$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs?per_page=100" \
+                --jq "[.check_runs[] | select(.name == \"$name\")] | sort_by(.started_at) | last | (.conclusion // .status // \"missing\")")"
+              case "$state" in
+                success) echo "$name: success"; break ;;
+                queued|in_progress|missing|null) echo "$name: $state, waiting (attempt $attempt)"; sleep 30 ;;
+                *) echo "::error::check '$name' is '$state' on $SHA, so it will not be promoted"; exit 1 ;;
+              esac
+              if [ "$attempt" = 60 ]; then
+                echo "::error::check '$name' did not finish within 30 minutes"; exit 1
+              fi
+            done
+          done
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check that the image for this commit exists
+        run: docker buildx imagetools inspect "$IMAGE:$SHA" > /dev/null
+
+      # A registry-side copy: the same bytes get a second name. Nothing is rebuilt,
+      # so what runs in production is exactly what passed the checks.
+      - name: Move the production tag
+        run: |
+          docker buildx imagetools create --tag "$IMAGE:production" "$IMAGE:$SHA"
+          built="$(docker buildx imagetools inspect "$IMAGE:$SHA" | awk '/^Digest:/{print $2; exit}')"
+          promoted="$(docker buildx imagetools inspect "$IMAGE:production" | awk '/^Digest:/{print $2; exit}')"
+          if [ "$built" != "$promoted" ]; then
+            echo "::error::production points at $promoted but the image built for this commit is $built"
+            exit 1
+          fi
+          {
+            echo "### Promoted to production"
+            echo ""
+            echo "- Commit: \`$SHA\`"
+            echo "- Image: \`$IMAGE@$promoted\`"
+            echo ""
+            echo "Your machine's updater picks this up within about five minutes."
+            echo "To go back, run this workflow again with an earlier commit's sha."
+          } >> "$GITHUB_STEP_SUMMARY"

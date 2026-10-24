@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.anamnesis.update</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>@ROOT@/ops/update.sh</string>
+  </array>
+  <!-- Look for a newly promoted release every five minutes. -->
+  <key>StartInterval</key>
+  <integer>300</integer>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>@PATH@</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>@ROOT@/ops/state/update.log</string>
+  <key>StandardErrorPath</key>
+  <string>@ROOT@/ops/state/update.log</string>
+</dict>
+</plist>
