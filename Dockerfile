@@ -7,7 +7,7 @@
 
 # Literal tags, not a build argument: Dependabot reads the tag from the FROM line
 # and cannot evaluate ${...}, so an interpolated one would never be updated.
-FROM node:25-bookworm-slim AS base
+FROM node:24-bookworm-slim AS base
 ENV NEXT_TELEMETRY_DISABLED=1 \
     # pnpm 11 checks the lockfile against supply-chain age policies, which needs
     # each package's FULL metadata, not the abbreviated form installs normally use.
@@ -51,7 +51,7 @@ RUN NEXTAUTH_SECRET=build-only-placeholder-that-is-never-used-at-runtime \
 FROM deps AS prod-deps
 RUN pnpm prune --prod
 
-FROM node:25-bookworm-slim AS runner
+FROM node:24-bookworm-slim AS runner
 # openssl: Prisma's schema engine links against it.
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends openssl ca-certificates \
