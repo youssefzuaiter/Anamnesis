@@ -32,7 +32,7 @@ function SubmitButton({ label }: { label: string }) {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+      className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
     >
       {pending ? "Saving…" : label}
     </button>
@@ -66,7 +66,7 @@ export function EventForm({
         required
         maxLength={200}
         aria-label="Event title"
-        className="w-full rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-sm font-medium text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
+        className="w-full rounded-lg border border-control bg-surface px-3 py-2 text-sm font-medium text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
       />
 
       <div className="flex flex-wrap gap-2">
@@ -78,7 +78,7 @@ export function EventForm({
             defaultValue={initial?.startTime}
             required
             aria-label="Start time"
-            className="rounded-lg border border-border-subtle bg-surface-raised px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+            className="rounded-lg border border-control bg-surface px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
           />
         </label>
 
@@ -90,7 +90,7 @@ export function EventForm({
             defaultValue={initial?.endTime}
             required
             aria-label="End time"
-            className="rounded-lg border border-border-subtle bg-surface-raised px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+            className="rounded-lg border border-control bg-surface px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
           />
         </label>
 
@@ -103,7 +103,7 @@ export function EventForm({
         placeholder="Location (optional)"
         maxLength={200}
         aria-label="Location"
-        className="w-full rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
+        className="w-full rounded-lg border border-control bg-surface px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
       />
 
       <textarea
@@ -112,7 +112,7 @@ export function EventForm({
         placeholder="Description (optional)"
         rows={initial ? 4 : 2}
         aria-label="Event description"
-        className="w-full resize-y rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
+        className="w-full resize-y rounded-lg border border-control bg-surface px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
       />
 
       {!initial && (
@@ -125,7 +125,7 @@ export function EventForm({
               name="recurrenceFrequency"
               defaultValue=""
               aria-label="Repeat frequency"
-              className="rounded-lg border border-border-subtle bg-surface-raised px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+              className="rounded-lg border border-control bg-surface px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
             >
               <option value="">Doesn&apos;t repeat</option>
               <option value="daily">Daily</option>
@@ -143,7 +143,7 @@ export function EventForm({
               min={2}
               max={52}
               aria-label="Number of occurrences"
-              className="w-20 rounded-lg border border-border-subtle bg-surface-raised px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+              className="w-20 rounded-lg border border-control bg-surface px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
             />
           </label>
 

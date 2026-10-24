@@ -8,7 +8,7 @@ import {
 } from "@/repositories/conversation-repository";
 import type { Citation } from "@/services/assistant-service";
 
-export const metadata = { title: "Assistant · Nexus" };
+export const metadata = { title: "Assistant · Anamnesis" };
 
 const WHEN = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",

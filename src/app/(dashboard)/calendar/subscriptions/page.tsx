@@ -3,7 +3,7 @@ import { requireUserId } from "@/lib/session";
 import { listSubscriptions } from "@/services/calendar-service";
 import { CalendarSubscriptions } from "@/components/calendar-subscriptions";
 
-export const metadata = { title: "Imported calendars · Nexus" };
+export const metadata = { title: "Imported calendars · Anamnesis" };
 
 const WHEN = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",

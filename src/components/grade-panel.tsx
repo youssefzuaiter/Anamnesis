@@ -22,7 +22,7 @@ export type AssessmentRow = {
 };
 
 const FIELD =
-  "rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none";
+  "rounded-lg border border-border-subtle bg-surface-subtle px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none";
 
 function AddButton() {
   const { pending } = useFormStatus();
@@ -30,7 +30,7 @@ function AddButton() {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-raised disabled:opacity-60"
+      className="rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-subtle disabled:opacity-60"
     >
       {pending ? "Adding…" : "Add assessment"}
     </button>
@@ -169,7 +169,7 @@ export function GradePanel({
       </section>
 
       <section>
-        <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+        <h2 className="mb-2 text-xs font-semibold text-text-faint">
           Assessments · {assessments.length}
         </h2>
 
@@ -292,7 +292,7 @@ export function GradePanel({
               if (result.success) router.refresh();
             });
           }}
-          className="rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-raised disabled:opacity-60"
+          className="rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-subtle disabled:opacity-60"
         >
           Claim matching timetable events
         </button>

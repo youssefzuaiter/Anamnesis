@@ -72,7 +72,7 @@ export function CardReview({ queue }: { queue: ReviewCard[] }) {
           <button
             type="button"
             onClick={() => setRevealed(true)}
-            className="mt-4 rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-raised"
+            className="mt-4 rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-subtle"
           >
             Show answer
           </button>
@@ -91,8 +91,8 @@ export function CardReview({ queue }: { queue: ReviewCard[] }) {
                 value === "again"
                   ? "bg-danger-soft text-danger hover:opacity-80"
                   : value === "good" || value === "easy"
-                    ? "bg-accent text-white hover:bg-accent-hover"
-                    : "border border-border-subtle text-text hover:bg-surface-raised"
+                    ? "bg-accent text-on-accent hover:bg-accent-hover"
+                    : "border border-border-subtle text-text hover:bg-surface-subtle"
               }`}
             >
               {GRADE_LABEL[value]}

@@ -69,15 +69,19 @@ function DroppableDayCell({ day, tall }: { day: CalendarDay; tall: boolean }) {
   return (
     <div
       {...handlers}
-      className={`${tall ? "min-h-40" : "min-h-24"} bg-surface p-1.5 transition-colors ${
-        day.inCurrentMonth ? "" : "opacity-40"
+      className={`${tall ? "min-h-40" : "min-h-24"} p-1.5 transition-colors ${
+        day.inCurrentMonth ? "bg-surface" : "bg-canvas"
       } ${isOver ? "bg-accent-soft ring-2 ring-inset ring-accent" : ""} ${
         isDropping ? "opacity-60" : ""
       }`}
     >
       <span
-        className={`inline-flex size-5 items-center justify-center rounded-full text-xs ${
-          day.isToday ? "bg-accent font-medium text-white" : "text-text-muted"
+        className={`inline-flex size-6 items-center justify-center rounded-full text-xs font-semibold tabular-nums ${
+          day.isToday
+            ? "bg-accent text-on-accent"
+            : day.inCurrentMonth
+              ? "text-text-muted"
+              : "text-text-faint"
         }`}
       >
         {day.date.getDate()}
@@ -89,7 +93,7 @@ function DroppableDayCell({ day, tall }: { day: CalendarDay; tall: boolean }) {
             <Link
               href={`/tasks/${task.id}`}
               title={`${formatTime(task.start)} ${task.title} (time block)`}
-              className={`block truncate rounded border border-dashed border-border-strong px-1 py-0.5 text-[11px] leading-tight transition-colors hover:border-accent hover:text-accent ${
+              className={`block truncate rounded-md border-[1.5px] border-dashed border-border-strong px-1.5 py-0.5 text-xs leading-tight transition-colors hover:border-control ${
                 task.done ? "text-text-faint line-through" : "text-text-muted"
               }`}
             >
@@ -103,7 +107,7 @@ function DroppableDayCell({ day, tall }: { day: CalendarDay; tall: boolean }) {
             <Link
               href={`/calendar/${event.id}`}
               title={`${formatTime(event.startTime)} ${event.title}`}
-              className="block truncate rounded bg-accent-soft px-1 py-0.5 text-[11px] leading-tight text-accent transition-colors hover:bg-accent hover:text-white"
+              className="block truncate rounded-md border border-[color-mix(in_srgb,var(--accent)_26%,transparent)] bg-accent-soft px-1.5 py-0.5 text-xs font-medium leading-tight text-accent-ink transition-colors hover:border-accent"
             >
               {formatTime(event.startTime)} {event.recurrenceId && "↻ "}
               {event.title}
@@ -111,7 +115,7 @@ function DroppableDayCell({ day, tall }: { day: CalendarDay; tall: boolean }) {
           </li>
         ))}
         {hiddenCount > 0 && (
-          <li className="px-1 text-[11px] text-text-faint">+{hiddenCount} more</li>
+          <li className="px-1 text-xs text-text-faint">+{hiddenCount} more</li>
         )}
       </ul>
     </div>
@@ -194,7 +198,7 @@ export function DayAgenda({ day }: { day: CalendarDay | undefined }) {
                     {item.recurring && "↻ "}
                     {item.title}
                     {item.kind === "task" && (
-                      <span className="ml-2 rounded-full bg-surface-raised px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-text-faint">
+                      <span className="ml-2 rounded-full bg-surface-subtle px-1.5 py-0.5 text-xs font-medium text-text-faint">
                         time block
                       </span>
                     )}

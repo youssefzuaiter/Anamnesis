@@ -6,7 +6,7 @@ import type { ApiResponse } from "@/lib/api-response";
 import { updateProfileAction } from "@/actions/profile";
 
 const FIELD_CLASS =
-  "w-full rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none";
+  "w-full rounded-lg border border-border-subtle bg-surface-subtle px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -14,7 +14,7 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+      className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
     >
       {pending ? "Saving…" : "Save profile"}
     </button>

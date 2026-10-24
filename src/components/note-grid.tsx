@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import { NoteBulkBar } from "@/components/note-bulk-bar";
-import { tintClass, type Hue } from "@/lib/card-color";
 import type { ProjectOption } from "@/lib/domain";
 import type { CourseOption } from "@/components/course-select";
 
@@ -14,7 +13,6 @@ export type NoteCard = {
   tags: string[];
   isFavorite: boolean;
   updated: string;
-  hue: Hue;
 };
 
 export function NoteGrid({
@@ -61,21 +59,26 @@ export function NoteGrid({
               />
               <Link
                 href={`/notes/${note.id}`}
-                className={`block rounded-2xl p-4 pr-10 transition-transform hover:-translate-y-0.5 ${tintClass(
-                  note.hue,
-                )} ${checked ? "ring-2 ring-accent" : ""}`}
+                className={`block rounded-xl border bg-surface p-4 pr-10 shadow-card transition-colors ${
+                  checked
+                    ? "border-accent ring-1 ring-accent"
+                    : "border-border-subtle hover:border-border-strong"
+                }`}
               >
                 <div className="flex items-baseline justify-between gap-3">
-                  <h2 className="truncate font-medium text-text">
+                  <h2 className="truncate font-semibold text-text">
                     {note.isFavorite && (
-                      <span className="mr-1.5 text-accent" aria-label="Favorite">
-                        ★
-                      </span>
+                      <>
+                        <span aria-hidden="true" className="mr-1.5 text-accent-ink">
+                          ★
+                        </span>
+                        <span className="sr-only">Favourite: </span>
+                      </>
                     )}
                     {note.title}
                   </h2>
                 </div>
-                <p className="text-xs text-text-muted">{note.updated}</p>
+                <p className="text-xs text-text-faint">{note.updated}</p>
                 {note.excerpt && (
                   <p className="mt-1 line-clamp-2 text-sm text-text-muted">
                     {note.excerpt}
@@ -86,7 +89,7 @@ export function NoteGrid({
                     {note.tags.map((name) => (
                       <span
                         key={name}
-                        className="rounded-full bg-surface-raised px-2 py-0.5 text-xs text-text-muted"
+                        className="rounded-full bg-surface-subtle px-2 py-0.5 text-xs text-text-muted"
                       >
                         {name}
                       </span>

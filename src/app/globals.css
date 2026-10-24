@@ -1,56 +1,117 @@
 @import "tailwindcss";
 
+/*
+ * Quiet Studio: a calm, cool, content-first palette (see "Design system" in
+ * CLAUDE.md). One accent, used for action and location; amber, red and violet
+ * each carry exactly one meaning; everything else is neutral. Light and dark
+ * are designed together, and every text pair below was measured against
+ * WCAG AA (4.5:1 for text, 3:1 for control borders), not eyeballed.
+ */
 :root {
-  --canvas: #efe9db;
-  --surface: #f8f4ea;
-  --surface-raised: #ffffff;
-  --border: #e1d8c4;
-  --border-strong: #cbbea0;
-  --text: #221d15;
-  --text-muted: #6f6656;
-  --text-faint: #9c9282;
-  --accent: #4c82ac;
-  --accent-hover: #3a6989;
-  --accent-soft: #c7dcea;
-  --danger: #ab3a28;
-  --danger-soft: #f3dcd3;
-  --shadow: 0 1px 2px rgb(40 30 15 / 0.05), 0 6px 16px rgb(40 30 15 / 0.06);
+  color-scheme: light;
 
-  /* Pastel card tints, keyed by hue family — used to color-code notes,
-     projects and other "library item" cards instead of one flat surface. */
-  --tint-green: #cfe4c2;
-  --tint-purple: #dad0ea;
-  --tint-gold: #e3d6a0;
-  --tint-rose: #eacbce;
-  --tint-peach: #e9d3b2;
-  --tint-blue: #c7dcea;
+  --canvas: #f5f6f8;
+  --surface: #ffffff;
+  /* The quiet fill: hover rows, chips, progress tracks, code. */
+  --surface-subtle: #eef0f4;
+  /* Hover on something that already sits on --surface-subtle (the sidebar). */
+  --surface-hover: #e7eaf0;
+  --border: #e2e5eb;
+  --border-strong: #c3cad5;
+  /* Input and checkbox borders: 3.7:1 on --surface, so a field is
+     identifiable by its edge alone. Decorative hairlines stay --border. */
+  --control: #7c8696;
 
-  /* Same hue families, saturated — used for small dots/bullets on the
-     cream canvas where a pastel tint would be too washed out to read. */
-  --dot-green: #5e9a55;
-  --dot-purple: #8f76c4;
-  --dot-gold: #b99a3b;
-  --dot-rose: #c97781;
-  --dot-peach: #d99456;
-  --dot-blue: #4c82ac;
+  --text: #12161e;
+  --text-muted: #454e5f;
+  --text-faint: #5b6475;
+
+  --accent: #0f766e;
+  --accent-hover: #0d6861;
+  --accent-soft: #e7f1f0;
+  /* Accent text sitting on --accent-soft (active nav, course chips). */
+  --accent-ink: #0c615a;
+  --on-accent: #ffffff;
+
+  /* Anything the assistant did or proposes. */
+  --ai: #5b3fd1;
+  --ai-soft: #efebfc;
+  /* Due soon, overdue, countdowns. Always paired with words. */
+  --warn: #92400e;
+  --warn-soft: #fdf0da;
+  --danger: #b42318;
+  --danger-soft: #fde8e6;
+  --ok: #17724a;
+  --ok-soft: #e1f4ea;
+
+  --shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 8px 24px rgb(16 24 40 / 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --canvas: #0d1117;
+    --surface: #151b23;
+    --surface-subtle: #1b222c;
+    --surface-hover: #222a36;
+    --border: #262f3b;
+    --border-strong: #3a4659;
+    --control: #6b7789;
+
+    --text: #e7ecf3;
+    --text-muted: #b4becd;
+    --text-faint: #94a0b3;
+
+    /* A lighter teal, so it reads as text on the dark surface; text on it
+       turns dark rather than white. */
+    --accent: #6aaaa5;
+    --accent-hover: #7db5b1;
+    --accent-soft: #26383d;
+    --accent-ink: #8fbfbc;
+    --on-accent: #06100e;
+
+    --ai: #a99bff;
+    --ai-soft: #241e4a;
+    --warn: #f5b94a;
+    --warn-soft: #3a2c0c;
+    --danger: #ff8a80;
+    --danger-soft: #3b1a18;
+    --ok: #5cd6a0;
+    --ok-soft: #12301f;
+
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.28);
+  }
 }
 
 @theme inline {
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
-  --color-surface-raised: var(--surface-raised);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-surface-hover: var(--surface-hover);
   --color-border-subtle: var(--border);
   --color-border-strong: var(--border-strong);
+  --color-control: var(--control);
   --color-text: var(--text);
   --color-text-muted: var(--text-muted);
   --color-text-faint: var(--text-faint);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-on-accent: var(--on-accent);
+  --color-ai: var(--ai);
+  --color-ai-soft: var(--ai-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
-  --font-sans: var(--font-body);
-  --font-serif: var(--font-heading);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --shadow-card: var(--shadow);
+  --font-sans: var(--font-ui);
+  /* The serif is for reading a note's body, nothing else. */
+  --font-serif: var(--font-reading);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -60,26 +121,31 @@ body {
 }
 
 h1 {
-  font-family: var(--font-serif);
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
-.tint-green { background: var(--tint-green); }
-.tint-purple { background: var(--tint-purple); }
-.tint-gold { background: var(--tint-gold); }
-.tint-rose { background: var(--tint-rose); }
-.tint-peach { background: var(--tint-peach); }
-.tint-blue { background: var(--tint-blue); }
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
 
-.dot-green { background: var(--dot-green); }
-.dot-purple { background: var(--dot-purple); }
-.dot-gold { background: var(--dot-gold); }
-.dot-rose { background: var(--dot-rose); }
-.dot-peach { background: var(--dot-peach); }
-.dot-blue { background: var(--dot-blue); }
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
+}
 
 *:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

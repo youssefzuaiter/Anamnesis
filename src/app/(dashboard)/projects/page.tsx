@@ -4,9 +4,8 @@ import { listProjects } from "@/repositories/project-repository";
 import { listGoalOptions } from "@/repositories/goal-repository";
 import { ProjectForm } from "@/components/project-form";
 import { createProjectAction } from "@/actions/projects";
-import { hueForCategory, tintClass } from "@/lib/card-color";
 
-export const metadata = { title: "Projects · Nexus" };
+export const metadata = { title: "Projects · Anamnesis" };
 
 export default async function ProjectsPage() {
   const userId = await requireUserId();
@@ -43,22 +42,20 @@ export default async function ProjectsPage() {
             <li key={project.id}>
               <Link
                 href={`/projects/${project.id}`}
-                className={`block rounded-2xl p-4 transition-transform hover:-translate-y-0.5 ${tintClass(
-                  hueForCategory(project.category),
-                )}`}
+                className="block rounded-xl border border-border-subtle bg-surface p-4 shadow-card transition-colors hover:border-border-strong"
               >
                 <div className="flex items-baseline justify-between gap-3">
-                  <h2 className="truncate font-medium text-text">
+                  <h2 className="truncate font-semibold text-text">
                     {project.title}
                   </h2>
-                  <span className="shrink-0 rounded-full bg-surface-raised px-2 py-0.5 text-xs text-text-muted">
+                  <span className="shrink-0 rounded-full bg-surface-subtle px-2 py-0.5 text-xs text-text-muted">
                     {project.category}
                   </span>
                 </div>
 
                 <div className="mt-2.5 flex items-center gap-3">
                   <div
-                    className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-raised"
+                    className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-subtle"
                     role="progressbar"
                     aria-valuenow={project.progress}
                     aria-valuemin={0}

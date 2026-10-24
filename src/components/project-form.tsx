@@ -17,7 +17,7 @@ function SubmitButton({ label }: { label: string }) {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+      className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
     >
       {pending ? "Saving…" : label}
     </button>
@@ -57,7 +57,7 @@ export function ProjectForm({
         required
         maxLength={200}
         aria-label="Project title"
-        className="w-full rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-sm font-medium text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
+        className="w-full rounded-lg border border-control bg-surface px-3 py-2 text-sm font-medium text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
       />
 
       <label className="flex flex-col gap-1 text-xs text-text-muted">
@@ -66,7 +66,7 @@ export function ProjectForm({
           name="category"
           defaultValue={initial?.category ?? "University"}
           aria-label="Category"
-          className="w-44 rounded-lg border border-border-subtle bg-surface-raised px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+          className="w-44 rounded-lg border border-control bg-surface px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
         >
           {PROJECT_CATEGORIES.map((category) => (
             <option key={category} value={category}>

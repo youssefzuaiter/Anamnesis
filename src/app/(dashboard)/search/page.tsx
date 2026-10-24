@@ -3,7 +3,7 @@ import { requireUserId } from "@/lib/session";
 import { searchEverything } from "@/services/search-service";
 import { EMBEDDABLE_SOURCE_TYPES, type EmbeddableSourceType } from "@/lib/vector";
 
-export const metadata = { title: "Search · Nexus" };
+export const metadata = { title: "Search · Anamnesis" };
 
 const KIND_LABEL: Record<string, string> = {
   note: "Note",
@@ -51,12 +51,12 @@ export default async function SearchPage({
           defaultValue={query}
           placeholder="Ask in your own words — “where is my exam”"
           aria-label="Search everything"
-          className="flex-1 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
+          className="flex-1 rounded-lg border border-control bg-surface px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
         />
         {type && <input type="hidden" name="type" value={type} />}
         <button
           type="submit"
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover"
         >
           Search
         </button>
@@ -67,7 +67,7 @@ export default async function SearchPage({
           href={`/search?q=${encodeURIComponent(query)}`}
           className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
             type
-              ? "border-border-subtle text-text-muted hover:bg-surface-raised"
+              ? "border-border-subtle text-text-muted hover:bg-surface-subtle"
               : "border-accent bg-accent-soft text-accent"
           }`}
         >
@@ -80,7 +80,7 @@ export default async function SearchPage({
             className={`rounded-full border px-2.5 py-1 text-xs capitalize transition-colors ${
               type === value
                 ? "border-accent bg-accent-soft text-accent"
-                : "border-border-subtle text-text-muted hover:bg-surface-raised"
+                : "border-border-subtle text-text-muted hover:bg-surface-subtle"
             }`}
           >
             {value}s
@@ -110,7 +110,7 @@ export default async function SearchPage({
                 href={hit.href}
                 className="flex items-center gap-3 rounded-xl border border-border-subtle bg-surface px-4 py-3 transition-colors hover:border-border-strong"
               >
-                <span className="shrink-0 rounded-full bg-surface-raised px-2 py-0.5 text-xs text-text-muted">
+                <span className="shrink-0 rounded-full bg-surface-subtle px-2 py-0.5 text-xs text-text-muted">
                   {KIND_LABEL[hit.kind]}
                 </span>
                 <span className="min-w-0 flex-1">

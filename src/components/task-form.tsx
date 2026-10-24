@@ -41,7 +41,7 @@ function SubmitButton({ label }: { label: string }) {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+      className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
     >
       {pending ? "Saving…" : label}
     </button>
@@ -77,7 +77,7 @@ export function TaskForm({
         required
         maxLength={200}
         aria-label="Task title"
-        className="w-full rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-sm font-medium text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
+        className="w-full rounded-lg border border-control bg-surface px-3 py-2 text-sm font-medium text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
       />
 
       <textarea
@@ -86,7 +86,7 @@ export function TaskForm({
         placeholder="Notes (optional)"
         rows={initial ? 4 : 2}
         aria-label="Task description"
-        className="w-full resize-y rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
+        className="w-full resize-y rounded-lg border border-control bg-surface px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
       />
 
       <input
@@ -94,7 +94,7 @@ export function TaskForm({
         defaultValue={initial?.tags?.join(", ") ?? ""}
         placeholder="Tags, comma separated"
         aria-label="Tags"
-        className="w-full rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
+        className="w-full rounded-lg border border-control bg-surface px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
       />
 
       <div className="flex flex-wrap gap-2">
@@ -105,7 +105,7 @@ export function TaskForm({
             name="dueDate"
             defaultValue={initial?.dueDate}
             aria-label="Due date"
-            className="rounded-lg border border-border-subtle bg-surface-raised px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+            className="rounded-lg border border-control bg-surface px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
           />
         </label>
 
@@ -115,7 +115,7 @@ export function TaskForm({
             name="priority"
             defaultValue={initial?.priority ?? "medium"}
             aria-label="Priority"
-            className="rounded-lg border border-border-subtle bg-surface-raised px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+            className="rounded-lg border border-control bg-surface px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
           >
             <option value="low">Low</option>
             <option value="medium">Medium</option>
@@ -132,7 +132,7 @@ export function TaskForm({
             min={1}
             max={1440}
             aria-label="Estimated minutes"
-            className="w-24 rounded-lg border border-border-subtle bg-surface-raised px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+            className="w-24 rounded-lg border border-control bg-surface px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
           />
         </label>
 
@@ -151,7 +151,7 @@ export function TaskForm({
               name="recurrenceFrequency"
               defaultValue=""
               aria-label="Repeat frequency"
-              className="rounded-lg border border-border-subtle bg-surface-raised px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+              className="rounded-lg border border-control bg-surface px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
             >
               <option value="">Doesn&apos;t repeat</option>
               <option value="daily">Daily</option>
@@ -169,7 +169,7 @@ export function TaskForm({
               min={2}
               max={52}
               aria-label="Number of occurrences"
-              className="w-20 rounded-lg border border-border-subtle bg-surface-raised px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+              className="w-20 rounded-lg border border-control bg-surface px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
             />
           </label>
 
@@ -193,7 +193,7 @@ export function TaskForm({
               name="scheduledStart"
               defaultValue={initial.scheduledStart}
               aria-label="Scheduled start"
-              className="rounded-lg border border-border-subtle bg-surface-raised px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+              className="rounded-lg border border-control bg-surface px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
             />
           </label>
 
@@ -204,7 +204,7 @@ export function TaskForm({
               name="scheduledEnd"
               defaultValue={initial.scheduledEnd}
               aria-label="Scheduled end"
-              className="rounded-lg border border-border-subtle bg-surface-raised px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+              className="rounded-lg border border-control bg-surface px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
             />
           </label>
 

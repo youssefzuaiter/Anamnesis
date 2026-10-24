@@ -23,7 +23,7 @@ function UploadButton() {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-raised disabled:opacity-60"
+      className="rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-subtle disabled:opacity-60"
     >
       {pending ? "Attaching…" : "Attach"}
     </button>
@@ -46,7 +46,7 @@ export function NoteAttachments({
 
   return (
     <section>
-      <h2 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-text-faint">
+      <h2 className="mb-1.5 text-xs font-semibold text-text-faint">
         Attachments
       </h2>
 
@@ -100,7 +100,7 @@ export function NoteAttachments({
           required
           aria-label="File to attach"
           accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain,text/markdown,text/csv"
-          className="max-w-full rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 text-sm text-text file:mr-3 file:rounded-md file:border-0 file:bg-accent-soft file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-accent"
+          className="max-w-full rounded-lg border border-border-subtle bg-surface-subtle px-3 py-2 text-sm text-text file:mr-3 file:rounded-md file:border-0 file:bg-accent-soft file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-accent"
         />
         <UploadButton />
       </form>

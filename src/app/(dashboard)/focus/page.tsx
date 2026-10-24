@@ -3,7 +3,7 @@ import { listSessions, isTrackingEnabled } from "@/repositories/focus-repository
 import { summarise, type CognitiveLoad } from "@/lib/focus";
 import { FocusSettings } from "@/components/focus-settings";
 
-export const metadata = { title: "Focus · Nexus" };
+export const metadata = { title: "Focus · Anamnesis" };
 
 const WHEN = new Intl.DateTimeFormat("en-GB", {
   weekday: "short",
@@ -64,7 +64,7 @@ export default async function FocusPage() {
           </section>
 
           <section className="mt-6">
-            <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+            <h2 className="mb-2 text-xs font-semibold text-text-faint">
               Recent sessions · {sessions.length}
             </h2>
             <ul className="flex flex-col gap-2">
@@ -98,7 +98,7 @@ export default async function FocusPage() {
           <p className="mt-5 text-xs text-text-faint">
             The session label is a rough heuristic over two crude signals — how
             long you wrote and how fast you typed. It is an observation about the
-            session, not a measure of you, and nothing in Nexus acts on it.
+            session, not a measure of you, and nothing in Anamnesis acts on it.
           </p>
         </>
       )}

@@ -17,7 +17,7 @@ const KIND_LABEL: Record<string, string> = {
 export function RelatedItems({ items }: { items: SemanticHit[] }) {
   return (
     <section>
-      <h2 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-text-faint">
+      <h2 className="mb-1.5 text-xs font-semibold text-text-faint">
         Related
       </h2>
 
@@ -31,7 +31,7 @@ export function RelatedItems({ items }: { items: SemanticHit[] }) {
             <li key={`${item.kind}:${item.id}`}>
               <Link
                 href={item.href}
-                className="flex items-center gap-2.5 rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors hover:bg-surface-raised"
+                className="flex items-center gap-2.5 rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors hover:bg-surface-subtle"
               >
                 <span className="shrink-0 text-xs text-text-faint">
                   {KIND_LABEL[item.kind]}

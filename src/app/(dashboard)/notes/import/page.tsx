@@ -2,7 +2,7 @@ import Link from "next/link";
 import { PdfImportForm } from "@/components/pdf-import-form";
 import { MarkdownImportForm } from "@/components/markdown-import-form";
 
-export const metadata = { title: "Import · Nexus" };
+export const metadata = { title: "Import · Anamnesis" };
 
 export default function ImportPdfPage() {
   return (
@@ -25,12 +25,12 @@ export default function ImportPdfPage() {
         </p>
       </header>
 
-      <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+      <h2 className="mb-2 text-xs font-semibold text-text-faint">
         From a PDF
       </h2>
       <PdfImportForm />
 
-      <h2 className="mb-2 mt-6 text-xs font-medium uppercase tracking-wide text-text-faint">
+      <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
         From Markdown files
       </h2>
       <p className="mb-2 text-sm text-text-muted">

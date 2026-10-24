@@ -21,7 +21,7 @@ const NAVIGATION: Command[] = [
   { id: "go-projects", kind: "action", title: "Projects", detail: "Go to", href: "/projects" },
   { id: "go-goals", kind: "action", title: "Goals", detail: "Go to", href: "/goals" },
   { id: "go-ai", kind: "action", title: "Assistant", detail: "Go to", href: "/ai" },
-  { id: "go-home", kind: "action", title: "Dashboard", detail: "Go to", href: "/" },
+  { id: "go-home", kind: "action", title: "Today", detail: "Go to", href: "/" },
 ];
 
 // "course" and "goal" are part of Command["kind"] only because they share
@@ -197,10 +197,10 @@ export function CommandPalette() {
                   onMouseEnter={() => setActive(index)}
                   onClick={() => go(command)}
                   className={`flex w-full items-center gap-3 px-4 py-2 text-left transition-colors ${
-                    index === activeIndex ? "bg-surface-raised" : ""
+                    index === activeIndex ? "bg-surface-subtle" : ""
                   }`}
                 >
-                  <span className="w-14 shrink-0 text-[11px] uppercase tracking-wide text-text-faint">
+                  <span className="w-14 shrink-0 text-xs font-medium text-text-faint">
                     {KIND_LABELS[command.kind]}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm text-text">

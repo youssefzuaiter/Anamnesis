@@ -11,7 +11,7 @@ import Link from "next/link";
 
 import type { TaskModel as Task } from "@/generated/prisma/models";
 
-export const metadata = { title: "Tasks · Nexus" };
+export const metadata = { title: "Tasks · Anamnesis" };
 
 function Section({
   title,
@@ -26,7 +26,7 @@ function Section({
 
   return (
     <section className="mt-6">
-      <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+      <h2 className="mb-2 text-xs font-semibold text-text-faint">
         {title} · {tasks.length}
       </h2>
       <ul className="flex flex-col gap-2">
@@ -76,7 +76,7 @@ export default async function TasksPage({
             href="/tasks"
             className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
               tag
-                ? "border-border-subtle text-text-muted hover:bg-surface-raised"
+                ? "border-border-subtle text-text-muted hover:bg-surface-subtle"
                 : "border-accent bg-accent-soft text-accent"
             }`}
           >
@@ -89,7 +89,7 @@ export default async function TasksPage({
               className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
                 tag === name
                   ? "border-accent bg-accent-soft text-accent"
-                  : "border-border-subtle text-text-muted hover:bg-surface-raised"
+                  : "border-border-subtle text-text-muted hover:bg-surface-subtle"
               }`}
             >
               {name}

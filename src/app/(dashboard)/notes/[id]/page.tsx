@@ -23,9 +23,18 @@ import { NoteAttachments } from "@/components/note-attachments";
 import { listForNote as listAttachments } from "@/repositories/attachment-repository";
 import { findRelated } from "@/services/search-service";
 import { normalizeTitle } from "@/lib/wiki-links";
+import { Icon } from "@/components/icons";
 
 
-export const metadata = { title: "Note · Nexus" };
+export const metadata = { title: "Note · Anamnesis" };
+
+const EDITED = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+const RAIL_CARD = "rounded-xl border border-border-subtle bg-surface p-4 shadow-card";
 
 export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
   const userId = await requireUserId();
@@ -57,79 +66,125 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
   for (const target of resolved) linkTargets[normalizeTitle(target.title)] = target.id;
 
   const updateThisNote = updateNoteAction.bind(null, note.id);
+  const course = courses.find((option) => option.id === note.courseId);
+  const project = projects.find((option) => option.id === note.projectId);
+  const place = course ? `${course.code} ${course.title}` : project?.title;
   const deleteThisNote = deleteNoteAction.bind(null, note.id);
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <header className="mb-5">
-        <div className="flex items-center justify-between gap-3">
-          <Link
-            href="/notes"
-            className="text-sm text-text-muted transition-colors hover:text-text"
-          >
-            ← Notes
-          </Link>
+    <div className="mx-auto grid max-w-6xl gap-x-10 gap-y-8 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <article className="min-w-0">
+        <nav
+          aria-label="Breadcrumb"
+          className="mb-5 flex items-center justify-between gap-3 text-[13px] text-text-faint"
+        >
+          <span className="min-w-0 truncate">
+            <Link href="/notes" className="font-medium transition-colors hover:text-text">
+              Notes
+            </Link>
+            {place && <span aria-hidden="true"> / </span>}
+            {place && <span>{place}</span>}
+          </span>
           <Link
             href={`/notes/${note.id}/history`}
-            className="text-sm text-text-muted transition-colors hover:text-text"
+            className="inline-flex shrink-0 items-center gap-1.5 font-medium transition-colors hover:text-text"
           >
+            <Icon name="clock" className="size-4" />
             History
           </Link>
-        </div>
-      </header>
+        </nav>
 
-      <NoteView
-        content={note.content}
-        links={linkTargets}
-        editor={
-          <NoteEditor
-            action={updateThisNote}
-            submitLabel="Save changes"
-            projects={projects}
-            courses={courses}
-            initial={{
-              title: note.title,
-              content: note.content,
-              tags: note.tags,
-              isFavorite: note.isFavorite,
-              projectId: note.projectId,
-              courseId: note.courseId,
-            }}
-            onDelete={deleteThisNote}
+        <NoteView
+          header={
+            <>
+              <h1 className="text-[32px] font-bold leading-tight text-text">
+                {note.isFavorite && (
+                  <>
+                    <span aria-hidden="true" className="mr-2 text-accent-ink">
+                      ★
+                    </span>
+                    <span className="sr-only">Favourite: </span>
+                  </>
+                )}
+                {note.title}
+              </h1>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold">
+                {place && (
+                  <span className="rounded-full bg-accent-soft px-2.5 py-1 text-accent-ink">
+                    {place}
+                  </span>
+                )}
+                {note.tags.map((name) => (
+                  <Link
+                    key={name}
+                    href={`/notes?tag=${encodeURIComponent(name)}`}
+                    className="rounded-full bg-surface-subtle px-2.5 py-1 text-text-muted hover:text-text"
+                  >
+                    #{name}
+                  </Link>
+                ))}
+                <span className="px-1 font-medium text-text-faint">
+                  Edited {EDITED.format(note.updatedAt)}
+                </span>
+              </div>
+            </>
+          }
+          content={note.content}
+          links={linkTargets}
+          editor={
+            <NoteEditor
+              action={updateThisNote}
+              submitLabel="Save changes"
+              projects={projects}
+              courses={courses}
+              initial={{
+                title: note.title,
+                content: note.content,
+                tags: note.tags,
+                isFavorite: note.isFavorite,
+                projectId: note.projectId,
+                courseId: note.courseId,
+              }}
+              onDelete={deleteThisNote}
+            />
+          }
+        />
+
+        {trackFocus && <FocusTracker selector='textarea[name="content"]' />}
+
+        <section className="mt-10 border-t border-border-subtle pt-6">
+          <GenerateCards noteId={note.id} existing={cards.length} />
+        </section>
+      </article>
+
+      {/* The note's context sits beside it on a wide screen and below it on a
+          narrow one; in the DOM it always follows the note itself. */}
+      <aside aria-label="Note context" className="flex flex-col gap-4 xl:pt-12">
+        <section className={RAIL_CARD}>
+          <NoteLinks
+            outgoing={outgoing}
+            backlinks={backlinks}
+            unresolved={unresolved}
           />
-        }
-      />
+        </section>
 
-      {trackFocus && <FocusTracker selector='textarea[name="content"]' />}
+        <section className={RAIL_CARD}>
+          <RelatedItems items={related} />
+        </section>
 
-      <section className="mt-6 border-t border-border-subtle pt-5">
-        <GenerateCards noteId={note.id} existing={cards.length} />
-      </section>
-
-      <section className="mt-6 border-t border-border-subtle pt-5">
-        <NoteAttachments
-          noteId={note.id}
-          attachments={attachments.map((attachment) => ({
-            id: attachment.id,
-            filename: attachment.filename,
-            mimeType: attachment.mimeType,
-            size: `${Math.max(1, Math.round(attachment.byteSize / 1024))} KB`,
-            isImage: attachment.mimeType.startsWith("image/"),
-          }))}
-        />
-      </section>
-
-      <section className="mt-6 border-t border-border-subtle pt-5">
-        <RelatedItems items={related} />
-      </section>
-
-      <section className="mt-6 border-t border-border-subtle pt-5">
-        <NoteLinks
-          outgoing={outgoing}
-          backlinks={backlinks}
-          unresolved={unresolved}
-        />
-      </section>
+        <section className={RAIL_CARD}>
+          <NoteAttachments
+            noteId={note.id}
+            attachments={attachments.map((attachment) => ({
+              id: attachment.id,
+              filename: attachment.filename,
+              mimeType: attachment.mimeType,
+              size: `${Math.max(1, Math.round(attachment.byteSize / 1024))} KB`,
+              isImage: attachment.mimeType.startsWith("image/"),
+            }))}
+          />
+        </section>
+      </aside>
     </div>
   );
 }

@@ -25,7 +25,7 @@ export function ConversationList({
   return (
     <aside className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-xs font-medium uppercase tracking-wide text-text-faint">
+        <h2 className="text-xs font-semibold text-text-faint">
           Threads
         </h2>
         {activeId && (
@@ -48,7 +48,7 @@ export function ConversationList({
                 className={`min-w-0 flex-1 truncate rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
                   conversation.id === activeId
                     ? "bg-accent-soft text-accent"
-                    : "text-text-muted hover:bg-surface-raised hover:text-text"
+                    : "text-text-muted hover:bg-surface-subtle hover:text-text"
                 }`}
                 title={conversation.title}
               >

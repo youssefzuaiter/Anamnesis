@@ -28,7 +28,7 @@ export function WeekSummary() {
               else setError(response.error.message);
             });
           }}
-          className="rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-raised disabled:opacity-60"
+          className="rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-subtle disabled:opacity-60"
         >
           {pending ? "Writing…" : result ? "Write it again" : "Summarise my week"}
         </button>

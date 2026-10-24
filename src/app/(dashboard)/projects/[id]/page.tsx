@@ -12,7 +12,7 @@ import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { TaskRow } from "@/components/task-row";
 import { updateProjectAction, deleteProjectAction } from "@/actions/projects";
 
-export const metadata = { title: "Project · Nexus" };
+export const metadata = { title: "Project · Anamnesis" };
 
 const DATE = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -60,7 +60,7 @@ export default async function ProjectPage({
         )}
         <div className="mt-3 flex items-center gap-3">
           <div
-            className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-raised"
+            className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-subtle"
             role="progressbar"
             aria-valuenow={project.progress}
             aria-valuemin={0}
@@ -79,7 +79,7 @@ export default async function ProjectPage({
       </header>
 
       <section className="mb-6">
-        <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+        <h2 className="mb-2 text-xs font-semibold text-text-faint">
           Tasks · {tasks.length}
         </h2>
         {tasks.length === 0 ? (
@@ -101,7 +101,7 @@ export default async function ProjectPage({
 
       <section className="mb-6 grid gap-4 sm:grid-cols-2">
         <div>
-          <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+          <h2 className="mb-2 text-xs font-semibold text-text-faint">
             Notes · {notes.length}
           </h2>
           {notes.length === 0 ? (
@@ -125,7 +125,7 @@ export default async function ProjectPage({
         </div>
 
         <div>
-          <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+          <h2 className="mb-2 text-xs font-semibold text-text-faint">
             Events · {events.length}
           </h2>
           {events.length === 0 ? (

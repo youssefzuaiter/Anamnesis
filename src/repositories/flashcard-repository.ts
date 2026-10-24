@@ -42,6 +42,10 @@ export async function countCards(
   return { total, due };
 }
 
+export async function countDue(userId: string, now: Date): Promise<number> {
+  return prisma.flashcard.count({ where: { userId, dueAt: { lte: now } } });
+}
+
 /** Due cards whose note belongs to one course — through Note, since a
  *  Flashcard has no courseId of its own. */
 export async function countDueForCourse(

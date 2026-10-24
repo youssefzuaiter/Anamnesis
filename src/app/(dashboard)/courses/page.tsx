@@ -4,7 +4,7 @@ import { listCourses } from "@/repositories/course-repository";
 import { CourseForm } from "@/components/course-form";
 import { summarise } from "@/lib/grades";
 
-export const metadata = { title: "Courses · Nexus" };
+export const metadata = { title: "Courses · Anamnesis" };
 
 /** "Fall 2026" / "Spring 2027", by the month — a sensible default, not a rule. */
 function currentTerm(now = new Date()): string {

@@ -3,7 +3,7 @@ import { requireUserId } from "@/lib/session";
 import { buildWeeklyReview } from "@/services/review-service";
 import { WeekSummary } from "@/components/week-summary";
 
-export const metadata = { title: "Weekly review · Nexus" };
+export const metadata = { title: "Weekly review · Anamnesis" };
 
 const DAY = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -30,7 +30,7 @@ function List({
 }) {
   return (
     <section className="mt-6">
-      <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+      <h2 className="mb-2 text-xs font-semibold text-text-faint">
         {title} · {items.length}
       </h2>
       {items.length === 0 ? (

@@ -14,7 +14,7 @@ import { listProjectOptions } from "@/repositories/project-repository";
 import { CalendarGrid, DayAgenda } from "@/components/calendar-dnd";
 import { UnscheduledTasks } from "@/components/unscheduled-tasks";
 
-export const metadata = { title: "Calendar · Nexus" };
+export const metadata = { title: "Calendar · Anamnesis" };
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const VIEWS = ["month", "week", "day"] as const;
@@ -170,8 +170,8 @@ export default async function CalendarPage({
                 href={v === "week" ? weekHref(referenceDate) : v === "day" ? dayHref(referenceDate) : monthHref(referenceDate.getFullYear(), referenceDate.getMonth())}
                 className={`rounded-md px-2.5 py-1 text-sm capitalize transition-colors ${
                   v === view
-                    ? "bg-accent text-white"
-                    : "text-text-muted hover:bg-surface-raised"
+                    ? "bg-accent text-on-accent"
+                    : "text-text-muted hover:bg-surface-subtle"
                 }`}
               >
                 {v}
@@ -182,26 +182,26 @@ export default async function CalendarPage({
             <Link
               href={prevHref}
               aria-label={`Previous ${view}`}
-              className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-sm text-text transition-colors hover:bg-surface-raised"
+              className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-sm text-text transition-colors hover:bg-surface-subtle"
             >
               ←
             </Link>
             <Link
               href={todayHref}
-              className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-text transition-colors hover:bg-surface-raised"
+              className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-text transition-colors hover:bg-surface-subtle"
             >
               Today
             </Link>
             <Link
               href={nextHref}
               aria-label={`Next ${view}`}
-              className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-sm text-text transition-colors hover:bg-surface-raised"
+              className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-sm text-text transition-colors hover:bg-surface-subtle"
             >
               →
             </Link>
             <Link
               href="/calendar/subscriptions"
-              className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-text transition-colors hover:bg-surface-raised"
+              className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-text transition-colors hover:bg-surface-subtle"
             >
               Import
             </Link>
@@ -234,7 +234,7 @@ export default async function CalendarPage({
 
       <section className="mt-6 grid gap-4 sm:grid-cols-3">
         <div>
-          <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+          <h2 className="mb-2 text-xs font-semibold text-text-faint">
             Add event
           </h2>
           <EventForm
@@ -246,7 +246,7 @@ export default async function CalendarPage({
         </div>
 
         <div>
-          <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+          <h2 className="mb-2 text-xs font-semibold text-text-faint">
             Unscheduled · {unscheduled.length}
           </h2>
           <p className="mb-2 text-xs text-text-faint">
@@ -256,7 +256,7 @@ export default async function CalendarPage({
         </div>
 
         <div>
-          <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+          <h2 className="mb-2 text-xs font-semibold text-text-faint">
             Next up
           </h2>
           {upcoming.length === 0 ? (

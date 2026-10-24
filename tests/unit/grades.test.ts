@@ -4,6 +4,7 @@ import {
   summarise,
   neededForTarget,
   nextUngraded,
+  daysUntilLabel,
   type Assessed,
   type UpcomingAssessment,
 } from "@/lib/grades";
@@ -131,4 +132,13 @@ test("a due date already in the past is not upcoming", () => {
 
 test("nothing left to grade means no next assessment", () => {
   assert.equal(nextUngraded([], now), null);
+});
+
+test("days until counts calendar days, not hours", () => {
+  const afternoon = new Date(2026, 9, 24, 14, 0);
+  // Later today is "today" even though it is hours away.
+  assert.equal(daysUntilLabel(new Date(2026, 9, 24, 23, 59), afternoon), "today");
+  // Early tomorrow is "tomorrow" even though it is under a day away.
+  assert.equal(daysUntilLabel(new Date(2026, 9, 25, 9, 0), afternoon), "tomorrow");
+  assert.equal(daysUntilLabel(new Date(2026, 9, 27, 9, 0), afternoon), "in 3 days");
 });

@@ -44,7 +44,7 @@ export function VersionRow({
             else setError(result.error.message);
           });
         }}
-        className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-text transition-colors hover:bg-surface-raised disabled:opacity-60"
+        className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-text transition-colors hover:bg-surface-subtle disabled:opacity-60"
       >
         {pending ? "Restoring…" : "Restore"}
       </button>

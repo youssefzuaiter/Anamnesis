@@ -5,10 +5,13 @@ import * as eventRepository from "@/repositories/event-repository";
 import * as taskRepository from "@/repositories/task-repository";
 import * as projectRepository from "@/repositories/project-repository";
 import * as goalRepository from "@/repositories/goal-repository";
+import * as courseRepository from "@/repositories/course-repository";
+import * as flashcardRepository from "@/repositories/flashcard-repository";
 import { bucketOf } from "@/services/task-service";
 import type { NoteSummary } from "@/repositories/note-repository";
 import type { ProjectSummary } from "@/repositories/project-repository";
 import type { GoalSummary } from "@/repositories/goal-repository";
+import type { UpcomingAssessment } from "@/repositories/course-repository";
 import type {
   TaskModel as Task,
   EventModel as Event,
@@ -31,6 +34,9 @@ export type Dashboard = {
   recentNotes: NoteSummary[];
   activeProjects: ProjectSummary[];
   activeGoals: GoalSummary[];
+  /** The soonest unscored assessment across all courses, for "Next exam". */
+  nextAssessment: UpcomingAssessment | null;
+  cardsDue: number;
   indexedChunks: number;
 };
 
@@ -48,17 +54,29 @@ export async function getDashboard(
   const endOfToday = new Date(now);
   endOfToday.setHours(23, 59, 59, 999);
 
-  const [openTasks, todayEvents, scheduled, upcoming, recentNotes, projects, goals, indexedChunks] =
-    await Promise.all([
-      taskRepository.listTasks(userId),
-      eventRepository.listEventsInRange(userId, startOfToday, endOfToday),
-      taskRepository.listScheduledInRange(userId, startOfToday, endOfToday),
-      eventRepository.listUpcomingEvents(userId, now, 1),
-      noteRepository.listNotes(userId, { take: RECENT_NOTE_COUNT }),
-      projectRepository.listProjects(userId),
-      goalRepository.listGoals(userId),
-      prisma.workspaceEmbedding.count({ where: { userId } }),
-    ]);
+  const [
+    openTasks,
+    todayEvents,
+    scheduled,
+    upcoming,
+    recentNotes,
+    projects,
+    goals,
+    nextAssessment,
+    cardsDue,
+    indexedChunks,
+  ] = await Promise.all([
+    taskRepository.listTasks(userId),
+    eventRepository.listEventsInRange(userId, startOfToday, endOfToday),
+    taskRepository.listScheduledInRange(userId, startOfToday, endOfToday),
+    eventRepository.listUpcomingEvents(userId, now, 1),
+    noteRepository.listNotes(userId, { take: RECENT_NOTE_COUNT }),
+    projectRepository.listProjects(userId),
+    goalRepository.listGoals(userId),
+    courseRepository.nextUpcomingAssessment(userId, now),
+    flashcardRepository.countDue(userId, now),
+    prisma.workspaceEmbedding.count({ where: { userId } }),
+  ]);
 
   const overdueTasks = openTasks.filter(
     (task) => bucketOf(task, now) === "overdue",
@@ -95,6 +113,8 @@ export async function getDashboard(
     activeGoals: goals
       .filter((goal) => goal.progress < 100)
       .slice(0, ACTIVE_GOAL_COUNT),
+    nextAssessment,
+    cardsDue,
     indexedChunks,
   };
 }

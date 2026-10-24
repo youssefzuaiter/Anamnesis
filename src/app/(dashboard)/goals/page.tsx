@@ -3,9 +3,8 @@ import { requireUserId } from "@/lib/session";
 import { listGoals } from "@/repositories/goal-repository";
 import { GoalForm } from "@/components/goal-form";
 import { createGoalAction } from "@/actions/goals";
-import { hueForCategory, tintClass } from "@/lib/card-color";
 
-export const metadata = { title: "Goals · Nexus" };
+export const metadata = { title: "Goals · Anamnesis" };
 
 const DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
 
@@ -35,22 +34,20 @@ export default async function GoalsPage() {
             <li key={goal.id}>
               <Link
                 href={`/goals/${goal.id}`}
-                className={`block rounded-2xl p-4 transition-transform hover:-translate-y-0.5 ${tintClass(
-                  hueForCategory(goal.category),
-                )}`}
+                className="block rounded-xl border border-border-subtle bg-surface p-4 shadow-card transition-colors hover:border-border-strong"
               >
                 <div className="flex items-baseline justify-between gap-3">
-                  <h2 className="truncate font-medium text-text">
+                  <h2 className="truncate font-semibold text-text">
                     {goal.title}
                   </h2>
-                  <span className="shrink-0 rounded-full bg-surface-raised px-2 py-0.5 text-xs text-text-muted">
+                  <span className="shrink-0 rounded-full bg-surface-subtle px-2 py-0.5 text-xs text-text-muted">
                     {goal.category}
                   </span>
                 </div>
 
                 <div className="mt-2.5 flex items-center gap-3">
                   <div
-                    className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-raised"
+                    className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-subtle"
                     role="progressbar"
                     aria-valuenow={goal.progress}
                     aria-valuemin={0}

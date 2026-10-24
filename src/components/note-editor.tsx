@@ -34,7 +34,7 @@ function SaveButton({ label }: { label: string }) {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+      className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
     >
       {pending ? "Saving…" : label}
     </button>
@@ -80,7 +80,7 @@ export function NoteEditor<T>({
           required
           maxLength={200}
           aria-label="Note title"
-          className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2.5 text-lg font-semibold text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
+          className="w-full rounded-lg border border-control bg-surface px-3 py-2.5 text-lg font-semibold text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
         />
 
         <textarea
@@ -89,7 +89,7 @@ export function NoteEditor<T>({
           placeholder="Start writing…"
           rows={16}
           aria-label="Note content"
-          className="w-full resize-y rounded-lg border border-border-subtle bg-surface px-3 py-2.5 font-mono text-sm leading-relaxed text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
+          className="w-full resize-y rounded-lg border border-control bg-surface px-3 py-2.5 font-mono text-sm leading-relaxed text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
         />
 
         <div className="flex flex-wrap items-center gap-3">
@@ -98,7 +98,7 @@ export function NoteEditor<T>({
             defaultValue={initial?.tags.join(", ")}
             placeholder="Tags, comma separated"
             aria-label="Tags"
-            className="min-w-48 flex-1 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
+            className="min-w-48 flex-1 rounded-lg border border-control bg-surface px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
           />
 
           <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-text-muted">

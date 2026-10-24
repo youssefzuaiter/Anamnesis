@@ -550,6 +550,108 @@ item's default `min-width: auto` refuses to shrink below its content, so an
 `overflow-x-auto` child (the calendar grid) could not clip and the whole page
 scrolled sideways on mobile. Any wide content added later depends on this.
 
+## Design system: Quiet Studio
+
+The look was chosen on 2026-10-24 from a clickable proposal of six screens, before
+any of it was built here. It replaced a cream-and-sepia palette with pastel-tinted
+cards and a flat sidebar of fifteen items, each with a different colored dot.
+**Quiet Studio** is calm, cool and content-first: neutral surfaces, one accent, and
+color only where it carries meaning. The tokens live in `src/app/globals.css`, and
+light and dark are designed together, following the system setting.
+
+**Color means one thing each, and always comes with words:**
+
+| Token | Used for, and only for |
+| --- | --- |
+| `accent` (teal) | the one primary action on a screen, where you are in navigation, progress |
+| `ai` (violet) | anything the assistant did or proposes: proposal cards, citations, the Ask button, the capture parser's proposal |
+| `warn` (amber) | due soon, overdue, high priority, countdowns |
+| `danger` (red) | destructive actions and errors |
+| neutrals | everything else; notes, projects and courses are told apart by icon and label |
+
+The per-id pastel tints (`lib/card-color.ts`) were decoration, a hash of the note's
+id with no meaning, and are gone.
+
+**Every text pair is measured, not eyeballed.** Every token pair in both themes was
+computed against WCAG AA. The lowest text pairs are accent on accent-soft at 4.75:1
+light and 4.61:1 dark. The old palette failed in places nobody had measured: the
+faint text (`#9c9282`) was 2.53:1 on its canvas, used across 96 labels, and white on
+the old accent was 4.12:1. **Form controls get their own border token, `control`**
+(3.68:1 on the surface): the input borders had been 1.42:1 and the checkbox borders
+1.68:1, below the 3:1 a field needs to be found by its edge alone. Decorative
+hairlines stay `border-subtle`. Re-measure if a token changes.
+
+**Three token renames carry meaning, not taste.** `surface-raised` became
+`surface-subtle`, because in this palette it is the quiet fill for hover rows, chips,
+progress tracks and code, not a raised layer. `text-white` on the accent became
+`text-on-accent`, because in dark mode the accent is a light teal and white text on it
+would fail. Every input that had `focus:border-accent` moved to `border-control`. All
+three were done by one reviewed codemod, not by hand.
+
+**Type.** Plus Jakarta Sans for the interface. Lora, a reading serif, only for a note's
+body, at 17px on a 1.75 line and about 68 characters to the line: you read a note for
+longer than you scan a list. All-caps letter-spaced labels became 12px semibold
+sentence case, and nothing is set below 12px except the phone tab bar's count badge.
+
+**Navigation is grouped by what you are doing** (`components/nav-items.ts`): Today;
+Capture and recall; Plan; Study; Workspace. Search stays in the list even though ⌘K
+is the fastest way anywhere, because the palette matches literally and `/search` is
+the only place that searches every kind of item by meaning. On a phone, four tabs and More sit at the
+bottom where a thumb reaches. More is a native `<dialog>`, so focus trapping, Escape
+and the backdrop come from the browser rather than from hand-written state. The
+Tasks and Cards badges are two `count()` queries in the shell layout, not a fetch of
+every task. A layout persists across navigations, so stale badges were the risk; it
+was checked rather than assumed: completing a task drops the badge in place, because
+the action's revalidation re-renders the shell along with the page.
+
+**The assistant is a panel beside the work, not a page you leave it for**
+(`components/assistant-dock.tsx`, ⌘J or Ctrl+J). `/ai` keeps the full page with thread
+history, and the panel links to it. Two constraints shape it, both found by reading
+the e2e suite before writing it:
+
+- The panel is **unmounted while closed**, not hidden. The suite fills
+  `getByLabel("Ask your workspace")` page-wide, so a second copy of the chat on every
+  page would turn that selector ambiguous.
+- The panel is **unavailable on `/ai`**, and its toggle sits outside `<main>`, so the
+  page's own Ask button stays the only one the suite can find there.
+
+Closing it returns focus to whichever toggle is on screen, since the input that had
+focus has just been unmounted.
+
+**Today is one timeline.** Events and planned task blocks are merged and sorted by
+time: the schedule and the plan answer the same question. A task already planned
+today is not listed again under "Due today". Events are solid, planned blocks are
+dashed, and each says so in words ("Event", "Planned", "Now"). The rail shows the
+next unscored assessment across every course (`nextUpcomingAssessment`, the same rule
+as `nextUngraded`, applied in the query) and the flashcards due. `daysUntilLabel` moved
+from the course page into `lib/grades.ts`, so the course page and Today count days the
+same way, and it now has a unit test.
+
+**A note reads before it edits.** The reading view had never shown the note's title;
+it appeared only inside the editor. The title is now an `h1` with the course, tags and
+edit date, passed to `NoteView` as `header`, which renders it only while reading,
+since the editor has its own title field. Links, related items and attachments moved
+to a rail beside the note on wide screens. In the DOM they still follow the note, so
+"the first list item in `main`" is still the note's own list, which an e2e assertion
+depends on. Wiki links are underlined solid when the note exists and dashed when it
+does not, so the difference does not rest on color.
+
+**Found by looking at it on a phone, not by any check:** the dashboard's single-column
+grid had no explicit tracks, so it sized itself to its widest card. The page grew to
+1,057px on a 375px screen, the phone zoomed out to fit, and the fixed tab bar ended up
+1,400px below the visible area. Nothing automated would have caught it: the page
+type-checks, lints and passes every test either way. `grid-cols-1` (tracks of
+`minmax(0, 1fr)`) fixed it. The calendar faded days outside the
+month with `opacity-40`, which pulled their events below readable contrast; they now
+get a different ground instead.
+
+**Deliberately not done:** an hour-by-hour week grid (the proposal drew one; the week
+view is still a row of days, and dropping a task still lands it at 09:00); a manual
+theme switch (the system setting decides); renaming "Nexus" in the assistant's system
+prompt, since the prompt's behaviour is measured by the evals and a visual change
+should not move it. In `next dev`, Next.js's own indicator badge sits over the phone
+tab bar's More button; production builds do not show it.
+
 ## The assistant, and what actually defends it
 
 `services/assistant-service.ts` retrieves chunks, builds the prompt, and streams an

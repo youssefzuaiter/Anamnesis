@@ -40,6 +40,22 @@ export async function listTasks(
   });
 }
 
+/** Open tasks due by the end of today: the overdue and today buckets together,
+ *  counted rather than fetched, for the sidebar's badge. */
+export async function countDueBy(
+  userId: string,
+  endOfToday: Date,
+): Promise<number> {
+  return prisma.task.count({
+    where: {
+      userId,
+      deletedAt: null,
+      status: { not: "done" },
+      dueDate: { lte: endOfToday },
+    },
+  });
+}
+
 export async function getTask(
   userId: string,
   taskId: string,
