@@ -5,7 +5,7 @@ import { getProfile } from "@/repositories/profile-repository";
 import { ProfileForm } from "@/components/profile-form";
 import { ReindexButton } from "@/components/reindex-button";
 
-export const metadata = { title: "Settings · Nexus" };
+export const metadata = { title: "Settings · Anamnesis" };
 
 export default async function SettingsPage() {
   const userId = await requireUserId();
@@ -22,7 +22,7 @@ export default async function SettingsPage() {
         </p>
       </header>
 
-      <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+      <h2 className="mb-2 text-xs font-semibold text-text-faint">
         Profile
       </h2>
       <ProfileForm
@@ -33,7 +33,7 @@ export default async function SettingsPage() {
         }}
       />
 
-      <h2 className="mb-2 mt-6 text-xs font-medium uppercase tracking-wide text-text-faint">
+      <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
         Your data
       </h2>
       <div className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-4 text-sm">
@@ -51,7 +51,7 @@ export default async function SettingsPage() {
         </Link>
       </div>
 
-      <h2 className="mb-2 mt-6 text-xs font-medium uppercase tracking-wide text-text-faint">
+      <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
         Search index
       </h2>
       <div className="rounded-xl border border-border-subtle bg-surface p-4">

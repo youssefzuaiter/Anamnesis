@@ -49,6 +49,38 @@ export async function getCourse(
   return course ?? null;
 }
 
+export type UpcomingAssessment = {
+  id: string;
+  title: string;
+  dueDate: Date;
+  course: { id: string; code: string; title: string };
+};
+
+/** The soonest assessment still to sit across every live course: the same
+ *  rule as `nextUngraded` in lib/grades.ts (unscored, dated, not yet past),
+ *  applied in the query so the dashboard does not load every course. */
+export async function nextUpcomingAssessment(
+  userId: string,
+  now: Date,
+): Promise<UpcomingAssessment | null> {
+  const row = await prisma.assessment.findFirst({
+    where: {
+      userId,
+      score: null,
+      dueDate: { gte: now },
+      course: { userId, deletedAt: null },
+    },
+    orderBy: { dueDate: "asc" },
+    select: {
+      id: true,
+      title: true,
+      dueDate: true,
+      course: { select: { id: true, code: true, title: true } },
+    },
+  });
+  return row?.dueDate ? { ...row, dueDate: row.dueDate } : null;
+}
+
 export async function listCourseOptions(
   userId: string,
 ): Promise<{ id: string; code: string; title: string }[]> {

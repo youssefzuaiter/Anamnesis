@@ -28,7 +28,7 @@ function CitationList({ citations }: { citations: Citation[] }) {
     <ol className="mt-3 flex flex-col gap-1.5 border-t border-border-subtle pt-3">
       {citations.map((citation) => (
         <li key={citation.index} className="flex gap-2 text-xs">
-          <span className="shrink-0 font-mono text-text-faint">
+          <span className="shrink-0 font-mono font-semibold text-ai">
             [{citation.index}]
           </span>
           <div className="min-w-0">
@@ -58,9 +58,14 @@ function CitationList({ citations }: { citations: Citation[] }) {
 export function AssistantChat({
   conversationId: initialConversationId = null,
   initialTurns = [],
+  variant = "page",
+  autoFocus = false,
 }: {
   conversationId?: string | null;
   initialTurns?: Turn[];
+  /** `panel` fills the docked assistant beside another page. */
+  variant?: "page" | "panel";
+  autoFocus?: boolean;
 } = {}) {
   const [turns, setTurns] = useState<Turn[]>(initialTurns);
   const [conversationId, setConversationId] = useState<string | null>(
@@ -166,7 +171,13 @@ export function AssistantChat({
   }
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col">
+    <div
+      className={
+        variant === "panel"
+          ? "flex min-h-0 flex-1 flex-col"
+          : "flex h-[calc(100vh-8rem)] flex-col"
+      }
+    >
       <div ref={scrollRef} className="flex-1 overflow-y-auto pr-1">
         {turns.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
@@ -180,7 +191,7 @@ export function AssistantChat({
                   key={suggestion}
                   type="button"
                   onClick={() => ask(suggestion)}
-                  className="rounded-full border border-border-subtle px-3 py-1.5 text-xs text-text-muted transition-colors hover:bg-surface-raised hover:text-text"
+                  className="rounded-full border border-border-subtle px-3 py-1.5 text-xs text-text-muted transition-colors hover:bg-surface-subtle hover:text-text"
                 >
                   {suggestion}
                 </button>
@@ -199,7 +210,7 @@ export function AssistantChat({
                 <div
                   className={
                     turn.role === "user"
-                      ? "max-w-[85%] rounded-2xl rounded-br-sm bg-accent px-4 py-2.5 text-sm text-white"
+                      ? "max-w-[85%] rounded-2xl rounded-br-sm bg-surface-subtle px-4 py-2.5 text-sm font-medium text-text"
                       : "max-w-[95%] rounded-2xl rounded-bl-sm border border-border-subtle bg-surface px-4 py-3 text-sm text-text"
                   }
                 >
@@ -244,13 +255,14 @@ export function AssistantChat({
           onChange={(event) => setQuestion(event.target.value)}
           placeholder="Ask your workspace…"
           aria-label="Ask your workspace"
+          autoFocus={autoFocus}
           disabled={busy}
-          className="flex-1 rounded-lg border border-border-subtle bg-surface px-3 py-2.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none disabled:opacity-60"
+          className="flex-1 rounded-lg border border-control bg-surface px-3 py-2.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none disabled:opacity-60"
         />
         <button
           type="submit"
           disabled={busy || !question.trim()}
-          className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy ? "Thinking…" : "Ask"}
         </button>

@@ -16,7 +16,7 @@ export function CourseSelect({
         name="courseId"
         defaultValue={defaultValue ?? ""}
         aria-label="Course"
-        className="rounded-lg border border-border-subtle bg-surface-raised px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
+        className="rounded-lg border border-control bg-surface px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none"
       >
         <option value="">No course</option>
         {courses.map((course) => (

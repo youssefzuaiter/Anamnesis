@@ -2,7 +2,6 @@ import Link from "next/link";
 import { requireUserId } from "@/lib/session";
 import { searchNotes } from "@/services/note-service";
 import { listNotes, listTags } from "@/repositories/note-repository";
-import { hueForId } from "@/lib/card-color";
 import { NoteGrid } from "@/components/note-grid";
 import { countNotes } from "@/repositories/note-repository";
 import { listCourseOptions } from "@/repositories/course-repository";
@@ -11,7 +10,7 @@ import { listProjectOptions } from "@/repositories/project-repository";
 // Enough to fill a screen without loading a whole imported vault at once.
 const PAGE_SIZE = 24;
 
-export const metadata = { title: "Notes · Nexus" };
+export const metadata = { title: "Notes · Anamnesis" };
 
 function formatDate(date: Date): string {
   return new Intl.DateTimeFormat("en-GB", {
@@ -75,19 +74,19 @@ export default async function NotesPage({
         <div className="flex items-center gap-2">
           <Link
             href="/notes/graph"
-            className="rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-raised"
+            className="rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-subtle"
           >
             Graph view
           </Link>
           <Link
             href="/notes/import"
-            className="rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-raised"
+            className="rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-subtle"
           >
             Import PDF
           </Link>
           <Link
             href="/notes/new"
-            className="rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+            className="rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover"
           >
             New note
           </Link>
@@ -100,11 +99,11 @@ export default async function NotesPage({
           defaultValue={query}
           placeholder="Search your notes by meaning…"
           aria-label="Search notes"
-          className="flex-1 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
+          className="flex-1 rounded-lg border border-control bg-surface px-3 py-2 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
         />
         <button
           type="submit"
-          className="rounded-lg border border-border-subtle bg-surface px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-raised"
+          className="rounded-lg border border-border-subtle bg-surface px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-subtle"
         >
           Search
         </button>
@@ -117,7 +116,7 @@ export default async function NotesPage({
             className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
               !tag && !favoritesOnly
                 ? "border-accent bg-accent-soft text-accent"
-                : "border-border-subtle text-text-muted hover:bg-surface-raised"
+                : "border-border-subtle text-text-muted hover:bg-surface-subtle"
             }`}
           >
             All
@@ -127,7 +126,7 @@ export default async function NotesPage({
             className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
               favoritesOnly
                 ? "border-accent bg-accent-soft text-accent"
-                : "border-border-subtle text-text-muted hover:bg-surface-raised"
+                : "border-border-subtle text-text-muted hover:bg-surface-subtle"
             }`}
           >
             Favorites
@@ -139,7 +138,7 @@ export default async function NotesPage({
               className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
                 tag === name
                   ? "border-accent bg-accent-soft text-accent"
-                  : "border-border-subtle text-text-muted hover:bg-surface-raised"
+                  : "border-border-subtle text-text-muted hover:bg-surface-subtle"
               }`}
             >
               {name}
@@ -166,7 +165,6 @@ export default async function NotesPage({
               tags: note.tags,
               isFavorite: note.isFavorite,
               updated: formatDate(note.updatedAt),
-              hue: hueForId(note.id),
             }))}
           />
 
@@ -175,7 +173,7 @@ export default async function NotesPage({
               {page > 1 ? (
                 <Link
                   href={pageHref(page - 1)}
-                  className="rounded-lg border border-border-subtle px-3 py-1.5 text-text transition-colors hover:bg-surface-raised"
+                  className="rounded-lg border border-border-subtle px-3 py-1.5 text-text transition-colors hover:bg-surface-subtle"
                 >
                   ← Newer
                 </Link>
@@ -188,7 +186,7 @@ export default async function NotesPage({
               {page < pageCount ? (
                 <Link
                   href={pageHref(page + 1)}
-                  className="rounded-lg border border-border-subtle px-3 py-1.5 text-text transition-colors hover:bg-surface-raised"
+                  className="rounded-lg border border-border-subtle px-3 py-1.5 text-text transition-colors hover:bg-surface-subtle"
                 >
                   Older →
                 </Link>

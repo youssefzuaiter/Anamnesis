@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireUserId } from "@/lib/session";
 import { listAuditTrail, type AuditEntry } from "@/services/action-service";
 
-export const metadata = { title: "Audit log · Nexus" };
+export const metadata = { title: "Audit log · Anamnesis" };
 
 const ACTOR_LABEL: Record<string, string> = {
   AI_AGENT: "Assistant",
@@ -78,10 +78,10 @@ export default async function AuditPage() {
               <>
                 <div className="flex items-center gap-2">
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                       entry.actorType === "AI_AGENT"
                         ? "bg-accent-soft text-accent"
-                        : "bg-surface-raised text-text-muted"
+                        : "bg-surface-subtle text-text-muted"
                     }`}
                   >
                     {ACTOR_LABEL[entry.actorType] ?? entry.actorType}

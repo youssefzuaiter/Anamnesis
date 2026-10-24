@@ -52,7 +52,7 @@ export function FocusSettings({
             Record focus sessions
           </span>
           <span className="mt-0.5 block text-xs text-text-muted">
-            While writing a note, Nexus measures how long you write for and how
+            While writing a note, Anamnesis measures how long you write for and how
             fast you type. It never records what you write. Off by default, and
             the server stores nothing while this is off.
           </span>

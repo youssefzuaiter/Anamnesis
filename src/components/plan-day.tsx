@@ -7,6 +7,7 @@ import {
   applyPlanAction,
   type PlanBlockView,
 } from "@/actions/plan";
+import { Icon } from "@/components/icons";
 
 export function PlanDay() {
   const router = useRouter();
@@ -19,10 +20,15 @@ export function PlanDay() {
   const keeping = plan?.filter((block) => !skipped.has(block.taskId)) ?? [];
 
   return (
-    <section className="rounded-xl border border-border-subtle bg-surface p-4">
+    <section
+      aria-labelledby="plan-day-title"
+      className="rounded-xl bg-surface-subtle p-3.5"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-medium text-text">Plan my day</h2>
+        <div className="min-w-56 flex-1">
+          <h3 id="plan-day-title" className="text-sm font-semibold text-text">
+            Plan my day
+          </h3>
           <p className="text-xs text-text-muted">
             Fits your open tasks into the gaps between today&apos;s commitments.
             Nothing moves until you confirm.
@@ -47,8 +53,9 @@ export function PlanDay() {
               }
             });
           }}
-          className="rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-raised disabled:opacity-60"
+          className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border-strong bg-surface px-3.5 text-sm font-semibold text-text transition-colors hover:bg-surface-hover disabled:opacity-60"
         >
+          <Icon name="calendar" />
           {pending && plan === null ? "Working…" : "Propose a plan"}
         </button>
       </div>
@@ -61,7 +68,7 @@ export function PlanDay() {
               return (
                 <li
                   key={block.taskId}
-                  className={`flex items-center gap-3 rounded-lg border border-border-subtle px-3 py-2 text-sm ${
+                  className={`flex items-center gap-3 rounded-lg bg-surface px-3 py-2 text-sm ${
                     dropped ? "opacity-40" : ""
                   }`}
                 >
@@ -118,7 +125,7 @@ export function PlanDay() {
                   }
                 });
               }}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
               {pending ? "Scheduling…" : `Schedule ${keeping.length}`}
             </button>

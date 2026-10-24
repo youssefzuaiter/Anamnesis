@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { confirmCaptureAction } from "@/actions/capture";
 import type { Proposal } from "@/services/parse-service";
+import { Icon } from "@/components/icons";
 
 // The Web Speech API has no official TypeScript DOM types — this is the
 // minimal shape actually used here, not the full spec surface. Free and
@@ -178,8 +179,11 @@ export function QuickCapture() {
   }
 
   return (
-    <section className="mb-6">
-      <div className="flex gap-2">
+    <section>
+      {/* One bordered bar holds the field and its two buttons, and the ring
+          sits on the bar, so the whole thing reads as a single control. */}
+      <div className="flex items-center gap-2 rounded-2xl border border-control bg-surface py-1.5 pl-4 pr-1.5 shadow-card focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent">
+        <Icon name="plus" className="size-[18px] text-text-faint" />
         <input
           value={text}
           onChange={(event) => setText(event.target.value)}
@@ -196,7 +200,7 @@ export function QuickCapture() {
           }
           aria-label="Quick capture"
           disabled={busy}
-          className="flex-1 rounded-lg border border-border-subtle bg-surface px-3.5 py-2.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none disabled:opacity-60"
+          className="min-w-0 flex-1 bg-transparent py-2 text-[15px] text-text placeholder:text-text-faint focus:outline-none disabled:opacity-60"
         />
         <button
           type="button"
@@ -205,19 +209,19 @@ export function QuickCapture() {
           aria-label={listening ? "Stop voice input" : "Capture by voice"}
           aria-pressed={listening}
           title={listening ? "Stop listening" : "Capture by voice"}
-          className={`rounded-lg border px-3 py-2.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+          className={`inline-flex size-10 items-center justify-center rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
             listening
-              ? "animate-pulse border-danger bg-danger-soft text-danger"
-              : "border-border-subtle bg-surface text-text hover:bg-surface-raised"
+              ? "animate-pulse bg-danger-soft text-danger"
+              : "text-text-muted hover:bg-surface-subtle hover:text-text"
           }`}
         >
-          🎤
+          <Icon name="mic" />
         </button>
         <button
           type="button"
           onClick={parse}
           disabled={busy || !text.trim()}
-          className="rounded-lg border border-border-subtle bg-surface px-3.5 py-2.5 text-sm text-text transition-colors hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-10 rounded-xl bg-accent px-4 text-sm font-semibold text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy && !proposal ? "Reading…" : "Capture"}
         </button>
@@ -235,10 +239,10 @@ export function QuickCapture() {
       {proposal && (
         <div
           role="status"
-          className="mt-2 rounded-xl border border-accent bg-surface p-3.5"
+          className="mt-2 rounded-xl border border-[color-mix(in_srgb,var(--ai)_40%,var(--border))] bg-surface p-3.5"
         >
           <div className="flex items-start gap-3">
-            <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
+            <span className="shrink-0 rounded-full bg-ai-soft px-2 py-0.5 text-xs font-semibold text-ai">
               {KIND_LABEL[proposal.kind]}
             </span>
             <div className="min-w-0 flex-1">
@@ -256,7 +260,7 @@ export function QuickCapture() {
               type="button"
               onClick={confirm}
               disabled={busy}
-              className="rounded-lg bg-accent px-3.5 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-60"
+              className="rounded-lg bg-accent px-3.5 py-1.5 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-60"
             >
               {busy ? "Saving…" : `Create ${KIND_LABEL[proposal.kind].toLowerCase()}`}
             </button>

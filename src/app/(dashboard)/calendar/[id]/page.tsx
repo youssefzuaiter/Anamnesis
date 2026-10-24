@@ -8,7 +8,7 @@ import { updateEventAction, deleteEventAction, deleteEventSeriesAction } from "@
 import { listProjectOptions } from "@/repositories/project-repository";
 
 
-export const metadata = { title: "Event · Nexus" };
+export const metadata = { title: "Event · Anamnesis" };
 
 function toDateTimeInput(date: Date): string {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
@@ -38,7 +38,7 @@ export default async function EventPage({ params }: PageProps<"/calendar/[id]">)
           ← Calendar
         </Link>
         {event.recurrenceId && (
-          <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
+          <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">
             ↻ Recurring
           </span>
         )}

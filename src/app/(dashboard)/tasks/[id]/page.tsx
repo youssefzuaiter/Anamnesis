@@ -17,7 +17,7 @@ import { listGoalOptions } from "@/repositories/goal-repository";
 import { StudyTimer } from "@/components/study-timer";
 
 
-export const metadata = { title: "Task · Nexus" };
+export const metadata = { title: "Task · Anamnesis" };
 
 function toDateTimeInput(date: Date | null): string {
   if (!date) return "";
@@ -57,7 +57,7 @@ export default async function TaskPage({ params }: PageProps<"/tasks/[id]">) {
             ← Tasks
           </Link>
           {task.recurrenceId && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
+            <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">
               ↻ Recurring
             </span>
           )}
@@ -68,7 +68,7 @@ export default async function TaskPage({ params }: PageProps<"/tasks/[id]">) {
           <input type="hidden" name="status" value={done ? "todo" : "done"} />
           <button
             type="submit"
-            className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-text transition-colors hover:bg-surface-raised"
+            className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-text transition-colors hover:bg-surface-subtle"
           >
             {done ? "Reopen task" : "Mark complete"}
           </button>

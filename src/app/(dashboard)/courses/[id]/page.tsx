@@ -6,27 +6,12 @@ import {
   listCourseContents,
 } from "@/repositories/course-repository";
 import { countDueForCourse } from "@/repositories/flashcard-repository";
-import { summarise, nextUngraded } from "@/lib/grades";
+import { summarise, nextUngraded, daysUntilLabel } from "@/lib/grades";
 import { GradePanel } from "@/components/grade-panel";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { deleteCourseAction } from "@/actions/courses";
 
-export const metadata = { title: "Course · Nexus" };
-
-/** "today"/"tomorrow"/"in N days" — counted in whole calendar days, not exact
- *  hours, the same whole-day convention task buckets use: a final at 23:59
- *  today should read "today", not "in 1 day" just because it's currently
- *  2pm. */
-function daysUntilLabel(dueDate: Date, now: Date): string {
-  const startOfDay = (date: Date) =>
-    new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const days = Math.round(
-    (startOfDay(dueDate).getTime() - startOfDay(now).getTime()) / 86_400_000,
-  );
-  if (days <= 0) return "today";
-  if (days === 1) return "tomorrow";
-  return `in ${days} days`;
-}
+export const metadata = { title: "Course · Anamnesis" };
 
 const DATE = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -114,7 +99,7 @@ export default async function CoursePage({
       />
 
       <section className="mt-6">
-        <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+        <h2 className="mb-2 text-xs font-semibold text-text-faint">
           Next classes · {contents.events.length}
         </h2>
         {contents.events.length === 0 ? (
@@ -146,7 +131,7 @@ export default async function CoursePage({
       </section>
 
       <section className="mt-6">
-        <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+        <h2 className="mb-2 text-xs font-semibold text-text-faint">
           Tasks · {contents.tasks.length}
         </h2>
         {contents.tasks.length === 0 ? (
@@ -180,7 +165,7 @@ export default async function CoursePage({
       </section>
 
       <section className="mt-6">
-        <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+        <h2 className="mb-2 text-xs font-semibold text-text-faint">
           Notes · {contents.notes.length}
         </h2>
         {contents.notes.length === 0 ? (

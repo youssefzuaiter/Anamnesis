@@ -16,7 +16,7 @@ function SubmitButton({ label }: { label: string }) {
     <button
       type="submit"
       disabled={pending}
-      className="mt-2 w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+      className="mt-2 min-h-11 w-full rounded-lg bg-accent px-4 text-sm font-semibold text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
     >
       {pending ? "Please wait…" : label}
     </button>
@@ -40,7 +40,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-sm font-medium text-text">{label}</span>
+      <span className="mb-1.5 block text-[13px] font-semibold text-text">{label}</span>
       <input
         name={name}
         type={type}
@@ -48,7 +48,7 @@ function Field({
         minLength={minLength}
         autoComplete={autoComplete}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-border-subtle bg-surface-raised px-3 py-2.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
+        className="min-h-11 w-full rounded-lg border border-control bg-surface px-3 text-[15px] text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
       />
     </label>
   );

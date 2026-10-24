@@ -6,7 +6,7 @@ import { listDeletedGoals } from "@/repositories/goal-repository";
 import { TrashRow } from "@/components/trash-row";
 import type { TrashKind } from "@/lib/domain";
 
-export const metadata = { title: "Trash · Nexus" };
+export const metadata = { title: "Trash · Anamnesis" };
 
 const WHEN = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",

@@ -43,7 +43,7 @@ export function NoteLinks({
     <div className="flex flex-col gap-4">
       {outgoing.length > 0 && (
         <div>
-          <h2 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-text-faint">
+          <h2 className="mb-1.5 text-xs font-semibold text-text-faint">
             Links to · {outgoing.length}
           </h2>
           <NoteList notes={outgoing} />
@@ -52,7 +52,7 @@ export function NoteLinks({
 
       {backlinks.length > 0 && (
         <div>
-          <h2 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-text-faint">
+          <h2 className="mb-1.5 text-xs font-semibold text-text-faint">
             Linked from · {backlinks.length}
           </h2>
           <NoteList notes={backlinks} />
@@ -61,7 +61,7 @@ export function NoteLinks({
 
       {unresolved.length > 0 && (
         <div>
-          <h2 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-text-faint">
+          <h2 className="mb-1.5 text-xs font-semibold text-text-faint">
             Not yet written · {unresolved.length}
           </h2>
           <ul className="flex flex-wrap gap-1.5">

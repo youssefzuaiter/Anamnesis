@@ -102,3 +102,18 @@ export function nextUngraded<T extends UpcomingAssessment>(
     item.dueDate < soonest.dueDate ? item : soonest,
   );
 }
+
+/** "today"/"tomorrow"/"in N days" — counted in whole calendar days, not exact
+ *  hours, the same whole-day convention task buckets use: a final at 23:59
+ *  today should read "today", not "in 1 day" just because it's currently
+ *  2pm. */
+export function daysUntilLabel(dueDate: Date, now: Date): string {
+  const startOfDay = (date: Date) =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const days = Math.round(
+    (startOfDay(dueDate).getTime() - startOfDay(now).getTime()) / 86_400_000,
+  );
+  if (days <= 0) return "today";
+  if (days === 1) return "tomorrow";
+  return `in ${days} days`;
+}

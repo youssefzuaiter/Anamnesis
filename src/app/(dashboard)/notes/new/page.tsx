@@ -8,7 +8,7 @@ import { isTrackingEnabled } from "@/repositories/focus-repository";
 import { FocusTracker } from "@/components/focus-tracker";
 
 
-export const metadata = { title: "New note · Nexus" };
+export const metadata = { title: "New note · Anamnesis" };
 
 export default async function NewNotePage({
   searchParams,

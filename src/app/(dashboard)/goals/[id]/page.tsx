@@ -12,7 +12,7 @@ import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { TaskRow } from "@/components/task-row";
 import { updateGoalAction, deleteGoalAction } from "@/actions/goals";
 
-export const metadata = { title: "Goal · Nexus" };
+export const metadata = { title: "Goal · Anamnesis" };
 
 export default async function GoalPage({
   params,
@@ -47,7 +47,7 @@ export default async function GoalPage({
         )}
         <div className="mt-3 flex items-center gap-3">
           <div
-            className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-raised"
+            className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-subtle"
             role="progressbar"
             aria-valuenow={goal.progress}
             aria-valuemin={0}
@@ -71,7 +71,7 @@ export default async function GoalPage({
       </header>
 
       <section className="mb-6">
-        <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+        <h2 className="mb-2 text-xs font-semibold text-text-faint">
           Projects · {projects.length}
         </h2>
         {projects.length === 0 ? (
@@ -104,7 +104,7 @@ export default async function GoalPage({
       </section>
 
       <section className="mb-6">
-        <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-faint">
+        <h2 className="mb-2 text-xs font-semibold text-text-faint">
           Direct tasks · {tasks.length}
         </h2>
         <p className="mb-2 text-xs text-text-faint">

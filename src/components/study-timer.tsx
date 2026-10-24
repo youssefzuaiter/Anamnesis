@@ -90,7 +90,7 @@ export function StudyTimer({ taskTitle }: { taskTitle: string }) {
             setRunning((value) => !value);
             setFinished(false);
           }}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover"
         >
           {running ? "Pause" : remaining === minutes * 60 ? "Start" : "Resume"}
         </button>
@@ -98,7 +98,7 @@ export function StudyTimer({ taskTitle }: { taskTitle: string }) {
         <button
           type="button"
           onClick={() => reset(minutes)}
-          className="rounded-lg border border-border-subtle px-3 py-2 text-sm text-text transition-colors hover:bg-surface-raised"
+          className="rounded-lg border border-border-subtle px-3 py-2 text-sm text-text transition-colors hover:bg-surface-subtle"
         >
           Reset
         </button>
@@ -112,7 +112,7 @@ export function StudyTimer({ taskTitle }: { taskTitle: string }) {
               className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
                 minutes === preset
                   ? "border-accent bg-accent-soft text-accent"
-                  : "border-border-subtle text-text-muted hover:bg-surface-raised"
+                  : "border-border-subtle text-text-muted hover:bg-surface-subtle"
               }`}
             >
               {preset}m

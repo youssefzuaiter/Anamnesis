@@ -63,7 +63,7 @@ export function NoteBulkBar({
   }
 
   const select =
-    "rounded-lg border border-border-subtle bg-surface-raised px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none";
+    "rounded-lg border border-border-subtle bg-surface-subtle px-2.5 py-1.5 text-sm text-text focus:border-accent focus:outline-none";
 
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-accent bg-accent-soft px-3 py-2.5">
@@ -140,7 +140,7 @@ export function NoteBulkBar({
           placeholder="add tag"
           aria-label="Tag to add"
           onChange={(event) => setTag(event.target.value)}
-          className="w-28 rounded-lg border border-border-subtle bg-surface-raised px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
+          className="w-28 rounded-lg border border-control bg-surface px-2.5 py-1.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
         />
         <button
           type="button"

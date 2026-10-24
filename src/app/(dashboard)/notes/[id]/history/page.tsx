@@ -4,7 +4,7 @@ import { requireUserId } from "@/lib/session";
 import { getNote, listVersions } from "@/repositories/note-repository";
 import { VersionRow } from "@/components/version-row";
 
-export const metadata = { title: "History · Nexus" };
+export const metadata = { title: "History · Anamnesis" };
 
 const WHEN = new Intl.DateTimeFormat("en-GB", {
   weekday: "short",

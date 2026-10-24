@@ -37,7 +37,7 @@ export function TrashRow({
 
   return (
     <li className="flex flex-wrap items-center gap-3 rounded-xl border border-border-subtle bg-surface px-4 py-2.5">
-      <span className="rounded-full bg-surface-raised px-2 py-0.5 text-xs text-text-muted">
+      <span className="rounded-full bg-surface-subtle px-2 py-0.5 text-xs text-text-muted">
         {kind}
       </span>
       <span className="min-w-0 flex-1 truncate text-sm text-text">{title}</span>
@@ -47,7 +47,7 @@ export function TrashRow({
         type="button"
         disabled={pending}
         onClick={() => run(restoreAction)}
-        className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-text transition-colors hover:bg-surface-raised disabled:opacity-60"
+        className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-text transition-colors hover:bg-surface-subtle disabled:opacity-60"
       >
         Restore
       </button>

@@ -2,7 +2,7 @@ import { requireUserId } from "@/lib/session";
 import { listDue, countCards } from "@/repositories/flashcard-repository";
 import { CardReview } from "@/components/card-review";
 
-export const metadata = { title: "Cards · Nexus" };
+export const metadata = { title: "Cards · Anamnesis" };
 
 export default async function CardsPage() {
   const userId = await requireUserId();

@@ -3,7 +3,7 @@ import { requireUserId } from "@/lib/session";
 import { listGraph } from "@/repositories/link-repository";
 import { NoteGraph } from "@/components/note-graph";
 
-export const metadata = { title: "Note graph · Nexus" };
+export const metadata = { title: "Note graph · Anamnesis" };
 
 export default async function NoteGraphPage() {
   const userId = await requireUserId();

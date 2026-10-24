@@ -46,7 +46,7 @@ Anamnesis has four aims.
 
 Colours: ink `#2b2622`, terracotta `#b5532f`, parchment `#efe9db` (the app's background colour).
 
-**Naming status.** The project was developed under a working name. That name still appears in some files: the package name, the sidebar wordmark, page titles, the PWA manifest and the login screen. Renaming those is a separate change.
+**Naming status.** The project was developed under a working name, Nexus. Everything a person sees now says Anamnesis: the sidebar, page titles, the sign-in screen, the installable app's name and its icon. The working name remains in three places that are not on screen: the package name, the title of the engineering specification, and the assistant's system prompt, which is left alone because its behaviour is measured by the evaluation suite.
 
 ---
 
