@@ -1,0 +1,25 @@
+name: Dependency review
+
+# Looks at what a pull request changes in the dependency graph and fails if it
+# introduces a package with a known vulnerability. It reads the same graph the
+# repository's Insights → Dependency graph page shows.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          # Only what ships. A vulnerable test tool is worth an update, but not
+          # worth blocking a release, since it never reaches the image.
+          fail-on-scopes: runtime

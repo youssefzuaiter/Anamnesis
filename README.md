@@ -190,13 +190,22 @@ Run `pnpm build` even when the change is small. Some type errors only appear dur
 
 ## Continuous integration
 
-GitHub Actions runs three jobs on every pull request and every push to `main`:
+GitHub Actions runs four jobs on every pull request and every push to `main`:
 
 - **checks**: migrations, build, type check, lint, unit and integration tests.
 - **e2e**: installs Ollama and the two models, then runs the Playwright suite.
 - **evals**: runs the AI evaluation suite.
+- **container**: builds the production image and rehearses a deploy, a backup, a failed release, a rollback and a restore against a throwaway stack.
 
-The `main` branch requires all three jobs to pass before a pull request can be merged. The repository owner can bypass that rule in an emergency.
+The `main` branch requires all four jobs to pass before a pull request can be merged. The repository owner can bypass that rule in an emergency. Pull requests also get a dependency review that fails on a newly introduced runtime dependency with a known high-severity vulnerability, and Dependabot proposes updates weekly.
+
+---
+
+## Deployment
+
+Merging to `main` publishes a container image. Moving it to production needs your approval in GitHub (the `production` environment). Your own machine then notices, backs up the database and attachments, applies migrations, starts the new version, runs a smoke check, and puts the previous version back if the check fails. GitHub never connects to the machine and holds no credential for it.
+
+[`ops/README.md`](ops/README.md) is the runbook: setup, day-to-day commands, rollback, backups and restore, and what to do when something is wrong.
 
 ---
 
@@ -213,7 +222,7 @@ The `main` branch requires all three jobs to pass before a pull request can be m
 
 ## Limitations
 
-- **Not deployed.** Anamnesis runs on your own computer and is built for personal use.
+- **Self-hosted only.** Anamnesis is built for personal use on your own computer. The deployment pipeline serves that machine and binds the app to localhost; it is not ready to be exposed to the internet (open registration, no HTTPS). The backups it takes are on the same machine as the data.
 - **The local chat model is the weakest part.** A 3B model handles multi-item requests and some phrasings inconsistently. Its behaviour is measured rather than guaranteed. The security boundary does not depend on it.
 - **Reminders appear only while the dashboard is open.** There are no push notifications and no offline mode. The app can be installed as a web app, but the server must be running.
 - **Export is incomplete.** It leaves out courses and assessments, flashcards, note versions, assistant conversations, attachments and calendar subscriptions. There is no import yet.
@@ -224,7 +233,7 @@ The `main` branch requires all three jobs to pass before a pull request can be m
 
 ## Documentation
 
-`CLAUDE.md` is the engineering specification and design record. It explains the decisions behind each feature, the trade-offs, and the measured results. Read it before changing anything substantial.
+`CLAUDE.md` is the engineering specification and design record. It explains the decisions behind each feature, the trade-offs, and the measured results. Read it before changing anything substantial. `ops/README.md` is the operations runbook.
 
 ---
 

@@ -212,3 +212,39 @@ jobs:
 
       - name: Run the AI evaluation suite
         run: pnpm eval
+
+  # The production image, built the way it will be published and then put through
+  # the same scripts a real host runs: deploy, signed-in smoke check, backup and
+  # restore verification, a failed release that must roll back, and recovery from
+  # data loss (ops/rehearse.sh). It is the only place the Dockerfile, the migration
+  # step and the ops scripts are exercised together, so a change that breaks
+  # deployment fails here instead of on the night it matters.
+  #
+  # arm64 because that is what production is: this tests the real thing, not an
+  # emulation of it. No Ollama here, so the smoke check skips the model checks.
+  container:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: anamnesis:ci
+          build-args: APP_VERSION=${{ github.sha }}
+          provenance: false
+          cache-from: type=gha,scope=container
+          cache-to: type=gha,scope=container,mode=max
+
+      # Never upload what this produces as an artifact. The rows are synthetic,
+      # but the habit matters: on a public repository an artifact is downloadable
+      # by anyone, and a real backup must never be handled that way.
+      - name: Rehearse the production routine against it
+        run: ops/rehearse.sh anamnesis:ci

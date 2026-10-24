@@ -972,7 +972,8 @@ src/
 │       │   ├── chat/route.ts    # RAG vector search + LLM generation, persists Conversation/Message
 │       │   └── parse/route.ts   # Capture → proposal (never writes)
 │       ├── attachments/[id]/route.ts  # Serves one attachment to its owner
-│       └── export/route.ts      # Full-account JSON download
+│       ├── export/route.ts      # Full-account JSON download
+│       └── health/route.ts      # Liveness (database) and ?deep=1 (pgvector, migrations, Ollama)
 ├── actions/                 # Server Actions (Zod validated)
 ├── services/                # Domain business logic / use cases
 ├── repositories/            # Data access abstraction layer
@@ -997,12 +998,15 @@ src/
 tests/ai/evals.ts            # AI evaluation & guardrail benchmarks
 tests/unit/, tests/e2e/      # Unit tests for pure lib/ modules; Playwright end-to-end
 prisma/migrations/           # Reviewable migration history
+Dockerfile, compose.prod.yml # The production image and stack (see "Operations")
+ops/                         # Deploy, update, backup, restore, verify, smoke, rehearse + launchd jobs; ops/README.md is the runbook
+.github/workflows/           # ci.yml, deploy.yml (publish + gated promote), dependency-review.yml
 ```
 
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push to `main` and every pull
-request, as three independent jobs rather than one:
+request, as four independent jobs rather than one:
 
 - **`checks`** — `prisma migrate deploy` against a real `pgvector/pgvector:pg17`
   service container, then `pnpm build` (before `tsc`, not after — see
@@ -1049,9 +1053,18 @@ request, as three independent jobs rather than one:
   own job (not folded into `e2e`) because the two don't depend on each other
   and run in parallel — no reason to make one wait on the other.
 
+- **`container`** — builds the production image exactly as it is published
+  (arm64, on a native arm64 runner, because that is what production is) and
+  runs `ops/rehearse.sh` against it: first deploy, signed-in smoke check,
+  backup, proof that the backup restores, a second deploy that must back up
+  first, a release that fails its smoke check and must roll back, simulated
+  data loss, and restore. It is the one place the Dockerfile, the migration
+  step and the ops scripts run together, so a change that breaks deployment
+  fails a pull request instead of the night it is needed. See "Operations".
+
 ### CI is a gate, not just an alarm
 
-`main` is protected: `checks`, `e2e` and `evals` are **required status
+`main` is protected: `checks`, `e2e`, `evals` and `container` are **required status
 checks**, pull requests are required, and force-pushes and branch deletion
 are refused. Admin bypass is deliberately left **on**, so the repo owner can
 still push directly in a genuine emergency — the gate is there to stop
@@ -1071,10 +1084,10 @@ committed here, not even in a commit later reverted** — a public repo
 exposes every commit ever made, not just the current tree.
 
 **Required-check names must match the job ids in `ci.yml`** (`checks`,
-`e2e`, `evals`). Renaming a job without updating the protection rule leaves
+`e2e`, `evals`, `container`). Renaming a job without updating the protection rule leaves
 the branch waiting forever on a check that will never report.
 
-**All three jobs need `DATABASE_URL` pointed at their own service container
+**The first three jobs need `DATABASE_URL` pointed at their own service container
 and dummy values for `NEXTAUTH_SECRET`/`OLLAMA_*`**, because `lib/config.ts`
 fails fast on any missing or malformed env var at import time — `checks`
 never actually talks to Ollama, but the URL still has to satisfy
@@ -1109,6 +1122,164 @@ timeout is doubled under `process.env.CI` (the same flag `playwright.config.ts`
 already reads for `forbidOnly`), since a shared, GPU-less CI runner is slower
 at local inference than this machine.
 
+## Operations: delivery, migrations and backups
+
+`ops/README.md` is the runbook (what to type); this section records why it is
+shaped the way it is, and what testing it turned up.
+
+**Delivery is pull-based because the repository is public.** GitHub builds the
+image and moves a tag; the production machine notices and deploys.
+`.github/workflows/deploy.yml` publishes `ghcr.io/<repo>:<commit>` on every
+merge to `main`, then a `promote` job waits for approval and copies that image to
+`:production`. The machine's `ops/update.sh` (run by launchd every five minutes)
+compares the digest behind `:production` with what it last deployed. GitHub never
+connects to the machine and holds no credential for it, which is the point: on a
+public repository a self-hosted runner can be handed work by a pull request from
+a fork, and an SSH key stored in GitHub is one leaked secret from a shell on the
+machine that holds the database.
+
+**The control is the `production` environment.** It names the owner as required
+reviewer, accepts deployments from `main` only, and has `prevent_self_review`
+off — with a single maintainer, turning it on would make every release
+unapprovable. The promote job also refuses to promote a commit unless
+`checks`, `e2e`, `evals` and `container` all succeeded on it, waiting up to 30
+minutes for ones still running, so approving early cannot ship an untested
+build. It verifies after the copy that `:production` and `:<commit>` have the same
+digest. Nothing is rebuilt to promote or roll back: the bytes that passed the
+checks are the bytes that run. The `sha` input of a manual run is validated as 40
+hex characters and passed through the environment rather than interpolated into
+a script, since a workflow input is text somebody typed.
+
+**Making the repository private was considered on 2026-10-24 and rejected.** What
+was tested: on the free plan a private repository cannot enforce branch protection
+(the 403 recorded under "CI is a gate"), and the plans page lists 500 MB of package
+storage against 2 GB for a public one. What was read in the docs but not tried:
+environment protection rules and secret scanning are described for public
+repositories, with private ones needing a paid plan or a paid security product, and
+the page fetched did not address required reviewers specifically. Private would hide
+the code and cost the merge gate for certain, and possibly the approval gate too. The
+consequence of staying public is that anyone can read how the app works, so open
+registration must be closed before it is ever exposed to the internet (see the
+runbook).
+
+**One image runs the app and its migrations.** `prisma` moved from
+`devDependencies` to `dependencies` for exactly that reason: `ops/deploy.sh` runs
+`prisma migrate deploy` from the same image it is about to start, so the
+migrations applied are always the ones built beside the code that expects them.
+The image runs `next start` rather than a standalone build — `pdf-parse` reads
+its own assets at runtime and a traced standalone bundle is a known way to lose
+them, and 1.6 GB is an acceptable price for not finding out in production. It runs
+as a non-root user; the attachments directory is created and chowned in the image
+so that a fresh named volume mounted over it is writable. `APP_VERSION` is the last
+`ARG`, so a new commit invalidates only the final layers, and it is stamped both
+as an env var (what `/api/health` reports) and as the OCI revision label (what the
+updater reads to check out the matching scripts).
+
+**Installing dependencies in Docker was slow for a reason that is not the
+network.** The first image build spent 4m16s in `pnpm install` and then timed out.
+pnpm 11 verifies the lockfile against supply-chain age policies using each
+package's *full* registry metadata, not the abbreviated form installs normally use;
+one such document took 13 s to fetch from the host with plain `curl`, and cold,
+the check fetches 727 of them. A host install looks fast only because its metadata
+cache is warm. The fix keeps the policy intact: a BuildKit cache mount for pnpm's
+metadata as well as its store, one install followed by `pnpm prune --prod` instead
+of a second parallel one (two installs sharing a cache mount were also timing
+out), and longer fetch timeouts. Warm, the install stage dropped to about two
+minutes.
+
+**Deploy order is the safety property.** `ops/deploy.sh`: back up, migrate, swap the
+app, smoke-check, and put the previous release back if the smoke check fails.
+Rolling back restores the previous *code only*; Prisma migrations go forward and
+are not undone, so every migration has to leave the previous release working (add
+freely; never drop or rename in the release that stops using something). A release
+that fails is recorded by digest so the updater does not retry it every five
+minutes; `--force` or a newer release clears it. `ops/update.sh` checks the
+repository out at the release's own commit before deploying, so the scripts and
+compose file that deploy a release are that release's, and its whole body sits in
+one function ending in `exec`, because bash reads a script as it runs and a
+`git checkout` that rewrites the file mid-run would otherwise execute a mixture of
+two versions.
+
+**The smoke check asserts what a bad deploy would break.** `ops/smoke.mjs` waits
+for the app, then checks that the database answers, pgvector is installed, the
+applied-migration count equals the number of migration folders in the release, both
+Ollama models are present, and the running commit equals the one deployed — so "the
+release I asked for is the one answering" is verified, not assumed. It also asserts,
+exactly, that an anonymous visitor is redirected to `/login` and that an anonymous
+`GET /api/export` is `401`: those are the two ways a broken deploy would quietly
+expose everything. With a dedicated smoke account in `.env.production` it also signs
+in and reads that account's own export, the one check that exercises sessions, the
+database and a data endpoint together. It runs inside the new release's container
+(so the migration count and the path to Ollama are the real ones) and once from the
+host against the published port. `/api/health` answers booleans and counts only;
+`?deep=1` adds pgvector, migrations and Ollama, and Ollama is reported but never
+fails the endpoint, because the app degrades without it and a restart would not
+help. A test asserts the response contains neither the database URL nor the session
+secret.
+
+**Backups contain the attachments, because attachment bytes live on disk.** A
+database dump alone restores notes whose files are gone. `ops/backup.sh` writes
+`database.dump`, `attachments.tar`, `counts.txt` (row counts at that moment), a
+manifest and `SHA256SUMS` to `~/anamnesis-backups`, outside the repository, owner-only.
+It builds under a name no restore or prune will treat as a backup and renames it in
+one step, so a half-written backup never has the real name, and it lists the dump
+back before accepting it. **Backups must never be uploaded as GitHub artifacts:**
+on a public repository an artifact is downloadable by anyone. Retention is a pure
+function (`ops/retention.mjs`, unit-tested) because the one thing a backup tool
+must never do is delete the wrong thing: everything from 7 days, the newest of
+each of 4 weeks and 6 months, and always the 3 newest, so a machine switched off for
+a month cannot return and prune itself empty. Testing it found that `Date.UTC` rolls
+impossible dates over, so a directory named `…20261340T250000Z` parsed as a real
+backup and was eligible for deletion; names now have to read back as written.
+
+**A backup nobody has restored is a hope.** `ops/verify-backup.sh` restores the
+newest backup into a throwaway container and compares every recorded row count, the
+migration count, the attachment file count and the pgvector extension; launchd runs
+it weekly. It was tested against bad backups, not only good ones: a corrupted dump
+(checksum mismatch), intact files whose recorded counts disagree with what restores,
+and a truncated dump whose checksums were recomputed — all three are rejected.
+`ops/restore.sh` refuses without `--confirm-overwrite`, takes a backup of the current
+state first so restoring the wrong one is undoable, and ends with a smoke check.
+
+**`ops/rehearse.sh` is the single test of all of this, and CI runs it on every pull
+request.** It builds a throwaway stack (its own compose project, port, secrets and
+volumes) and drives the real scripts through the whole sequence. Run it by hand
+before trusting a new image or a change under `ops/`.
+
+**What running it found that reading it did not:**
+
+- `retention.mjs` printed its summary on stdout, which became part of the path
+  `backup.sh` returns; `deploy.sh` and `restore.sh` capture that path. Logs now go to
+  stderr everywhere, leaving stdout for a script's actual output.
+- After a restore the data came back but the app stayed down: `docker compose up`
+  needs `ANAMNESIS_REF`, which only `deploy.sh` ever set. `lib.sh` now defaults it
+  from the recorded deployed release, and `restore.sh` ends by starting the app and
+  smoke-checking it. In a real disaster the first version would have left restored data
+  behind a stopped app.
+- `attachments.tar` was mode 0644 because tar runs inside a container with its own
+  umask; the directory was 0700, but a backup of attachments should be owner-only on
+  its own terms.
+- Sourced from zsh, `lib.sh` resolved the repository root one directory too high (zsh
+  has no `BASH_SOURCE`) and failed somewhere confusing; it now refuses to load outside bash.
+- This machine's `buildx` ignores `--format '{{.Manifest.Digest}}'` and prints the
+  whole report, so the updater reads the `Digest:` line, which matches the registry's own
+  `Docker-Content-Digest`.
+
+**GitHub settings turned on 2026-10-24:** the dependency graph (732 packages),
+Dependabot alerts and security updates, secret scanning with push protection, and the
+`production` environment. `.github/dependabot.yml` is weekly and grouped — `next` with
+`eslint-config-next`, `react` with `react-dom`, `prisma` with `@prisma/*` — because
+those are pinned to each other and each pull request runs the whole suite, model-backed
+jobs included. The "Dependency review" check fails a pull request that introduces a
+runtime dependency with a known high-severity vulnerability.
+
+**Deliberately not done:** HTTPS and a reverse proxy (the app is bound to
+`127.0.0.1`); an off-machine copy of the backups (encrypt first, then copy — until
+then a dead disk takes the data and the backups together); alerting beyond log files;
+an x86 image; reporting the machine's actual deploy result back to GitHub (it would need
+a token stored on the machine). The last is why GitHub's Deployments tab shows what was
+*promoted*, while `ops/state/update.log` records what actually *ran*.
+
 ## AI evaluation protocol (`tests/ai/evals.ts`)
 
 Maintain benchmarks verifying RAG retrieval precision, citation correctness, and
@@ -1123,6 +1294,7 @@ pnpm db:up        # start Postgres + pgvector
 ollama serve      # start the local model server
 pnpm dev
 pnpm eval         # run tests/ai/evals.ts (needs the DB and Ollama running)
+ops/rehearse.sh <image>   # rehearse deploy, backup, restore and rollback against a throwaway stack
 ```
 
 The eval suite runs with `--conditions=react-server` so that `server-only` resolves

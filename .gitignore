@@ -47,3 +47,7 @@ tests/e2e/.auth
 test-results/
 playwright-report/
 data/
+
+# ops: runtime state and local backups must never be committed
+/ops/state/
+/backups/

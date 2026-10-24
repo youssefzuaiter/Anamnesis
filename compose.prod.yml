@@ -1,0 +1,68 @@
+# Production stack. Everything is driven through ops/*.sh, which pass
+# `--env-file .env.production`; running `docker compose` against this file by
+# hand works too as long as you pass the same flag.
+#
+# Deliberately separate from docker-compose.yml, which is the development
+# database: different project name, different volumes, different ports, so the
+# two can run side by side without ever sharing data.
+name: anamnesis-prod
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: anamnesis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run ops/bootstrap.sh to create .env.production}
+      POSTGRES_DB: anamnesis
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anamnesis -d anamnesis"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    # No published port. Only the app and the backup scripts need the database,
+    # and both reach it through the compose network or `docker compose exec`.
+
+  # One-shot: applies pending migrations and exits. It runs from the same image
+  # as the app, so the migrations are always the ones built with this release.
+  migrate:
+    image: ${ANAMNESIS_REF:?ops/deploy.sh sets ANAMNESIS_REF}
+    command: ["./node_modules/.bin/prisma", "migrate", "deploy"]
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://anamnesis:${POSTGRES_PASSWORD}@postgres:5432/anamnesis
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    image: ${ANAMNESIS_REF:?ops/deploy.sh sets ANAMNESIS_REF}
+    init: true
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://anamnesis:${POSTGRES_PASSWORD}@postgres:5432/anamnesis
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?run ops/bootstrap.sh to create .env.production}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3200}
+      # Ollama runs on the host, not in a container: Docker cannot give a
+      # container the Mac's GPU, and the models would crawl on CPU alone.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.2:3b}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+    extra_hosts:
+      # Docker Desktop defines host.docker.internal itself; Linux needs this.
+      - "host.docker.internal:host-gateway"
+    ports:
+      # Localhost only. Put a reverse proxy with TLS in front of this if the
+      # app is ever to be reached from anywhere else.
+      - "127.0.0.1:${ANAMNESIS_PORT:-3200}:3000"
+    volumes:
+      - attachments:/app/data/attachments
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  attachments:

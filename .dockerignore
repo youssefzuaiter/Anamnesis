@@ -1,0 +1,33 @@
+# Nothing here should ever be baked into an image: secrets, user data, and
+# anything the build regenerates itself.
+.git
+.github
+node_modules
+.next
+out
+build
+
+# Secrets and local state. `.env.example` is the only env file that ships.
+.env
+.env.*
+!.env.example
+data
+backups
+ops/state
+
+# Generated inside the image; a host copy would be stale or the wrong platform.
+src/generated
+*.tsbuildinfo
+next-env.d.ts
+
+# Tests and their output are not part of the runtime.
+tests
+test-results
+playwright-report
+coverage
+
+# Docs and editor files.
+*.md
+.DS_Store
+.vscode
+.idea

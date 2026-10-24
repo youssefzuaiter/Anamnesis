@@ -1,0 +1,44 @@
+# Dependabot opens a pull request when something we depend on has a newer
+# version, and (separately, through the repository's security settings) when one
+# has a known vulnerability. Every one of those pull requests runs the full CI
+# suite, so a bad upgrade is caught before it can be merged.
+#
+# Grouped and weekly on purpose: each pull request runs the whole suite, including
+# the model-backed jobs, so a stream of one-package PRs would be noisy and slow.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      # These are pinned to each other (next and eslint-config-next must match;
+      # react and react-dom must match), so they have to move together.
+      next:
+        patterns: ["next", "eslint-config-next"]
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+      prisma:
+        patterns: ["prisma", "@prisma/*"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # The Dockerfile's base image (node:24-bookworm-slim).
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
