@@ -1273,6 +1273,16 @@ those are pinned to each other and each pull request runs the whole suite, model
 jobs included. The "Dependency review" check fails a pull request that introduces a
 runtime dependency with a known high-severity vulnerability.
 
+**Why some alerts say "runtime".** `prisma` is in `dependencies` so the image can run
+`migrate deploy`, which makes everything the Prisma CLI pulls in (its Studio UI's
+`lodash`, its dev server's `fast-uri`) count as runtime to Dependabot and to the
+dependency-review check (`fail-on-scopes: runtime`). None of that is reachable from the
+running app, but it is shipped, so it is kept patched rather than waved through. The
+first batch (2026-10-24: `lodash`, `fast-uri`, `source-map-js`, `brace-expansion`) was
+fixed by moving the lockfile forward within the ranges the parents already allow, with
+no `overrides`, so nothing has to be remembered and removed later. `pnpm audit` is the
+quick check that the tree is clean.
+
 **Deliberately not done:** HTTPS and a reverse proxy (the app is bound to
 `127.0.0.1`); an off-machine copy of the backups (encrypt first, then copy — until
 then a dead disk takes the data and the backups together); alerting beyond log files;
