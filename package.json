@@ -20,7 +20,7 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.8",
     "next": "16.4.2",
     "next-auth": "5.0.0-beta.32",
     "ollama": "^0.6.4",
