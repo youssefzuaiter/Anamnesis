@@ -42,3 +42,10 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 2
+    # The image must run the same Node major that CI tests on (ci.yml), and a
+    # major is only a good idea once it is an LTS line. Dependabot cannot tell an
+    # LTS from a short-lived release, and proposed the end-of-life Node 25. Majors
+    # are changed by hand, in the Dockerfile and ci.yml together.
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]

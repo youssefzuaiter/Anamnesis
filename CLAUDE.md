@@ -1175,6 +1175,14 @@ so that a fresh named volume mounted over it is writable. `APP_VERSION` is the l
 as an env var (what `/api/health` reports) and as the OCI revision label (what the
 updater reads to check out the matching scripts).
 
+**The image's Node major must equal the one CI tests on.** Both are 24, the LTS line
+(the Dockerfile's two `FROM` lines and `node-version` in `ci.yml`). On 2026-10-24
+Dependabot proposed `node:25-bookworm-slim`, and it was merged because CI was green
+— but the app's tests all ran on 24, so the image would have shipped a runtime nothing
+had tested against, on a line whose last release was 2026-03-31. The Dependabot
+`docker` entry now ignores major bumps; changing the Node major is a deliberate edit to
+the Dockerfile and `ci.yml` together, made when the next even-numbered line is LTS.
+
 **Installing dependencies in Docker was slow for a reason that is not the
 network.** The first image build spent 4m16s in `pnpm install` and then timed out.
 pnpm 11 verifies the lockfile against supply-chain age policies using each
