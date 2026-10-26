@@ -6,17 +6,8 @@ import { Icon } from "@/components/icons";
 import { CommandPaletteTrigger } from "@/components/command-palette-trigger";
 import { SignOutButton } from "@/components/sign-out-button";
 import { NAV_GROUPS, isActive, type NavBadges } from "@/components/nav-items";
-
-export function BrandMark({ className = "size-7" }: { className?: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={`inline-flex shrink-0 items-center justify-center rounded-lg bg-accent text-on-accent ${className}`}
-    >
-      <Icon name="mark" className="size-4" strokeWidth={2.25} />
-    </span>
-  );
-}
+import { BrandLockup } from "@/components/brand";
+import { ThemeSwitch } from "@/components/theme-switch";
 
 function initials(name: string): string {
   const parts = name.split(/[\s@.]+/).filter(Boolean);
@@ -34,9 +25,8 @@ export function AppSidebar({
 
   return (
     <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-border-subtle bg-surface-subtle px-3 pb-3 pt-4 sm:flex">
-      <Link href="/" className="flex items-center gap-2.5 rounded-lg px-1.5 py-0.5">
-        <BrandMark />
-        <span className="text-[17px] font-bold tracking-tight text-text">Anamnesis</span>
+      <Link href="/" aria-label="Anamnesis, go to Today" className="block w-fit">
+        <BrandLockup height={64} />
       </Link>
 
       <CommandPaletteTrigger />
@@ -79,6 +69,7 @@ export function AppSidebar({
       </nav>
 
       <div className="flex flex-col gap-0.5 border-t border-border-subtle pt-3">
+        <ThemeSwitch variant="cycle" className="mb-1" />
         <div className="flex items-center gap-2.5 px-1.5 pb-2">
           <span
             aria-hidden="true"

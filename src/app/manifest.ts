@@ -17,9 +17,9 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#f5f6f8",
     icons: [
       {
-        src: "/icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
+        src: "/brand/anamnesis-icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
         purpose: "any",
       },
     ],

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionUserId } from "@/lib/session";
-import { BrandMark } from "@/components/app-sidebar";
+import { BrandLockup } from "@/components/brand";
+import { ThemeSwitch } from "@/components/theme-switch";
 import { Icon, type IconName } from "@/components/icons";
 
 // Three things the app connects, drawn as the idea rather than a screenshot:
@@ -19,9 +20,9 @@ export default async function AuthLayout({ children }: LayoutProps<"/">) {
     <main className="flex flex-1">
       <div className="flex flex-1 items-center justify-center bg-surface px-6 py-12">
         <div className="w-full max-w-sm">
-          <div className="mb-10 flex items-center gap-2.5">
-            <BrandMark className="size-8" />
-            <span className="text-xl font-bold tracking-tight text-text">Anamnesis</span>
+          <div className="mb-10 flex flex-col gap-5">
+            <ThemeSwitch className="self-end" />
+            <BrandLockup height={72} />
           </div>
           {children}
         </div>
@@ -58,8 +59,7 @@ export default async function AuthLayout({ children }: LayoutProps<"/">) {
           ))}
         </div>
         <div className="max-w-md">
-          <p className="font-serif text-3xl italic text-text">anamnesis</p>
-          <p className="mt-2 font-serif text-[17px] leading-relaxed text-text-muted">
+          <p className="font-serif text-[17px] leading-relaxed text-text-muted">
             The recollection of what you already know. Your notes, tasks and
             calendar, connected and ready when you ask.
           </p>

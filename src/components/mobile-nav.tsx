@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { SignOutButton } from "@/components/sign-out-button";
+import { ThemeSwitch } from "@/components/theme-switch";
 import {
   MOBILE_MORE,
   MOBILE_TABS,
@@ -110,6 +111,7 @@ export function MobileNav({ badges }: { badges: NavBadges }) {
           })}
         </ul>
         <div className="flex flex-col gap-0.5 border-t border-border-subtle px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
+          <ThemeSwitch className="mb-2 w-full" />
           <a
             href="/api/export"
             className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-text-muted hover:bg-surface-subtle"

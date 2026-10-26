@@ -557,7 +557,8 @@ any of it was built here. It replaced a cream-and-sepia palette with pastel-tint
 cards and a flat sidebar of fifteen items, each with a different colored dot.
 **Quiet Studio** is calm, cool and content-first: neutral surfaces, one accent, and
 color only where it carries meaning. The tokens live in `src/app/globals.css`, and
-light and dark are designed together, following the system setting.
+light and dark are designed together. The reader chooses System, Light or Dark;
+System, the default, follows the operating system.
 
 **Color means one thing each, and always comes with words:**
 
@@ -571,6 +572,15 @@ light and dark are designed together, following the system setting.
 
 The per-id pastel tints (`lib/card-color.ts`) were decoration, a hash of the note's
 id with no meaning, and are gone.
+
+**The theme is one attribute, `data-theme`, on `<html>`.** A script in the root layout
+sets it before first paint from the reader's stored choice (`anamnesis-theme` in
+localStorage, which is per browser and not shared), falling back to the system. The
+tokens and the `dark:` variant both read that attribute (`@custom-variant dark` in
+`globals.css`), so they cannot disagree. The rules are pure and unit-tested in
+`lib/theme.ts`. Two things to know: the choice is not stored on the server, so a new
+browser starts on System; and the browser's own address-bar colour still follows the
+operating system (`viewport.themeColor`), since that is set before any script runs.
 
 **Every text pair is measured, not eyeballed.** Every token pair in both themes was
 computed against WCAG AA. The lowest text pairs are accent on accent-soft at 4.75:1
@@ -647,7 +657,7 @@ get a different ground instead.
 
 **Deliberately not done:** an hour-by-hour week grid (the proposal drew one; the week
 view is still a row of days, and dropping a task still lands it at 09:00); a manual
-theme switch (the system setting decides); renaming "Nexus" in the assistant's system
+theme switch beyond that choice; renaming "Nexus" in the assistant's system
 prompt, since the prompt's behaviour is measured by the evals and a visual change
 should not move it. In `next dev`, Next.js's own indicator badge sits over the phone
 tab bar's More button; production builds do not show it.

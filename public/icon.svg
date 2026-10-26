@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Anamnesis">
-  <rect width="512" height="512" rx="112" fill="#0f766e"/>
-  <path transform="translate(96 96) scale(13.333)" d="M12 4a8 8 0 1 0 8 8M12 8a4 4 0 1 0 4 4M12 12h8"
-        fill="none" stroke="#ffffff" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>

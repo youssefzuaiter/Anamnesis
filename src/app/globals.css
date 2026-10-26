@@ -1,13 +1,22 @@
 @import "tailwindcss";
 
 /*
+ * The theme is one attribute on <html>: data-theme="light" or "dark". It is set
+ * before first paint from the reader's choice, or from the system when there is
+ * no choice (see src/app/layout.tsx and src/lib/theme.ts). Both the tokens below
+ * and the `dark:` utilities read that attribute, so they cannot disagree.
+ */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
  * Quiet Studio: a calm, cool, content-first palette (see "Design system" in
  * CLAUDE.md). One accent, used for action and location; amber, red and violet
  * each carry exactly one meaning; everything else is neutral. Light and dark
  * are designed together, and every text pair below was measured against
  * WCAG AA (4.5:1 for text, 3:1 for control borders), not eyeballed.
  */
-:root {
+:root,
+:root[data-theme="light"] {
   color-scheme: light;
 
   --canvas: #f5f6f8;
@@ -47,41 +56,39 @@
   --shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 8px 24px rgb(16 24 40 / 0.06);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
+:root[data-theme="dark"] {
+  color-scheme: dark;
 
-    --canvas: #0d1117;
-    --surface: #151b23;
-    --surface-subtle: #1b222c;
-    --surface-hover: #222a36;
-    --border: #262f3b;
-    --border-strong: #3a4659;
-    --control: #6b7789;
+  --canvas: #0d1117;
+  --surface: #151b23;
+  --surface-subtle: #1b222c;
+  --surface-hover: #222a36;
+  --border: #262f3b;
+  --border-strong: #3a4659;
+  --control: #6b7789;
 
-    --text: #e7ecf3;
-    --text-muted: #b4becd;
-    --text-faint: #94a0b3;
+  --text: #e7ecf3;
+  --text-muted: #b4becd;
+  --text-faint: #94a0b3;
 
-    /* A lighter teal, so it reads as text on the dark surface; text on it
-       turns dark rather than white. */
-    --accent: #6aaaa5;
-    --accent-hover: #7db5b1;
-    --accent-soft: #26383d;
-    --accent-ink: #8fbfbc;
-    --on-accent: #06100e;
+  /* A lighter teal, so it reads as text on the dark surface; text on it
+     turns dark rather than white. */
+  --accent: #6aaaa5;
+  --accent-hover: #7db5b1;
+  --accent-soft: #26383d;
+  --accent-ink: #8fbfbc;
+  --on-accent: #06100e;
 
-    --ai: #a99bff;
-    --ai-soft: #241e4a;
-    --warn: #f5b94a;
-    --warn-soft: #3a2c0c;
-    --danger: #ff8a80;
-    --danger-soft: #3b1a18;
-    --ok: #5cd6a0;
-    --ok-soft: #12301f;
+  --ai: #a99bff;
+  --ai-soft: #241e4a;
+  --warn: #f5b94a;
+  --warn-soft: #3a2c0c;
+  --danger: #ff8a80;
+  --danger-soft: #3b1a18;
+  --ok: #5cd6a0;
+  --ok-soft: #12301f;
 
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.28);
-  }
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.28);
 }
 
 @theme inline {

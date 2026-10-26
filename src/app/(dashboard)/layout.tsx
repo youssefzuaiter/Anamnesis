@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { requireUserId } from "@/lib/session";
 import { CommandPalette } from "@/components/command-palette";
-import { AppSidebar, BrandMark } from "@/components/app-sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
+import { BrandLockup } from "@/components/brand";
 import { MobileNav } from "@/components/mobile-nav";
 import {
   AssistantDockProvider,
@@ -41,9 +42,8 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex min-h-14 items-center justify-between gap-3 px-4 sm:justify-end sm:px-8">
-            <Link href="/" className="flex items-center gap-2 sm:hidden">
-              <BrandMark />
-              <span className="text-base font-bold tracking-tight text-text">Anamnesis</span>
+            <Link href="/" aria-label="Anamnesis, go to Today" className="sm:hidden">
+              <BrandLockup height={40} />
             </Link>
             <div className="hidden sm:block">
               <AssistantToggle variant="bar" />
