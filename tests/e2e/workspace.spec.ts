@@ -356,3 +356,72 @@ test("navigation reaches every section", async ({ page }) => {
     ).toHaveText(heading);
   }
 });
+
+/** Creates a note through the form and waits for its page. */
+async function createNote(page: Page, title: string, content: string) {
+  await page.goto("/notes/new");
+  await page.fill('input[name="title"]', title);
+  if (content) await page.fill('textarea[name="content"]', content);
+  await main(page).getByRole("button", { name: /create note/i }).click();
+  await page.waitForURL(/\/notes\/[0-9a-f-]{36}$/);
+}
+
+test("a note shows typeset maths and highlighted code, and a bad formula does not break the page", async ({
+  page,
+}) => {
+  await createNote(
+    page,
+    `Maths ${Date.now()}`,
+    [
+      "Energy: $E = mc^2$",
+      "",
+      "$$",
+      "\\frac{a}{b}",
+      "$$",
+      "",
+      "Broken: $\\frac{1$",
+      "",
+      "```python",
+      "def f():",
+      "    return 1",
+      "```",
+      "",
+      "It costs \\$5 and \\$10.",
+    ].join("\n"),
+  );
+
+  await expect(main(page).locator(".katex").first()).toBeVisible();
+  await expect(main(page).locator(".katex-display")).toHaveCount(1);
+  // The broken formula shows as its typed text rather than failing the note.
+  await expect(main(page).locator(".katex-error")).toHaveCount(1);
+  await expect(main(page).locator(".hljs-keyword").first()).toBeVisible();
+  await expect(main(page)).toContainText("$5 and $10");
+});
+
+test("a very wide formula scrolls inside its own box on a phone", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  const terms = Array.from({ length: 80 }, (_, i) => `x_{${i}}`).join(" + ");
+  await createNote(page, `Wide ${Date.now()}`, `$$\n${terms}\n$$`);
+
+  await expect(main(page).locator(".katex-display")).toHaveCount(1);
+  // A formula wider than the screen must scroll in its own box, never widen
+  // the page (the redesign's phone overflow passed every other check).
+  const overflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("a note that is only a formula still renders", async ({ page }) => {
+  await createNote(page, `Only maths ${Date.now()}`, "$x$");
+  await expect(main(page).locator(".katex").first()).toBeVisible();
+});
+
+test("an empty note still shows the empty message", async ({ page }) => {
+  await createNote(page, `Empty ${Date.now()}`, "");
+  await expect(main(page)).toContainText("This note is empty");
+});

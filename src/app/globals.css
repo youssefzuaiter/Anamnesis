@@ -156,3 +156,10 @@ input[type="radio"] {
     scroll-behavior: auto !important;
   }
 }
+
+/* A display formula wider than the screen scrolls inside its own box instead of
+   widening the page. */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+}

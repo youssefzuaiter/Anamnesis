@@ -18,6 +18,7 @@ import { NoteLinks } from "@/components/note-links";
 import { listForNote } from "@/repositories/flashcard-repository";
 import { GenerateCards } from "@/components/generate-cards";
 import { NoteView } from "@/components/note-view";
+import { NoteContent } from "@/components/note-content";
 import { RelatedItems } from "@/components/related-items";
 import { NoteAttachments } from "@/components/note-attachments";
 import { listForNote as listAttachments } from "@/repositories/attachment-repository";
@@ -72,7 +73,7 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
   const deleteThisNote = deleteNoteAction.bind(null, note.id);
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-x-10 gap-y-8 xl:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="mx-auto grid max-w-6xl grid-cols-1 gap-x-10 gap-y-8 xl:grid-cols-[minmax(0,1fr)_300px]">
       <article className="min-w-0">
         <nav
           aria-label="Breadcrumb"
@@ -129,8 +130,15 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
               </div>
             </>
           }
-          content={note.content}
-          links={linkTargets}
+          body={
+            note.content.trim() ? (
+              <NoteContent content={note.content} links={linkTargets} />
+            ) : (
+              <p className="text-sm text-text-muted">
+                This note is empty. Use Edit to write something.
+              </p>
+            )
+          }
           editor={
             <NoteEditor
               action={updateThisNote}

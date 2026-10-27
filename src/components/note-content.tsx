@@ -1,9 +1,8 @@
-"use client";
-
 import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
 import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import "katex/dist/katex.min.css"; // rehype-katex does not import its own CSS
+import { remarkPlugins, rehypePlugins } from "@/lib/markdown";
 import { wikiLinkPattern, normalizeTitle } from "@/lib/wiki-links";
 
 /**
@@ -13,6 +12,11 @@ import { wikiLinkPattern, normalizeTitle } from "@/lib/wiki-links";
  * raw-HTML plugin is enabled, so a note containing `<script>` renders as the
  * literal characters. That matters here: note content is not always typed by
  * the author — an imported PDF is whatever the file contained.
+ *
+ * This is a server component on purpose. KaTeX and the syntax highlighter are
+ * large, so a note is turned into HTML on the server and only that HTML
+ * reaches the browser; the page hands the result to the client NoteView as a
+ * ready-made node.
  */
 
 /**
@@ -89,7 +93,8 @@ export function NoteContent({
   return (
     <div className="flex max-w-[68ch] flex-col gap-4 font-serif text-[17px] leading-[1.75] text-text">
       <Markdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
         components={{
           h1: ({ children }) => (
             <h2 className="mt-4 font-sans text-xl font-bold leading-snug tracking-tight text-text">
@@ -127,19 +132,22 @@ export function NoteContent({
               {children}
             </blockquote>
           ),
-          code: ({ className, children }) => {
-            // A fenced block gets a language class; an inline span does not.
-            const fenced = Boolean(className);
-            return fenced ? (
-              <code className="block overflow-x-auto rounded-lg bg-surface-subtle p-4 font-mono text-[13px] leading-relaxed">
-                {children}
-              </code>
-            ) : (
-              <code className="rounded bg-surface-subtle px-1 py-0.5 font-mono text-[0.85em]">
-                {children}
-              </code>
-            );
-          },
+          // The block look lives on <pre>, so a fence is the same block with or
+          // without a language; <code> inside it drops its inline-code look.
+          // `className` is kept so the highlighter's `hljs` and `language-*`
+          // classes survive.
+          pre: ({ children }) => (
+            <pre className="overflow-x-auto rounded-lg bg-surface-subtle p-4 font-mono text-[13px] leading-relaxed [&>code]:rounded-none [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-[1em]">
+              {children}
+            </pre>
+          ),
+          code: ({ className, children }) => (
+            <code
+              className={`rounded bg-surface-subtle px-1 py-0.5 font-mono text-[0.85em] ${className ?? ""}`}
+            >
+              {children}
+            </code>
+          ),
           table: ({ children }) => (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-left font-sans text-sm">
