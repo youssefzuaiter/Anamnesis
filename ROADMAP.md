@@ -19,7 +19,7 @@ services. Nothing may need a paid API key.
 
 ## A. Quick wins
 
-- [ ] **1. Maths and code highlighting in notes** (S). Render `$...$` and `$$...$$` with KaTeX
+- [x] **1. Maths and code highlighting in notes** (S). Render `$...$` and `$$...$$` with KaTeX
   (free, local) and highlight fenced code, in the reading view. Fall back to the raw text
   if a formula is invalid, never an error page. Check the editor's own preview too.
 - [ ] **2. Note templates** (S, demo). Lecture, Cornell, paper summary, meeting. A picker on

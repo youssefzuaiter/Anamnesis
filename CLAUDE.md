@@ -706,6 +706,73 @@ prompt, since the prompt's behaviour is measured by the evals and a visual chang
 should not move it. In `next dev`, Next.js's own indicator badge sits over the phone
 tab bar's More button; production builds do not show it.
 
+## Maths and code in notes
+
+A note's reading view typesets `$...$` (inline) and `$$...$$` (block) with KaTeX and
+highlights fenced code with highlight.js (ROADMAP item 1). Everything is free, local
+and needs no network. The editor is a plain textarea with no preview of its own, so
+the reading view is the only place this shows.
+
+**Rendered on the server, on purpose.** `NoteContent` is an async server component
+using react-markdown's `MarkdownAsync`; the client `NoteView` receives the result as
+`body`, the way it already received `header` and `editor`. Checked on the production
+build, not assumed: `KaTeX parse error` and `\htmlClass` (KaTeX) and `nonlocal` (a Python
+keyword from the highlighter's grammar) are each in 2 files under `.next/server` and in
+none under `.next/static`. `hljs-` is in one client file, which is the stylesheet.
+The plugin set lives in `lib/markdown.ts` (no React, no Prisma) so the rendering rules
+can be tested without a database.
+
+**Choices that were measured rather than assumed:**
+
+- **Dollar signs.** `\$` is a literal dollar. A bare `It costs $5 and $10` is read as
+  maths; that is the usual trade-off of this syntax, and a test pins it so a change
+  to the plugin cannot alter it unnoticed.
+- **Invalid formulas** show the typed text in the warning colour; they never fail the
+  note. `rehype-katex` does this itself. I first set `throwOnError: false` and
+  `ignoreMissing: true`; flipping either left every test passing, and the plugin
+  source confirmed both are no-ops, so neither is set. `strict: "ignore"` is set, and
+  is protected by a test: without it KaTeX writes a console warning for an accented
+  letter in a formula. `trust` stays off, because turning it on lets a formula write
+  links and raw HTML, and a note can be an imported PDF.
+- **Plugin order** (KaTeX before the highlighter) only avoids a "not registered"
+  warning per formula; swapping them gave identical output.
+- **One KaTeX.** `rehype-katex` 7 pulled its own katex 0.16.x while the stylesheet came
+  from 0.19.1, and `pnpm audit` flagged the old one (below 0.18.2). `pnpm-workspace.yaml`
+  overrides `katex` to 0.19.1, a test asserts the renderer and the shipped stylesheet
+  are the same version, and the Dockerfile copies that file. Remove the override once
+  `rehype-katex` accepts a patched range on its own.
+- **A note can be 100,000 characters, so cost was measured at that size.** 16,000 inline
+  formulas took about 5 s and produced 12 MB of HTML, so `MAX_FORMULAS` is 1000 per
+  note and later formulas stay as typed text (a real note has dozens; 1000 renders in
+  well under a second). The number is a judgement, not a KaTeX limit. A macro bomb
+  (`\def\a{\a\a}`) and a huge `\rule` finished fast on KaTeX's own limits. A 100,000
+  character code fence took about 1.6 s and 2.7 MB; no cap was added.
+- **Deeply nested code can overflow the stack, and the highlighter is not where.** A
+  `typescript` fence nesting roughly 1,000 to 2,000 template-literal substitutions
+  overflows inside react-markdown's own tree walk. A try/catch around the highlighter
+  was written first and was wrong. `NoteContent` instead awaits `MarkdownAsync` inside
+  a try/catch and, on failure, shows the raw text with a sentence saying so; the Edit
+  button stays. The JSX is built after the try: the React compiler's
+  `react-hooks/error-boundaries` rule rejects JSX inside one.
+- **Colours** come from the app's own tokens (`.hljs-*` in `globals.css`), so code
+  follows light and dark with everything else and there is no stock theme to keep in
+  step. The lowest pair was measured at 5.20:1 in light and 6.05:1 in dark against the
+  code ground. `detect: false` leaves a fence with no language plain instead of guessing.
+- **`pnpm test` is two runs.** Unit tests run with `--conditions=react-server`, and under
+  that condition `react-dom/server` refuses to load, so the render tests live in
+  `tests/render/` and run second, without it.
+
+**Found by looking at it on a phone, not by a check:** the note page's grid had no
+explicit column track, so a wide formula widened the whole page (the same cause as the
+dashboard's, above). `grid-cols-1` fixed it, and the Playwright test for a very wide
+formula at 375px fails by 4,196px without the `.katex-display` scroll rule. **Not
+checked:** `projects/[id]/page.tsx` and `calendar/page.tsx` use a similar
+`grid gap-4 sm:grid-cols-N` pattern and were not looked at.
+
+**Accepted, not fixed:** the app sends no Content-Security-Policy header anywhere, so none
+was added for this feature alone; KaTeX's output is safe with `trust` off, which the
+tests assert for `\href`, `\url`, `\includegraphics` and the `\html…` family.
+
 ## The assistant, and what actually defends it
 
 `services/assistant-service.ts` retrieves chunks, builds the prompt, and streams an
