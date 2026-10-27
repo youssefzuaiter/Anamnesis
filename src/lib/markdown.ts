@@ -20,19 +20,16 @@ function limitFormulas() {
   return (tree: MdNode) => {
     let seen = 0;
     const walk = (node: MdNode) => {
-      if (!node.children) return;
-      node.children = node.children.map((child) => {
-        if (child.type === "inlineMath" || child.type === "math") {
-          seen += 1;
-          if (seen > MAX_FORMULAS) {
-            const source = child.value ?? "";
-            return child.type === "inlineMath"
+      node.children?.forEach((child, index, siblings) => {
+        if ((child.type === "inlineMath" || child.type === "math") && ++seen > MAX_FORMULAS) {
+          const source = child.value ?? "";
+          siblings[index] =
+            child.type === "inlineMath"
               ? { type: "text", value: `$${source}$` }
               : { type: "code", value: source };
-          }
+          return;
         }
         walk(child);
-        return child;
       });
     };
     walk(tree);
@@ -50,11 +47,11 @@ export const remarkPlugins: NonNullable<Options["remarkPlugins"]> = [
   remarkMath,
   limitFormulas,
 ];
+
 /**
- * KaTeX is listed first so the highlighter never meets the `language-math` code
- * that maths is parsed into; it would otherwise record a "not registered"
- * warning for every formula. The output is the same either way (checked by
- * swapping them), so this is about noise, not correctness.
+ * KaTeX goes first so the highlighter never meets the `language-math` code that
+ * maths is parsed into, and records no "not registered" warning per formula.
+ * Output is identical either way (checked by swapping them).
  *
  * - An invalid formula never fails the note: rehype-katex catches the error
  *   itself and shows the text that was typed, in `errorColor`.

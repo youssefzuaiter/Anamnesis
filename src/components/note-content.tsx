@@ -6,20 +6,6 @@ import { remarkPlugins, rehypePlugins } from "@/lib/markdown";
 import { wikiLinkPattern, normalizeTitle } from "@/lib/wiki-links";
 
 /**
- * Renders note text as Markdown for reading.
- *
- * react-markdown builds React elements rather than setting innerHTML, and no
- * raw-HTML plugin is enabled, so a note containing `<script>` renders as the
- * literal characters. That matters here: note content is not always typed by
- * the author — an imported PDF is whatever the file contained.
- *
- * This is a server component on purpose. KaTeX and the syntax highlighter are
- * large, so a note is turned into HTML on the server and only that HTML
- * reaches the browser; the page hands the result to the client NoteView as a
- * ready-made node.
- */
-
-/**
  * `[[Title]]` is this app's own syntax, not Markdown's, so it is substituted
  * into the already-parsed text nodes rather than handed to the parser. Working
  * on text nodes is what keeps a `[[link]]` inside a code fence from turning
@@ -79,6 +65,19 @@ function linkifyChildren(
   return children;
 }
 
+/**
+ * Renders note text as Markdown for reading.
+ *
+ * react-markdown builds React elements rather than setting innerHTML, and no
+ * raw-HTML plugin is enabled, so a note containing `<script>` renders as the
+ * literal characters. That matters here: note content is not always typed by
+ * the author — an imported PDF is whatever the file contained.
+ *
+ * This is a server component on purpose. KaTeX and the syntax highlighter are
+ * large, so a note is turned into HTML on the server and only that HTML
+ * reaches the browser; the page hands the result to the client NoteView as a
+ * ready-made node.
+ */
 export async function NoteContent({
   content,
   links,
@@ -87,6 +86,14 @@ export async function NoteContent({
   /** Normalized note title → its id, or null when nothing resolves. */
   links: Record<string, string | null>;
 }) {
+  if (!content.trim()) {
+    return (
+      <p className="text-sm text-text-muted">
+        This note is empty. Use Edit to write something.
+      </p>
+    );
+  }
+
   const map = new Map(Object.entries(links));
   const linkify = (children: ReactNode) => linkifyChildren(children, map);
 

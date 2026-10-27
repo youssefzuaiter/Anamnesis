@@ -130,15 +130,7 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
               </div>
             </>
           }
-          body={
-            note.content.trim() ? (
-              <NoteContent content={note.content} links={linkTargets} />
-            ) : (
-              <p className="text-sm text-text-muted">
-                This note is empty. Use Edit to write something.
-              </p>
-            )
-          }
+          body={<NoteContent content={note.content} links={linkTargets} />}
           editor={
             <NoteEditor
               action={updateThisNote}

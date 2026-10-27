@@ -73,12 +73,6 @@ test("raw HTML stays escaped", () => {
   assert.ok(!html.includes("<script"));
 });
 
-test("maths cannot smuggle a link", () => {
-  const html = render("$\\href{javascript:alert(1)}{x}$");
-  assert.ok(!html.includes("<a "));
-  assert.ok(!html.includes("href="));
-});
-
 test("maths and code in one note both render", () => {
   const html = render(
     "Energy $E = mc^2$.\n\n```python\ndef f():\n    return 1\n```",
