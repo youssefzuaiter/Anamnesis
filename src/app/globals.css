@@ -163,3 +163,49 @@ input[type="radio"] {
   overflow-x: auto;
   overflow-y: hidden;
 }
+
+/*
+ * Syntax colours for fenced code. highlight.js only adds class names; these map
+ * them onto the app's own tokens, so code follows light and dark with the rest
+ * of the page and there is no stock theme to keep in step. Every pair was
+ * measured against --surface-subtle (the code block ground) at 5.2:1 or better
+ * in both themes.
+ */
+.hljs-comment,
+.hljs-quote,
+.hljs-meta {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-type,
+.hljs-attr,
+.hljs-attribute {
+  color: var(--accent-ink);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  color: var(--ok);
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet {
+  color: var(--warn);
+}
+
+.hljs-title,
+.hljs-section {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.hljs-deletion {
+  color: var(--danger);
+}
