@@ -15,6 +15,50 @@ Build strictly step-by-step. Do not generate the entire codebase in one response
 Inspect the repository, identify architectural implications, propose the affected
 files/data models/interfaces, and only then implement.
 
+## Building features, one at a time
+
+New features come from `ROADMAP.md`, strictly one at a time and in its order unless
+told otherwise. A feature is finished when its pull request is open and every check
+is reported, not when the code compiles. Stop there; the next one starts on request.
+
+Each feature follows this loop. The named skills are invoked with the Skill tool, not
+paraphrased from memory:
+
+1. **Orient.** Read the roadmap entry and the sections of this file it touches.
+   `AGENTS.md` applies: read the bundled docs in `node_modules/next/dist/docs/`
+   before writing framework code.
+2. **Shape it.** `superpowers:brainstorming` for scope and edge cases. A real fork,
+   two sound options with different costs, goes to `council`. Before adding a
+   dependency or writing a parser, `search-first`.
+3. **Demo anything visual.** For entries tagged *demo*: `anthropic-skills:ui-ux-pro-max`
+   and a Design artifact, the way the redesign was shown, then wait for an explicit
+   yes before touching the app. Cover light, dark and a phone width.
+4. **Plan.** `superpowers:writing-plans`, then `superpowers:executing-plans`. If any
+   option costs money, say so first and build the free one.
+5. **Test first.** `superpowers:test-driven-development`. Pure logic goes in `lib/`
+   with unit tests; cross-tenant isolation in `tests/integration`; model behaviour in
+   `tests/ai/evals.ts`, sampled and never asserted from one generation; browser flows
+   in `tests/e2e`. Read "Testing UI with Playwright" first: that suite selects by label
+   and by `main`, so a new element can make an old selector ambiguous.
+6. **Guard.** `security-review` for anything touching sign-in, user input, files,
+   tokens or outside requests; `api-design` for a new route. Every query is scoped by
+   the session's `userId`, and every client-supplied id is ownership-checked.
+7. **Check.** `simplify`, then `superpowers:verification-before-completion` with
+   `verification-loop`: `tsc`, `pnpm lint`, unit and integration tests, `pnpm build`,
+   and the e2e suite, long jobs at background priority on about one core. For UI
+   work, look at it in the browser at desktop and phone width, in light and dark:
+   the phone overflow in the redesign passed every automated check.
+8. **Review.** `code-review` on the diff, and fix what it finds before the pull request.
+9. **Record.** The decision, the measured facts and anything testing turned up go in
+   this file under the feature's own section (this file is the decision log, so no ADR
+   files). Update the README if a person can see the change, and tick the roadmap.
+10. **Ship.** `git-workflow` and `superpowers:finishing-a-development-branch`: a
+    branch and a pull request, not a push to `main`. The migration rule under
+    "Operations" applies. Anything that changes how the app runs also updates
+    `ops/README.md` and passes `ops/rehearse.sh`.
+
+Report candidly what was verified, what was only read, and what was skipped.
+
 ## Non-negotiable engineering rules
 
 - Complete, production-ready TypeScript. **Zero stubs, zero fake implementations,
