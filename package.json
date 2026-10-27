@@ -22,7 +22,7 @@
     "@prisma/client": "^7.10.1",
     "dotenv": "^18.0.8",
     "katex": "^0.19.1",
-    "next": "16.4.2",
+    "next": "16.4.3",
     "next-auth": "5.0.0-beta.32",
     "ollama": "^0.6.4",
     "pdf-parse": "^2.4.5",
@@ -46,7 +46,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.4.2",
+    "eslint-config-next": "16.4.3",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5"
