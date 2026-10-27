@@ -425,3 +425,18 @@ test("an empty note still shows the empty message", async ({ page }) => {
   await createNote(page, `Empty ${Date.now()}`, "");
   await expect(main(page)).toContainText("This note is empty");
 });
+
+test("a note whose code nests absurdly deep falls back to plain text instead of breaking its page", async ({
+  page,
+}) => {
+  // About 4,000 nested template-literal substitutions overflow the stack while
+  // the page is rendered. No one writes this, but an imported file can hold it.
+  await createNote(
+    page,
+    `Deep ${Date.now()}`,
+    "```typescript\n" + "`${".repeat(4000) + "\n```",
+  );
+  await expect(main(page)).toContainText("could not be displayed as formatted text");
+  // The way back to the editor must survive.
+  await expect(main(page).getByRole("button", { name: /^edit$/i })).toBeVisible();
+});

@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import Markdown from "react-markdown";
-import { remarkPlugins, rehypePlugins } from "@/lib/markdown";
+import { createRequire } from "node:module";
+import { remarkPlugins, rehypePlugins, MAX_FORMULAS } from "@/lib/markdown";
 
 // These render through react-markdown to HTML, so they run apart from the unit
 // tests: `pnpm test` runs those with the `react-server` condition, under which
@@ -98,4 +99,50 @@ test("an accented letter in a formula does not write a KaTeX warning to the cons
     console.warn = original;
   }
   assert.deepEqual(warnings, []);
+});
+
+function count(html: string, needle: string): number {
+  return html.split(needle).length - 1;
+}
+
+test("inline formulas beyond the limit stay as typed text", () => {
+  const html = render("$x$ ".repeat(MAX_FORMULAS + 5));
+  assert.equal(count(html, 'class="katex"'), MAX_FORMULAS);
+  assert.ok(html.includes("$x$"));
+});
+
+test("display formulas beyond the limit stay as their typed source", () => {
+  const html = render("$$\nx\n$$\n\n".repeat(MAX_FORMULAS + 3));
+  assert.equal(count(html, "katex-display"), MAX_FORMULAS);
+});
+
+test("maths commands that could write links, images or attributes stay inert", () => {
+  for (const command of [
+    "\\href{javascript:alert(1)}{x}",
+    "\\url{javascript:alert(1)}",
+    "\\includegraphics{https://evil.example/x.png}",
+    "\\htmlClass{evil}{x}",
+    "\\htmlId{evil}{x}",
+    "\\htmlStyle{position:fixed}{x}",
+    "\\htmlData{x=1}{y}",
+  ]) {
+    const html = render("$" + command + "$");
+    assert.ok(!html.includes("<a "), command);
+    assert.ok(!html.includes("<img"), command);
+    assert.ok(!html.includes("href="), command);
+    assert.ok(!html.includes("src="), command);
+    assert.ok(!/class="[^"]*\bevil\b/.test(html), command);
+    assert.ok(!/id="evil"/.test(html), command);
+    assert.ok(!/style="[^"]*position:\s*fixed/.test(html), command);
+    assert.ok(!html.includes("data-x="), command);
+  }
+});
+
+test("rehype-katex renders with the same KaTeX version whose stylesheet the app ships", () => {
+  const require = createRequire(import.meta.url);
+  const shipped = require("katex/package.json").version;
+  const usedByRehype = createRequire(require.resolve("rehype-katex"))(
+    "katex/package.json",
+  ).version;
+  assert.equal(usedByRehype, shipped);
 });

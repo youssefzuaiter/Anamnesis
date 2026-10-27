@@ -5,3 +5,12 @@ allowBuilds:
   prisma: true
   sharp: true
   unrs-resolver: false
+
+# rehype-katex and micromark-extension-math both ask for katex ^0.16, so by
+# default a second, older KaTeX is installed beside the one the app imports its
+# stylesheet from. That left the rendered markup and the CSS on different
+# versions, and 0.16 has an open advisory (patched in 0.18.2). Forcing one
+# version fixes both. Remove this once rehype-katex allows katex 0.19 itself;
+# tests/render/markdown.test.ts fails if the versions ever drift apart again.
+overrides:
+  katex: 0.19.1

@@ -4,6 +4,41 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 
+type MdNode = { type: string; value?: string; children?: MdNode[] };
+
+/**
+ * The most formulas rendered in one note; later ones stay as the text that was
+ * typed. A note may be 100,000 characters, and measured on this machine 16,000
+ * formulas took about 5 seconds to render and produced 12 MB of HTML, so a
+ * single huge or hostile note (an imported PDF can be full of dollar signs)
+ * would freeze the server on every view. A real note has dozens; 1,000 renders
+ * in well under a second. The number is a judgement, not a KaTeX limit.
+ */
+export const MAX_FORMULAS = 1000;
+
+function limitFormulas() {
+  return (tree: MdNode) => {
+    let seen = 0;
+    const walk = (node: MdNode) => {
+      if (!node.children) return;
+      node.children = node.children.map((child) => {
+        if (child.type === "inlineMath" || child.type === "math") {
+          seen += 1;
+          if (seen > MAX_FORMULAS) {
+            const source = child.value ?? "";
+            return child.type === "inlineMath"
+              ? { type: "text", value: `$${source}$` }
+              : { type: "code", value: source };
+          }
+        }
+        walk(child);
+        return child;
+      });
+    };
+    walk(tree);
+  };
+}
+
 /**
  * How a note's Markdown becomes HTML: tables and task lists (GFM), then maths.
  * `$...$` is inline maths, `$$...$$` is a block, and `\$` is a literal dollar
@@ -13,8 +48,8 @@ import rehypeHighlight from "rehype-highlight";
 export const remarkPlugins: NonNullable<Options["remarkPlugins"]> = [
   remarkGfm,
   remarkMath,
+  limitFormulas,
 ];
-
 /**
  * KaTeX is listed first so the highlighter never meets the `language-math` code
  * that maths is parsed into; it would otherwise record a "not registered"
