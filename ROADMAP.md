@@ -99,4 +99,39 @@ services. Nothing may need a paid API key.
   external drive is free; cloud storage costs money, so say so before building toward it.
 - [ ] **29. Error and uptime alerts** (S, ops). Reuse whatever 19 chose.
 
+## G. Added 2026-10-28
+
+Free and self-hosted, like everything above. Numbered in the order they were added; the
+order below is the order to build them in, which keeps each dependency pointing backwards.
+
+- [ ] **30. Content-Security-Policy header** (S, security). The app sends none, and notes now
+  render maths and code. Read the CSP guide in `node_modules/next/dist/docs/` first. The
+  inline theme script in `src/app/layout.tsx` needs a nonce or a hash, and KaTeX's stylesheet
+  and fonts must keep loading. Start in report-only mode to see what it would block, then
+  enforce; the e2e suite must pass under it.
+- [ ] **31. Weekly review** (S, demo). A read-only page: tasks finished, notes written, how
+  goals and courses moved, what is overdue and what comes next week. Plain queries over the
+  existing repositories; no model, and nothing is written.
+- [ ] **32. Notes that come back** (S). A dashboard card with one older note ("on this day",
+  or one not touched for a while). Use `updatedAt`; a "last opened" column would be a
+  migration for a small nicety.
+- [ ] **33. TODO lines become tasks** (M). Find unchecked `- [ ]` lines and `TODO:` lines in a
+  note and propose tasks. Propose, confirm, then re-validate on the server, the same shape
+  as Plan my day. The parsing is pure and lives in `lib/`. Decide what happens when the note
+  is edited later so a line is never proposed twice.
+- [ ] **34. Print-ready notes** (S, demo). A print stylesheet for a note and for a course's
+  notes: no app chrome, black on white whatever the theme, maths and code still legible. The
+  browser's "Save as PDF" does the rest, so nothing needs hosting.
+- [ ] **35. Restore from your JSON export** (M, security, depends on 11). Import an export
+  file with a preview of what would change before anything is written. The file is client
+  input: every row is re-owned by the session's user, every id re-checked, and a user id or
+  `passwordHash` in the file is never trusted. Importing twice must not duplicate anything.
+- [ ] **36. Duplicate-note cleanup** (M, model, builds on 7). Pairs of notes whose embeddings
+  are very close, on a review page: keep both, or merge (the other goes to the trash and its
+  links are re-pointed). Measure the similarity threshold on real notes the way
+  `RELEVANCE_FLOOR` was measured. Never merge without a confirmation.
+- [ ] **37. Notion import** (M, security). Notion's Markdown and CSV export is free. Pages
+  become notes, a database becomes a course or a project (the user chooses), and internal
+  links become `[[wiki links]]`. Reuse the size and type caps of `/notes/import`.
+
 Polish, any time: **Turkish interface** (M, demo). Dates and numbers are already en-GB.
