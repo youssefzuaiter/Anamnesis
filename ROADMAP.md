@@ -22,7 +22,7 @@ services. Nothing may need a paid API key.
 - [x] **1. Maths and code highlighting in notes** (S). Render `$...$` and `$$...$$` with KaTeX
   (free, local) and highlight fenced code, in the reading view. Fall back to the raw text
   if a formula is invalid, never an error page. Check the editor's own preview too.
-- [ ] **2. Note templates** (S, demo). Lecture, Cornell, paper summary, meeting. A picker on
+- [x] **2. Note templates** (S, demo). Lecture, Cornell, paper summary, meeting. A picker on
   "New note"; the templates are data, not code, so adding one is one entry.
 - [ ] **3. Keyboard shortcuts and a `?` cheat-sheet** (S, demo). Go-to shortcuts (g then n for
   notes, and so on) beside the existing ⌘K and ⌘J. Never fire inside a text field.
