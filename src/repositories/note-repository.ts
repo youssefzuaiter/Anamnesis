@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { DAILY_TAG } from "@/lib/daily";
 import type { NoteModel as Note } from "@/generated/prisma/models";
 
 export type NoteSummary = Pick<
@@ -99,6 +100,21 @@ export async function getNote(
 ): Promise<Note | null> {
   return prisma.note.findFirst({
     where: { id: noteId, userId, deletedAt: null },
+  });
+}
+
+/**
+ * The account's daily note for a day: the non-deleted note with that exact title
+ * and the `daily` tag. If more than one exists (a rename leaves the old one, a
+ * restore brings one back), the earliest wins, so opening never hides an older one.
+ */
+export async function findDailyNote(
+  userId: string,
+  title: string,
+): Promise<Note | null> {
+  return prisma.note.findFirst({
+    where: { userId, deletedAt: null, title, tags: { has: DAILY_TAG } },
+    orderBy: { createdAt: "asc" },
   });
 }
 

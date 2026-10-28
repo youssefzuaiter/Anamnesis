@@ -8,6 +8,7 @@ import * as goalRepository from "@/repositories/goal-repository";
 import * as courseRepository from "@/repositories/course-repository";
 import * as flashcardRepository from "@/repositories/flashcard-repository";
 import { bucketOf } from "@/services/task-service";
+import { findTodayNote } from "@/services/daily-service";
 import type { NoteSummary } from "@/repositories/note-repository";
 import type { ProjectSummary } from "@/repositories/project-repository";
 import type { GoalSummary } from "@/repositories/goal-repository";
@@ -38,6 +39,8 @@ export type Dashboard = {
   nextAssessment: UpcomingAssessment | null;
   cardsDue: number;
   indexedChunks: number;
+  /** Today's daily note if one exists; never created by loading the page. */
+  todayNote: { id: string; updatedAt: Date } | null;
 };
 
 const RECENT_NOTE_COUNT = 4;
@@ -65,6 +68,7 @@ export async function getDashboard(
     nextAssessment,
     cardsDue,
     indexedChunks,
+    todayNote,
   ] = await Promise.all([
     taskRepository.listTasks(userId),
     eventRepository.listEventsInRange(userId, startOfToday, endOfToday),
@@ -76,6 +80,7 @@ export async function getDashboard(
     courseRepository.nextUpcomingAssessment(userId, now),
     flashcardRepository.countDue(userId, now),
     prisma.workspaceEmbedding.count({ where: { userId } }),
+    findTodayNote(userId, now),
   ]);
 
   const overdueTasks = openTasks.filter(
@@ -116,5 +121,6 @@ export async function getDashboard(
     nextAssessment,
     cardsDue,
     indexedChunks,
+    todayNote,
   };
 }

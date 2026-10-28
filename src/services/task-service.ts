@@ -277,3 +277,36 @@ export async function scheduleTask(
     scheduledEnd: null,
   });
 }
+
+/**
+ * Moves a task's due date for Shut down day, and takes it off the calendar when
+ * `clearBlock` is set. `updateTask` replaces the whole record, so every other
+ * field is read back from the existing row first rather than sending only the
+ * two that change and silently wiping the rest. The row is read scoped by
+ * `userId`, so another account's task id finds nothing.
+ */
+export async function carryTaskTo(
+  userId: string,
+  taskId: string,
+  dueDate: Date,
+  clearBlock: boolean,
+): Promise<Task> {
+  const existing = await taskRepository.getTask(userId, taskId);
+  if (!existing) {
+    throw new AppError("RESOURCE_NOT_FOUND", "That task no longer exists.");
+  }
+
+  return updateTask(userId, taskId, {
+    title: existing.title,
+    description: existing.description,
+    priority: existing.priority as TaskPriority,
+    tags: existing.tags,
+    courseId: existing.courseId,
+    goalId: existing.goalId,
+    dueDate,
+    estimatedMinutes: existing.estimatedMinutes,
+    projectId: existing.projectId,
+    scheduledStart: clearBlock ? null : existing.scheduledStart,
+    scheduledEnd: clearBlock ? null : existing.scheduledEnd,
+  });
+}
