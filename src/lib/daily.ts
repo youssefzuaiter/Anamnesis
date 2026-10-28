@@ -8,6 +8,9 @@
  * special column.
  */
 
+import { bucketOf } from "@/lib/task-bucket";
+import { dateLabel } from "@/lib/note-templates";
+
 export const DAILY_TAG = "daily";
 
 /** The local calendar day as `2026-10-28`. Not `toISOString`, which is UTC. */
@@ -95,4 +98,80 @@ export function buildDailyNote(input: {
     "## Notes",
     "",
   ].join("\n");
+}
+
+/** What Shut down day needs to know about a task; the Prisma `Task` fits it. */
+export type CarryTask = {
+  id: string;
+  title: string;
+  priority: string;
+  status: string;
+  dueDate: Date | null;
+  scheduledStart: Date | null;
+  scheduledEnd: Date | null;
+};
+
+export type CarryOverItem = {
+  id: string;
+  title: string;
+  priority: string;
+  dueDate: Date;
+  /** Set only when the task's planned block starts today: that block is cleared. */
+  plannedStart: Date | null;
+  plannedEnd: Date | null;
+};
+
+export type CarryOverPlan = { dueToday: CarryOverItem[]; overdue: CarryOverItem[] };
+
+/**
+ * The unfinished tasks to offer at the end of the day: open tasks due today,
+ * and open tasks overdue from earlier days. A done task, an undated one and one
+ * due later are never offered. Input order is kept.
+ */
+export function planCarryOver(tasks: readonly CarryTask[], now: Date): CarryOverPlan {
+  const plan: CarryOverPlan = { dueToday: [], overdue: [] };
+
+  for (const task of tasks) {
+    if (task.status === "done" || !task.dueDate) continue;
+    const bucket = bucketOf(task, now);
+    if (bucket !== "today" && bucket !== "overdue") continue;
+
+    const start = task.scheduledStart;
+    const end = task.scheduledEnd;
+    const blockToday = start !== null && end !== null && dailyTitle(start) === dailyTitle(now);
+
+    (bucket === "today" ? plan.dueToday : plan.overdue).push({
+      id: task.id,
+      title: task.title,
+      priority: task.priority,
+      dueDate: task.dueDate,
+      plannedStart: blockToday ? start : null,
+      plannedEnd: blockToday ? end : null,
+    });
+  }
+  return plan;
+}
+
+/**
+ * Where a carried task's due date goes: tomorrow, at the time of day it already
+ * had. Counted from `now`, so an overdue task lands on tomorrow rather than on
+ * the day after its old date.
+ */
+export function tomorrowDue(due: Date, now: Date): Date {
+  const next = new Date(now);
+  next.setDate(next.getDate() + 1);
+  next.setHours(due.getHours(), due.getMinutes(), due.getSeconds(), due.getMilliseconds());
+  return next;
+}
+
+/** The small grey line under a task in the Shut down day panel. */
+export function carryDetail(item: CarryOverItem, group: "dueToday" | "overdue"): string {
+  const parts: string[] = [];
+  if (group === "overdue") parts.push(`due ${dateLabel(item.dueDate)}`);
+  if (item.plannedStart && item.plannedEnd) {
+    parts.push(
+      `planned ${TIME.format(item.plannedStart)}–${TIME.format(item.plannedEnd)}, will be cleared`,
+    );
+  }
+  return parts.join(", ");
 }

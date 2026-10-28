@@ -1,6 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DAILY_TAG, buildDailyNote, dailyTitle } from "@/lib/daily";
+import {
+  DAILY_TAG,
+  buildDailyNote,
+  carryDetail,
+  dailyTitle,
+  planCarryOver,
+  tomorrowDue,
+  type CarryTask,
+} from "@/lib/daily";
 
 const DAY = new Date(2026, 9, 28, 14, 5); // Wed 28 Oct 2026, local time
 /** A local time on the day `dayOffset` days from DAY. */
@@ -79,4 +87,85 @@ test("an event that crosses the day's edges is described honestly", () => {
   assert.ok(out.includes("- All day Conference"), out);
   assert.ok(out.includes("- until 02:00 Night shift"), out);
   assert.ok(out.includes("- from 22:00 Overnight lab"), out);
+});
+
+const NOW = new Date(2026, 9, 28, 18, 0); // Wed 28 Oct 2026, 18:00 local
+const task = (over: Partial<CarryTask> = {}): CarryTask => ({
+  id: "t",
+  title: "A task",
+  priority: "medium",
+  status: "todo",
+  dueDate: null,
+  scheduledStart: null,
+  scheduledEnd: null,
+  ...over,
+});
+
+test("open tasks due today and overdue ones are listed; the rest are not", () => {
+  const plan = planCarryOver(
+    [
+      task({ id: "today-9", dueDate: at(9, 0) }),
+      task({ id: "today-late", dueDate: new Date(2026, 9, 28, 23, 59) }),
+      task({ id: "yesterday", dueDate: new Date(2026, 9, 27, 23, 59) }),
+      task({ id: "tomorrow", dueDate: at(0, 0, 1) }),
+      task({ id: "undated" }),
+      task({ id: "done", dueDate: at(9, 0), status: "done" }),
+    ],
+    NOW,
+  );
+  assert.deepEqual(plan.dueToday.map((t) => t.id), ["today-9", "today-late"]);
+  assert.deepEqual(plan.overdue.map((t) => t.id), ["yesterday"]);
+});
+
+test("an in-progress task counts as unfinished", () => {
+  const plan = planCarryOver([task({ id: "wip", dueDate: at(9, 0), status: "in_progress" })], NOW);
+  assert.deepEqual(plan.dueToday.map((t) => t.id), ["wip"]);
+});
+
+test("a block that starts today is reported so it can be cleared; one tomorrow is not", () => {
+  const plan = planCarryOver(
+    [
+      task({ id: "a", dueDate: at(9, 0), scheduledStart: at(14, 0), scheduledEnd: at(15, 0) }),
+      task({ id: "b", dueDate: at(9, 0), scheduledStart: at(14, 0, 1), scheduledEnd: at(15, 0, 1) }),
+    ],
+    NOW,
+  );
+  assert.deepEqual([plan.dueToday[0].plannedStart, plan.dueToday[0].plannedEnd], [at(14, 0), at(15, 0)]);
+  assert.deepEqual([plan.dueToday[1].plannedStart, plan.dueToday[1].plannedEnd], [null, null]);
+});
+
+test("tomorrowDue keeps the time of day; an overdue task lands on tomorrow, not the day after its old date", () => {
+  assert.deepEqual(
+    tomorrowDue(new Date(2026, 9, 28, 23, 59, 59, 999), NOW),
+    new Date(2026, 9, 29, 23, 59, 59, 999),
+  );
+  assert.deepEqual(tomorrowDue(new Date(2026, 9, 26, 9, 30), NOW), new Date(2026, 9, 29, 9, 30));
+});
+
+test("tomorrowDue rolls over a month end and does not move at 00:30", () => {
+  const lateOct = new Date(2026, 9, 31, 12, 0);
+  assert.deepEqual(tomorrowDue(new Date(2026, 9, 31, 23, 59), lateOct), new Date(2026, 10, 1, 23, 59));
+  assert.deepEqual(
+    tomorrowDue(new Date(2026, 9, 28, 9, 0), new Date(2026, 9, 28, 0, 30)),
+    new Date(2026, 9, 29, 9, 0),
+  );
+});
+
+test("the detail line names a planned time that will be cleared and an overdue task's old date", () => {
+  const item = {
+    id: "x",
+    title: "t",
+    priority: "high",
+    dueDate: at(9, 0),
+    plannedStart: at(14, 0),
+    plannedEnd: at(15, 0),
+  };
+  assert.equal(carryDetail(item, "dueToday"), "planned 14:00–15:00, will be cleared");
+  assert.equal(carryDetail({ ...item, plannedStart: null, plannedEnd: null }, "dueToday"), "");
+  const old = { ...item, dueDate: new Date(2026, 9, 26, 9, 0), plannedStart: null, plannedEnd: null };
+  assert.equal(carryDetail(old, "overdue"), "due Mon 26 Oct");
+  assert.equal(
+    carryDetail({ ...old, plannedStart: at(14, 0), plannedEnd: at(15, 0) }, "overdue"),
+    "due Mon 26 Oct, planned 14:00–15:00, will be cleared",
+  );
 });
