@@ -8,6 +8,7 @@ import { SignOutButton } from "@/components/sign-out-button";
 import { NAV_GROUPS, isActive, type NavBadges } from "@/components/nav-items";
 import { BrandLockup } from "@/components/brand";
 import { ThemeSwitch } from "@/components/theme-switch";
+import { ShortcutsButton } from "@/components/shortcuts-provider";
 
 function initials(name: string): string {
   const parts = name.split(/[\s@.]+/).filter(Boolean);
@@ -70,6 +71,7 @@ export function AppSidebar({
 
       <div className="flex flex-col gap-0.5 border-t border-border-subtle pt-3">
         <ThemeSwitch variant="cycle" className="mb-1" />
+        <ShortcutsButton />
         <div className="flex items-center gap-2.5 px-1.5 pb-2">
           <span
             aria-hidden="true"
