@@ -826,6 +826,48 @@ checked:** `projects/[id]/page.tsx` and `calendar/page.tsx` use a similar
 was added for this feature alone; KaTeX's output is safe with `trust` off, which the
 tests assert for `\href`, `\url`, `\includegraphics` and the `\html…` family.
 
+## Note templates
+
+New note offers five starting points: Blank (the default), Lecture, Cornell, Paper
+summary and Meeting (ROADMAP item 2). Choosing one writes a Markdown outline into the
+note, and the person writes into it. It was shown as a clickable design and approved
+before any code.
+
+- **Templates are data.** `lib/note-templates.ts` has no React and no Prisma and holds
+  `NOTE_TEMPLATES`; adding a template is one array entry. The unit tests enumerate the
+  array, so a new entry is checked without editing a test: ids unique, title within 200
+  characters, body within 100,000, tags lowercase with no commas, no `{date}` left after
+  rendering.
+- **What was typed is never overwritten without asking.** `planTemplateChange` asks only
+  when the content changed since the last template wrote it, compared after trimming, so a
+  stray newline is not a change. An untouched template swaps at once, and Blank clears one.
+  `applyTemplate` replaces the title and tags only when they are empty or still exactly what
+  the previous template wrote. Each of those rules was mutation-checked: dropping the trim,
+  always replacing title and tags, and never asking each made a test fail.
+- **A title built from yesterday's date counts as typed.** It no longer equals today's
+  rendering, so it is kept. That fails on the safe side: nothing is lost.
+- **The question is inline, not `window.confirm`.** It is styled like the rest of the page
+  and testable, its safe choice ("Keep my text") takes focus when it appears, and after
+  either answer focus goes back to the text box.
+- **The editor's title, content and tags became controlled state.** A pick has to write into
+  them, and React 19 resets uncontrolled fields to their `defaultValue` when a form action
+  finishes, so a pick could be lost when a save comes back with an error. That is my reading
+  of React's behaviour and was not reproduced; controlled state means the design does not
+  depend on it. The edit form shares the component, so the edit, version and bulk-tag e2e
+  tests are what check it still works.
+- **Dates.** The label ("Wed 28 Oct") is built from `Intl.DateTimeFormat("en-GB")`
+  `formatToParts`, not by splitting a string. A pick made in the browser uses the browser's
+  date; a `?template=` link is rendered on the server with the server's date, which on this
+  self-hosted setup is the same machine.
+- **Deep link.** `/notes/new?template=<id>` preselects and prefills. Only an exact id from a
+  plain string counts: an unknown id, a repeated parameter (an array) and a 5,000-character
+  value are all Blank, and a `?title=` still wins over the template's own title.
+- **Cornell is headings, not two columns.** A Markdown table cannot hold several lines in a
+  cell, so notes written in one would be unusable.
+
+**Not done:** user-made templates, templates on the edit form, per-course templates, a
+command-palette entry, and any schema change.
+
 ## The assistant, and what actually defends it
 
 `services/assistant-service.ts` retrieves chunks, builds the prompt, and streams an

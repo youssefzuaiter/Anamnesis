@@ -440,3 +440,149 @@ test("a note whose code nests absurdly deep falls back to plain text instead of 
   // The way back to the editor must survive.
   await expect(main(page).getByRole("button", { name: /^edit$/i })).toBeVisible();
 });
+
+// The template picker on New note. The chips are buttons named after the template.
+const chip = (page: Page, name: string) =>
+  main(page).getByRole("button", { name, exact: true });
+const replaceQuestion = (page: Page) =>
+  main(page).getByText("Replace what you have written?");
+
+test("a template fills the note and the created note shows its outline", async ({
+  page,
+}) => {
+  await page.goto("/notes/new");
+  await chip(page, "Cornell").click();
+
+  await expect(chip(page, "Cornell")).toHaveAttribute("aria-pressed", "true");
+  await expect(main(page).getByLabel("Note title")).toHaveValue(/^Cornell notes, /);
+  await expect(main(page).getByLabel("Note content")).toHaveValue(/## Cues and questions/);
+  await expect(main(page).getByLabel("Tags")).toHaveValue("cornell");
+
+  await main(page).getByRole("button", { name: /create note/i }).click();
+  await page.waitForURL(/\/notes\/[0-9a-f-]{36}$/);
+  await expect(
+    main(page).getByRole("heading", { name: "Cues and questions" }),
+  ).toBeVisible();
+});
+
+test("an untouched switch asks nothing; typed text asks first, and Keep keeps while Replace replaces", async ({
+  page,
+}) => {
+  await page.goto("/notes/new");
+  const content = main(page).getByLabel("Note content");
+
+  await chip(page, "Lecture").click();
+  await chip(page, "Meeting").click();
+  await expect(replaceQuestion(page)).toBeHidden();
+  await expect(content).toHaveValue(/## Attendees/);
+
+  await content.fill("my own words");
+  await chip(page, "Paper summary").click();
+  await expect(replaceQuestion(page)).toBeVisible();
+  await expect(main(page)).toContainText("Choosing Paper summary swaps the text below");
+  await expect(main(page).getByRole("button", { name: "Keep my text" })).toBeFocused();
+
+  await main(page).getByRole("button", { name: "Keep my text" }).click();
+  await expect(content).toHaveValue("my own words");
+  await expect(chip(page, "Meeting")).toHaveAttribute("aria-pressed", "true");
+  await expect(content).toBeFocused();
+
+  await chip(page, "Paper summary").click();
+  await main(page).getByRole("button", { name: "Replace text" }).click();
+  await expect(content).toHaveValue(/## Reference/);
+  await expect(replaceQuestion(page)).toBeHidden();
+  await expect(chip(page, "Paper summary")).toHaveAttribute("aria-pressed", "true");
+});
+
+test("pressing another chip while the question is open updates it, and pressing the selected chip dismisses it", async ({
+  page,
+}) => {
+  await page.goto("/notes/new");
+  const content = main(page).getByLabel("Note content");
+  await content.fill("x");
+
+  await chip(page, "Lecture").click();
+  await expect(main(page)).toContainText("Choosing Lecture swaps");
+  await chip(page, "Meeting").click();
+  await expect(main(page)).toContainText("Choosing Meeting swaps");
+  await chip(page, "Blank").click();
+  await expect(replaceQuestion(page)).toBeHidden();
+  await expect(content).toHaveValue("x");
+});
+
+test("going back to Blank clears an untouched template", async ({ page }) => {
+  await page.goto("/notes/new");
+  await chip(page, "Lecture").click();
+  await chip(page, "Blank").click();
+
+  await expect(main(page).getByLabel("Note title")).toHaveValue("");
+  await expect(main(page).getByLabel("Note content")).toHaveValue("");
+  await expect(main(page).getByLabel("Tags")).toHaveValue("");
+  await expect(replaceQuestion(page)).toBeHidden();
+});
+
+test("the link preselects a template, and a bad template id is Blank", async ({
+  page,
+}) => {
+  await page.goto("/notes/new?template=meeting");
+  await expect(chip(page, "Meeting")).toHaveAttribute("aria-pressed", "true");
+  await expect(main(page).getByLabel("Note content")).toHaveValue(/## Attendees/);
+
+  for (const query of [
+    "template=nope",
+    "template=lecture&template=cornell",
+    "template=" + "a".repeat(5000),
+  ]) {
+    await page.goto(`/notes/new?${query}`);
+    await expect(chip(page, "Blank")).toHaveAttribute("aria-pressed", "true");
+    await expect(main(page).getByLabel("Note content")).toHaveValue("");
+  }
+
+  // A title preset from a not-yet-written wiki link beats the template's own.
+  await page.goto("/notes/new?title=Ada&template=lecture");
+  await expect(main(page).getByLabel("Note title")).toHaveValue("Ada");
+  await expect(main(page).getByLabel("Note content")).toHaveValue(/## Key ideas/);
+});
+
+test("on a phone the templates do not widen the page and every chip is easy to tap", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/notes/new");
+
+  const overflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+
+  for (const name of ["Blank", "Lecture", "Cornell", "Paper summary", "Meeting"]) {
+    const box = await chip(page, name).boundingBox();
+    expect(box?.height ?? 0, name).toBeGreaterThanOrEqual(44);
+  }
+});
+
+test("editing an existing note shows no template picker", async ({ page }) => {
+  await createNote(page, `Plain ${Date.now()}`, "x");
+  await main(page).getByRole("button", { name: /^edit$/i }).click();
+
+  await expect(main(page).getByLabel("Note title")).toBeVisible();
+  await expect(main(page).getByText("Start from")).toBeHidden();
+});
+
+test("a title and tags the person typed survive choosing a template", async ({
+  page,
+}) => {
+  await page.goto("/notes/new");
+  await main(page).getByLabel("Note title").fill("Ada's seminar");
+  await main(page).getByLabel("Tags").fill("ml, week3");
+  await chip(page, "Lecture").click();
+
+  // The text box was untouched, so there is no question and the outline is written...
+  await expect(replaceQuestion(page)).toBeHidden();
+  await expect(main(page).getByLabel("Note content")).toHaveValue(/## Key ideas/);
+  // ...but the title and tags are the person's own and stay.
+  await expect(main(page).getByLabel("Note title")).toHaveValue("Ada's seminar");
+  await expect(main(page).getByLabel("Tags")).toHaveValue("ml, week3");
+});
