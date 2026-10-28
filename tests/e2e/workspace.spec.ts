@@ -570,3 +570,19 @@ test("editing an existing note shows no template picker", async ({ page }) => {
   await expect(main(page).getByLabel("Note title")).toBeVisible();
   await expect(main(page).getByText("Start from")).toBeHidden();
 });
+
+test("a title and tags the person typed survive choosing a template", async ({
+  page,
+}) => {
+  await page.goto("/notes/new");
+  await main(page).getByLabel("Note title").fill("Ada's seminar");
+  await main(page).getByLabel("Tags").fill("ml, week3");
+  await chip(page, "Lecture").click();
+
+  // The text box was untouched, so there is no question and the outline is written...
+  await expect(replaceQuestion(page)).toBeHidden();
+  await expect(main(page).getByLabel("Note content")).toHaveValue(/## Key ideas/);
+  // ...but the title and tags are the person's own and stay.
+  await expect(main(page).getByLabel("Note title")).toHaveValue("Ada's seminar");
+  await expect(main(page).getByLabel("Tags")).toHaveValue("ml, week3");
+});
