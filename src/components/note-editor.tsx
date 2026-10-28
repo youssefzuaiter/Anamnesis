@@ -93,6 +93,7 @@ export function NoteEditor<T>({
   );
   const [pendingId, setPendingId] = useState<string | null>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
+  const current = { templateId, title, content, tags };
 
   function write(id: string, values: TemplateFields) {
     setTitle(values.title);
@@ -103,11 +104,7 @@ export function NoteEditor<T>({
   }
 
   function pickTemplate(id: string) {
-    const change = planTemplateChange({
-      current: { templateId, title, content, tags },
-      targetId: id,
-      now: new Date(),
-    });
+    const change = planTemplateChange({ current, targetId: id, now: new Date() });
     if (change.action === "none") setPendingId(null);
     else if (change.action === "confirm") setPendingId(id);
     else write(id, change.values);
@@ -115,10 +112,7 @@ export function NoteEditor<T>({
 
   function replaceWithPending() {
     if (pendingId === null) return;
-    write(
-      pendingId,
-      applyTemplate({ templateId, title, content, tags }, pendingId, new Date()),
-    );
+    write(pendingId, applyTemplate(current, pendingId, new Date()));
     contentRef.current?.focus();
   }
 
