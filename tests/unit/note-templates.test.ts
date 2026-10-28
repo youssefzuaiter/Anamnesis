@@ -2,9 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   NOTE_TEMPLATES,
+  applyTemplate,
   dateLabel,
   getTemplate,
+  planTemplateChange,
   renderTemplate,
+  type CurrentNote,
 } from "@/lib/note-templates";
 
 const NOW = new Date(2026, 9, 28, 12); // Wed 28 Oct 2026, local time
@@ -59,4 +62,63 @@ test("an unknown, missing or hostile id is Blank, never a throw", () => {
     assert.equal(getTemplate(id).id, "blank");
   }
   assert.equal(getTemplate("lecture").id, "lecture");
+});
+
+const cur = (templateId: string, over: Partial<CurrentNote> = {}): CurrentNote => ({
+  templateId,
+  ...renderTemplate(getTemplate(templateId), NOW),
+  ...over,
+});
+
+test("choosing the template that is already selected does nothing", () => {
+  assert.deepEqual(planTemplateChange({ current: cur("lecture"), targetId: "lecture", now: NOW }), { action: "none" });
+  assert.deepEqual(planTemplateChange({ current: cur("blank"), targetId: "nope", now: NOW }), { action: "none" }); // unknown is Blank
+});
+
+test("from Blank with nothing typed, a template applies without a question", () => {
+  const r = planTemplateChange({ current: cur("blank"), targetId: "lecture", now: NOW });
+  assert.equal(r.action, "apply");
+  if (r.action === "apply") assert.deepEqual(r.values, renderTemplate(getTemplate("lecture"), NOW));
+});
+
+test("switching between untouched templates replaces content, title and tags with no question", () => {
+  const r = planTemplateChange({ current: cur("lecture"), targetId: "meeting", now: NOW });
+  assert.equal(r.action, "apply");
+  if (r.action === "apply") assert.deepEqual(r.values, renderTemplate(getTemplate("meeting"), NOW));
+});
+
+test("going back to Blank from an untouched template clears everything with no question", () => {
+  const r = planTemplateChange({ current: cur("cornell"), targetId: "blank", now: NOW });
+  assert.deepEqual(r, { action: "apply", values: { title: "", content: "", tags: "" } });
+});
+
+test("changed content asks first, for a template and for Blank", () => {
+  assert.equal(planTemplateChange({ current: cur("lecture", { content: "my own words" }), targetId: "cornell", now: NOW }).action, "confirm");
+  assert.equal(planTemplateChange({ current: cur("blank", { content: "typed" }), targetId: "lecture", now: NOW }).action, "confirm");
+  assert.equal(planTemplateChange({ current: cur("lecture", { content: "typed" }), targetId: "blank", now: NOW }).action, "confirm");
+});
+
+test("a whitespace-only difference is not a change", () => {
+  const lecture = renderTemplate(getTemplate("lecture"), NOW);
+  assert.equal(planTemplateChange({ current: cur("lecture", { content: lecture.content + "\n\n" }), targetId: "meeting", now: NOW }).action, "apply");
+  assert.equal(planTemplateChange({ current: cur("blank", { content: "  \n" }), targetId: "lecture", now: NOW }).action, "apply");
+});
+
+test("a title or tags the person typed are kept; empty ones are filled", () => {
+  const kept = applyTemplate(cur("lecture", { title: "Ada's seminar", tags: "ml, week3" }), "meeting", NOW);
+  assert.equal(kept.title, "Ada's seminar");
+  assert.equal(kept.tags, "ml, week3");
+  assert.equal(kept.content, renderTemplate(getTemplate("meeting"), NOW).content);
+  const filled = applyTemplate(cur("blank", { title: "  ", tags: "" }), "meeting", NOW);
+  assert.equal(filled.title, "Meeting, Wed 28 Oct");
+  assert.equal(filled.tags, "meeting");
+});
+
+test("a title still equal to the previous template's, even with stray spaces, counts as not typed", () => {
+  assert.equal(applyTemplate(cur("lecture", { title: " Lecture, Wed 28 Oct " }), "cornell", NOW).title, "Cornell notes, Wed 28 Oct");
+});
+
+test("yesterday's auto title is kept as if typed: nothing is lost", () => {
+  const yesterday = cur("lecture", { title: "Lecture, Tue 27 Oct" });
+  assert.equal(applyTemplate(yesterday, "meeting", NOW).title, "Lecture, Tue 27 Oct");
 });

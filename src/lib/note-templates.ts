@@ -156,3 +156,58 @@ export function renderTemplate(template: NoteTemplate, now: Date): TemplateField
     tags: template.tags.join(", "),
   };
 }
+
+/** What the note form holds now, and which template it was last filled from. */
+export type CurrentNote = TemplateFields & { templateId: string };
+
+export type TemplateChange =
+  | { action: "none" }
+  | { action: "confirm" }
+  | { action: "apply"; values: TemplateFields };
+
+/**
+ * The fields to write when `targetId` is chosen. Content always becomes the
+ * target's outline. The title and tags are only replaced when they were never
+ * typed: empty, or still exactly what the previous template wrote. A title
+ * built from yesterday's date therefore counts as typed and is kept, which
+ * errs on the side of losing nothing.
+ */
+export function applyTemplate(
+  current: CurrentNote,
+  targetId: string,
+  now: Date,
+): TemplateFields {
+  const next = renderTemplate(getTemplate(targetId), now);
+  const written = renderTemplate(getTemplate(current.templateId), now);
+  const untouched = (value: string, writtenByTemplate: string) =>
+    value.trim() === "" || value.trim() === writtenByTemplate.trim();
+
+  return {
+    title: untouched(current.title, written.title) ? next.title : current.title,
+    content: next.content,
+    tags: untouched(current.tags, written.tags) ? next.tags : current.tags,
+  };
+}
+
+/**
+ * What choosing a template should do. Replacing text the person wrote is the
+ * one thing that must be asked about, so a changed body means `confirm`; a body
+ * that is still the selected template's own (ignoring surrounding whitespace)
+ * is swapped at once.
+ */
+export function planTemplateChange({
+  current,
+  targetId,
+  now,
+}: {
+  current: CurrentNote;
+  targetId: string;
+  now: Date;
+}): TemplateChange {
+  const target = getTemplate(targetId);
+  const selected = getTemplate(current.templateId);
+
+  if (target.id === selected.id) return { action: "none" };
+  if (current.content.trim() !== selected.body.trim()) return { action: "confirm" };
+  return { action: "apply", values: applyTemplate(current, target.id, now) };
+}
