@@ -15,6 +15,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { KEYCAP_CLASS, ShortcutsSheet } from "@/components/shortcuts-sheet";
 import {
+  GO_TO_SHORTCUTS,
   SEQUENCE_TIMEOUT_MS,
   SHORTCUTS_STORAGE_KEY,
   interpretKey,
@@ -98,10 +99,10 @@ export function ShortcutsButton() {
   );
 }
 
+// A few of the commonest destinations, with the table's own labels so they
+// cannot drift, then the two keys that leave the hint.
 const HINT_KEYS = [
-  { key: "n", label: "Notes" },
-  { key: "t", label: "Tasks" },
-  { key: "c", label: "Calendar" },
+  ...GO_TO_SHORTCUTS.filter((shortcut) => ["n", "t", "c"].includes(shortcut.key)),
   { key: "?", label: "All keys" },
   { key: "Esc", label: "Cancel" },
 ];

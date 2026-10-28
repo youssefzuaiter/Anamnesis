@@ -594,6 +594,59 @@ item's default `min-width: auto` refuses to shrink below its content, so an
 `overflow-x-auto` child (the calendar grid) could not clip and the whole page
 scrolled sideways on mobile. Any wide content added later depends on this.
 
+## Keyboard shortcuts
+
+Beside ⌘K (the palette) and ⌘J (the assistant), `g` then a letter goes to a page, and
+`?` opens a cheat-sheet (ROADMAP item 3). It was shown as a clickable design and approved
+before any code.
+
+- **The rules are one pure function.** `interpretKey` in `lib/shortcuts.ts` takes a key
+  event's relevant fields, a context (switch on, typing, a modal open), when `g` was
+  pressed and the time now, and returns an action. It has no React and no DOM types, so
+  the 18 unit tests cover every rule, and a mutation check (drop the typing guard, the
+  timeout, the modifier rule, the Ctrl/Cmd/Alt guard, the modal guard) made a test fail
+  each time. `ShortcutsProvider` only wires it to the page.
+- **Never inside a text field.** Text inputs (password included), text areas, selects,
+  contenteditable regions and `textbox`/`combobox`/`searchbox`/`spinbutton` roles are
+  typing targets; buttons, links and checkboxes are not. Also never with ⌘, Ctrl or Alt
+  held (⌘G is "find next" in browsers), during an IME composition, on a held key, or while
+  a modal is open (`dialog[open]` or `[aria-modal="true"]`, which covers the palette, the
+  phone's More sheet and the cheat-sheet).
+- **A modifier pressed alone must not cancel a waiting `g`.** In a browser the keydown for
+  Control alone already has `ctrlKey` set, so the modifier-only rule has to be checked
+  before the Ctrl/Cmd/Alt rule. This was found by thinking it through before writing the
+  code, not by a test failing; a test now pins it.
+- **Keys are matched on `event.key`, lower-cased, never `event.code`**, so other layouts
+  work. That was reasoned, not tested: the browser tests ran on a US layout only, and I
+  have not tried a Turkish keyboard.
+- **The switch exists because of WCAG 2.1.4.** Shortcuts made of one character must be
+  switchable off, since they fire by accident for speech and assistive-keyboard users.
+  The choice is kept in this browser only (`anamnesis-shortcuts` in localStorage, `off`
+  or `on`, anything else is on), like the theme; if storage is blocked it still works for
+  that page view. ⌘K and ⌘J are exempt. When Off, `g` sequences and `?` do nothing, and
+  the sidebar button still opens the sheet.
+- **One provider, one native dialog.** `ShortcutsProvider` is mounted once in the
+  dashboard layout and listens on `window`. The sheet is a native `<dialog>`, as the
+  phone's More sheet is, so focus trapping, Escape and the backdrop come from the browser.
+  The hint shown while `g` waits is an always-mounted `role="status"` region, so a screen
+  reader announces it. The sidebar footer has a "Keyboard shortcuts ?" button; there is
+  none on a phone, where the sidebar is hidden.
+- **The keys:** `h` Today, `n` Notes, `s` Search, `t` Tasks, `c` Calendar, `p` Projects,
+  `g` Goals, `u` Courses, `d` Cards, `r` Review, `f` Focus, `a` Audit trail, `x` Trash,
+  `,` Settings, `i` Assistant. `u`, `d`, `x`, `h` and `i` are compromises where the first
+  letter was taken. A unit test checks every sidebar item has a key with the same label, so
+  adding a sidebar item without one fails the suite.
+
+**Two things the tests taught.** First, a "nothing happens" assertion has to wait: a
+client-side navigation takes a moment to change the URL, so `toHaveURL(/notes$/)` passed at
+once even with the modal check removed. A mutation showed it; the negative checks now wait
+700 ms, and the routes a wrong key could reach are fetched first so the dev server has
+compiled them. Second, the hint's hide timer must count from when `g` was pressed, not from
+the last key, or a modifier press would keep the hint up after `g` had expired.
+
+**Not done:** remapping keys, showing the keys in the sidebar, create shortcuts (`c` for a
+new note), `/` to open search, and a button on a phone.
+
 ## Design system: Quiet Studio
 
 The look was chosen on 2026-10-24 from a clickable proposal of six screens, before

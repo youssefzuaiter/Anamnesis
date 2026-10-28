@@ -24,7 +24,7 @@ services. Nothing may need a paid API key.
   if a formula is invalid, never an error page. Check the editor's own preview too.
 - [ ] **2. Note templates** (S, demo). Lecture, Cornell, paper summary, meeting. A picker on
   "New note"; the templates are data, not code, so adding one is one entry.
-- [ ] **3. Keyboard shortcuts and a `?` cheat-sheet** (S, demo). Go-to shortcuts (g then n for
+- [x] **3. Keyboard shortcuts and a `?` cheat-sheet** (S, demo). Go-to shortcuts (g then n for
   notes, and so on) beside the existing ⌘K and ⌘J. Never fire inside a text field.
 - [ ] **4. Daily note and end-of-day carry-over** (S to M, demo, migration?). One note per day,
   prefilled with that day's schedule and open tasks. "Shut down day" moves unfinished tasks
