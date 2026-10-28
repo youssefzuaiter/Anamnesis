@@ -23,6 +23,7 @@ Anamnesis brings together parts of academic and personal life that usually sit i
 - **Audit log and trash.** Every assistant proposal and your decision is recorded. Deleted notes, tasks, projects and goals go to a trash, where you can restore them or delete them permanently.
 - **Keyboard shortcuts.** Ctrl or ⌘ + K jumps to anything and Ctrl or ⌘ + J opens the assistant. Press `g`, then a letter (`g` `n` for notes, `g` `t` for tasks) to go to a page, and `?` for the full list. The single-key shortcuts pause while you type in a field and can be switched off from that list.
 - **Dashboard.** Today's tasks and schedule, recent notes, active projects and goals, and a "Plan my day" button. It proposes a plan that fits open tasks into your free time and changes nothing until you confirm.
+- **Daily note and Shut down day.** One button opens today's note, started with that day's schedule and open tasks, and finds the same note again after that. "Shut down day" lists what is unfinished (tasks due today ticked, overdue ones left for you to tick) and moves the ones you confirm to tomorrow.
 
 Each account on an instance is separate from the others. Data access is scoped to the signed-in user, and tests check that one account cannot see another's data.
 
