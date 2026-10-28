@@ -8,6 +8,7 @@
  * special column.
  */
 
+import { dayBounds } from "@/lib/day";
 import { bucketOf } from "@/lib/task-bucket";
 import { dateLabel } from "@/lib/note-templates";
 
@@ -40,13 +41,9 @@ const TIME = new Intl.DateTimeFormat("en-GB", {
  * not on this day.
  */
 function whenLabel(start: Date, end: Date, day: Date): string {
-  const dayStart = new Date(day);
-  dayStart.setHours(0, 0, 0, 0);
-  const nextDay = new Date(dayStart);
-  nextDay.setDate(nextDay.getDate() + 1);
-
-  const startsBefore = start < dayStart;
-  const endsAfter = end >= nextDay;
+  const { from, to } = dayBounds(day);
+  const startsBefore = start < from;
+  const endsAfter = end >= to;
   if (startsBefore && endsAfter) return "All day";
   if (startsBefore) return `until ${TIME.format(end)}`;
   if (endsAfter) return `from ${TIME.format(start)}`;
@@ -130,6 +127,7 @@ export type CarryOverPlan = { dueToday: CarryOverItem[]; overdue: CarryOverItem[
  */
 export function planCarryOver(tasks: readonly CarryTask[], now: Date): CarryOverPlan {
   const plan: CarryOverPlan = { dueToday: [], overdue: [] };
+  const today = dayBounds(now);
 
   for (const task of tasks) {
     if (task.status === "done" || !task.dueDate) continue;
@@ -138,7 +136,7 @@ export function planCarryOver(tasks: readonly CarryTask[], now: Date): CarryOver
 
     const start = task.scheduledStart;
     const end = task.scheduledEnd;
-    const blockToday = start !== null && end !== null && dailyTitle(start) === dailyTitle(now);
+    const blockToday = start !== null && end !== null && start >= today.from && start < today.to;
 
     (bucket === "today" ? plan.dueToday : plan.overdue).push({
       id: task.id,
@@ -158,8 +156,7 @@ export function planCarryOver(tasks: readonly CarryTask[], now: Date): CarryOver
  * the day after its old date.
  */
 export function tomorrowDue(due: Date, now: Date): Date {
-  const next = new Date(now);
-  next.setDate(next.getDate() + 1);
+  const next = dayBounds(now).to;
   next.setHours(due.getHours(), due.getMinutes(), due.getSeconds(), due.getMilliseconds());
   return next;
 }

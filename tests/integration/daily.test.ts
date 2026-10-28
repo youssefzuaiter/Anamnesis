@@ -162,6 +162,7 @@ test("applying moves due dates to tomorrow at the same time and clears only a bl
   const second = await prisma.task.findUniqueOrThrow({ where: { id: overdue.id } });
   assert.deepEqual(second.dueDate, at(9, 30, 1)); // tomorrow, not the day after its old date
   assert.deepEqual(second.scheduledStart, at(10, 0, 1)); // a block on another day stays
+  assert.deepEqual(second.scheduledEnd, at(11, 0, 1)); // with its own end, not a default one
 });
 
 test("an overdue task is left alone unless it is requested", async () => {

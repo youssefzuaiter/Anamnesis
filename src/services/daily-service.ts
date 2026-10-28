@@ -8,20 +8,13 @@ import {
   tomorrowDue,
   type CarryOverPlan,
 } from "@/lib/daily";
+import { dayBounds } from "@/lib/day";
 import { bucketOf } from "@/lib/task-bucket";
 import * as eventRepository from "@/repositories/event-repository";
 import * as noteRepository from "@/repositories/note-repository";
 import * as taskRepository from "@/repositories/task-repository";
 import * as noteService from "@/services/note-service";
 import * as taskService from "@/services/task-service";
-
-function dayBounds(day: Date): { from: Date; to: Date } {
-  const from = new Date(day);
-  from.setHours(0, 0, 0, 0);
-  const to = new Date(from);
-  to.setDate(to.getDate() + 1);
-  return { from, to };
-}
 
 /** Today's daily note if there is one. Never creates anything. */
 export async function findTodayNote(
@@ -46,7 +39,7 @@ export async function openTodayNote(
   userId: string,
   now: Date = new Date(),
 ): Promise<{ id: string; created: boolean }> {
-  const existing = await noteRepository.findDailyNote(userId, dailyTitle(now));
+  const existing = await findTodayNote(userId, now);
   if (existing) return { id: existing.id, created: false };
 
   const { from, to } = dayBounds(now);
@@ -94,8 +87,7 @@ export async function proposeShutdown(
   now: Date = new Date(),
 ): Promise<CarryOverPlan & { tomorrow: Date }> {
   const tasks = await taskRepository.listTasks(userId);
-  const tomorrow = dayBounds(now).to;
-  return { ...planCarryOver(tasks, now), tomorrow };
+  return { ...planCarryOver(tasks, now), tomorrow: dayBounds(now).to };
 }
 
 /**
@@ -109,7 +101,7 @@ export async function applyShutdown(
   userId: string,
   now: Date,
   taskIds: string[],
-): Promise<{ moved: number }> {
+): Promise<{ moved: number; tomorrow: Date }> {
   const plan = await proposeShutdown(userId, now);
   const wanted = new Set(taskIds);
   const items = [...plan.dueToday, ...plan.overdue].filter((item) =>
@@ -131,5 +123,5 @@ export async function applyShutdown(
       item.plannedStart !== null,
     );
   }
-  return { moved: items.length };
+  return { moved: items.length, tomorrow: plan.tomorrow };
 }

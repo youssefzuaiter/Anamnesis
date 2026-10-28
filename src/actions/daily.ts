@@ -66,10 +66,7 @@ export async function applyShutdownAction(
   try {
     const userId = await requireUserId();
     const now = new Date();
-    const { moved } = await dailyService.applyShutdown(userId, now, parsed.data);
-
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const { moved, tomorrow } = await dailyService.applyShutdown(userId, now, parsed.data);
 
     revalidatePath("/");
     revalidatePath("/tasks");

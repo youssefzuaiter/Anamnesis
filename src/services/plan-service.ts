@@ -1,17 +1,10 @@
 import "server-only";
 import { AppError } from "@/lib/api-response";
+import { dayBounds } from "@/lib/day";
 import { planDay, type PlannedBlock, type Busy } from "@/lib/day-planner";
 import * as eventRepository from "@/repositories/event-repository";
 import * as taskRepository from "@/repositories/task-repository";
 import { scheduleTask } from "@/services/task-service";
-
-function dayBounds(day: Date): { from: Date; to: Date } {
-  const from = new Date(day);
-  from.setHours(0, 0, 0, 0);
-  const to = new Date(from);
-  to.setDate(to.getDate() + 1);
-  return { from, to };
-}
 
 /**
  * What a plan for `day` would look like. Writes nothing — the user confirms

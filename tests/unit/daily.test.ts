@@ -134,6 +134,17 @@ test("a block that starts today is reported so it can be cleared; one tomorrow i
   assert.deepEqual([plan.dueToday[1].plannedStart, plan.dueToday[1].plannedEnd], [null, null]);
 });
 
+test("a block from 00:00 today is today's, and one from 00:00 tomorrow is not", () => {
+  const plan = planCarryOver(
+    [
+      task({ id: "a", dueDate: at(9, 0), scheduledStart: at(0, 0), scheduledEnd: at(1, 0) }),
+      task({ id: "b", dueDate: at(9, 0), scheduledStart: at(0, 0, 1), scheduledEnd: at(1, 0, 1) }),
+    ],
+    NOW,
+  );
+  assert.deepEqual(plan.dueToday.map((t) => t.plannedStart), [at(0, 0), null]);
+});
+
 test("tomorrowDue keeps the time of day; an overdue task lands on tomorrow, not the day after its old date", () => {
   assert.deepEqual(
     tomorrowDue(new Date(2026, 9, 28, 23, 59, 59, 999), NOW),

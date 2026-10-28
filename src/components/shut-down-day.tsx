@@ -11,7 +11,6 @@ import {
 import { Icon } from "@/components/icons";
 import { TASKS_CHANGED_EVENT } from "@/lib/domain";
 
-const word = (priority: string) => priority.charAt(0).toUpperCase() + priority.slice(1);
 const plural = (n: number) => `${n} ${n === 1 ? "task" : "tasks"}`;
 
 /**
@@ -55,8 +54,8 @@ export function ShutDownDay() {
             <span className="min-w-0 flex-1">
               <span className="block text-text">{task.title}</span>
               <span className="block text-xs leading-normal text-text-muted">
-                <span className={task.priority === "high" ? "font-semibold text-warn" : ""}>
-                  {word(task.priority)}
+                <span className={task.priority === "high" ? "font-semibold text-warn capitalize" : "capitalize"}>
+                  {task.priority}
                 </span>
                 {task.detail ? ` · ${task.detail}` : ""}
               </span>
