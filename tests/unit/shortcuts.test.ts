@@ -5,8 +5,10 @@ import {
   GO_TO_PREFIX,
   GO_TO_SHORTCUTS,
   SEQUENCE_TIMEOUT_MS,
+  interpretKey,
   isTypingTarget,
   parseShortcutsPreference,
+  type KeyInput,
 } from "@/lib/shortcuts";
 import { MOBILE_MORE, NAV_GROUPS } from "@/components/nav-items";
 
@@ -61,4 +63,86 @@ test("buttons, links, checkboxes and the page itself are not typing targets", ()
 test("the preference is on unless it was explicitly turned off", () => {
   assert.equal(parseShortcutsPreference("off"), false);
   for (const value of ["on", "", "OFF", "false", "0", null, undefined]) assert.equal(parseShortcutsPreference(value), true, String(value));
+});
+
+const press = (key: string, over: Partial<KeyInput> = {}): KeyInput => ({
+  key,
+  ctrlKey: false,
+  metaKey: false,
+  altKey: false,
+  shiftKey: false,
+  repeat: false,
+  isComposing: false,
+  ...over,
+});
+const ok = { enabled: true, typing: false, modalOpen: false };
+
+test("g arms, then a go-to key goes there and disarms", () => {
+  const armed = interpretKey(press("g"), ok, null, 1000);
+  assert.deepEqual(armed, { action: { type: "arm" }, armedAt: 1000 });
+  assert.deepEqual(interpretKey(press("n"), ok, 1000, 1400), { action: { type: "go", href: "/notes" }, armedAt: null });
+  assert.deepEqual(interpretKey(press(","), ok, 1000, 1400), { action: { type: "go", href: "/settings" }, armedAt: null });
+});
+
+test("g then g is Goals, and a capital G from caps lock still arms", () => {
+  assert.deepEqual(interpretKey(press("g"), ok, 1000, 1200).action, { type: "go", href: "/goals" });
+  assert.equal(interpretKey(press("G"), ok, null, 1000).action.type, "arm");
+});
+
+test("every go-to key reaches its own page", () => {
+  for (const s of GO_TO_SHORTCUTS) assert.deepEqual(interpretKey(press(s.key), ok, 0, 10).action, { type: "go", href: s.href });
+});
+
+test("an unknown key after g cancels without going anywhere", () => {
+  assert.deepEqual(interpretKey(press("z"), ok, 1000, 1200), { action: { type: "cancel" }, armedAt: null });
+  assert.deepEqual(interpretKey(press("Escape"), ok, 1000, 1200), { action: { type: "cancel" }, armedAt: null });
+  assert.deepEqual(interpretKey(press("Tab"), ok, 1000, 1200), { action: { type: "cancel" }, armedAt: null });
+});
+
+test("g, a long pause, then n does nothing", () => {
+  assert.deepEqual(interpretKey(press("n"), ok, 1000, 1000 + SEQUENCE_TIMEOUT_MS), { action: { type: "go", href: "/notes" }, armedAt: null }); // exactly on time still works
+  assert.deepEqual(interpretKey(press("n"), ok, 1000, 1000 + SEQUENCE_TIMEOUT_MS + 1), { action: { type: "none" }, armedAt: null });
+  assert.equal(interpretKey(press("g"), ok, 1000, 5000).action.type, "arm"); // an expired g can start over
+});
+
+test("? opens the list, armed or not", () => {
+  assert.deepEqual(interpretKey(press("?", { shiftKey: true }), ok, null, 1), { action: { type: "help" }, armedAt: null });
+  assert.deepEqual(interpretKey(press("?", { shiftKey: true }), ok, 1, 100), { action: { type: "help" }, armedAt: null });
+});
+
+test("nothing fires while typing, while a modal is open, or when switched off, and it disarms", () => {
+  for (const context of [{ ...ok, typing: true }, { ...ok, modalOpen: true }, { ...ok, enabled: false }]) {
+    assert.deepEqual(interpretKey(press("g"), context, null, 1), { action: { type: "none" }, armedAt: null });
+    assert.deepEqual(interpretKey(press("?"), context, null, 1), { action: { type: "none" }, armedAt: null });
+    assert.deepEqual(interpretKey(press("n"), context, 1, 2), { action: { type: "none" }, armedAt: null });
+  }
+});
+
+test("browser combinations are never taken: Cmd, Ctrl and Alt, even right after g", () => {
+  for (const over of [{ metaKey: true }, { ctrlKey: true }, { altKey: true }]) {
+    assert.deepEqual(interpretKey(press("g", over), ok, null, 1), { action: { type: "none" }, armedAt: null });
+    assert.deepEqual(interpretKey(press("n", over), ok, 1, 2), { action: { type: "none" }, armedAt: null });
+  }
+});
+
+test("Shift with a letter is not a shortcut, and a held key or an IME composition is ignored", () => {
+  assert.equal(interpretKey(press("G", { shiftKey: true }), ok, null, 1).action.type, "none");
+  assert.equal(interpretKey(press("N", { shiftKey: true }), ok, 1, 2).action.type, "cancel");
+  assert.deepEqual(interpretKey(press("g", { repeat: true }), ok, null, 1), { action: { type: "none" }, armedAt: null });
+  assert.deepEqual(interpretKey(press("n", { repeat: true }), ok, 1, 2), { action: { type: "none" }, armedAt: 1 });
+  assert.deepEqual(interpretKey(press("n", { isComposing: true }), ok, 1, 2), { action: { type: "none" }, armedAt: 1 });
+});
+
+test("pressing a modifier key alone between g and the next key keeps g armed, with its own flag set as a browser sets it", () => {
+  const cases: [string, Partial<KeyInput>][] = [
+    ["Shift", { shiftKey: true }], ["Control", { ctrlKey: true }], ["Alt", { altKey: true }],
+    ["Meta", { metaKey: true }], ["CapsLock", {}],
+  ];
+  for (const [key, over] of cases) {
+    assert.deepEqual(interpretKey(press(key, over), ok, 1000, 1100), { action: { type: "none" }, armedAt: 1000 }, key);
+  }
+});
+
+test("a plain letter that is not g does nothing when nothing is armed", () => {
+  assert.deepEqual(interpretKey(press("n"), ok, null, 1), { action: { type: "none" }, armedAt: null });
 });

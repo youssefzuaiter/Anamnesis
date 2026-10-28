@@ -96,3 +96,84 @@ export function isTypingTarget(target: TargetDescriptor | null): boolean {
   if (target.isContentEditable) return true;
   return target.role != null && TEXT_ROLES.has(target.role);
 }
+
+/** The parts of a `KeyboardEvent` the rules look at. */
+export type KeyInput = {
+  key: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  repeat: boolean;
+  isComposing: boolean;
+};
+
+export type ShortcutContext = {
+  /** The reader's on/off switch. */
+  enabled: boolean;
+  /** Focus is in something that takes typing. */
+  typing: boolean;
+  /** A modal (the palette, a sheet) is open. */
+  modalOpen: boolean;
+};
+
+export type ShortcutAction =
+  | { type: "none" }
+  | { type: "arm" }
+  | { type: "cancel" }
+  | { type: "go"; href: string }
+  | { type: "help" };
+
+const NONE: ShortcutAction = { type: "none" };
+const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock"]);
+
+/**
+ * What one key press means, given whether `g` is waiting (`armedAt`, the time it
+ * was pressed) and the time now. The first rule that applies wins:
+ *
+ * 1. Off, typing, or a modal open: nothing, and any waiting `g` is dropped.
+ * 2. An IME composition or a held key: ignored, `g` keeps waiting.
+ * 3. A modifier key pressed alone: ignored, `g` keeps waiting. This has to come
+ *    before rule 4, because a browser's keydown for Control alone already has
+ *    `ctrlKey` set, and a stray modifier must not cancel a waiting `g`.
+ * 4. Ctrl, Cmd or Alt held: browser and OS shortcuts (Cmd+G is "find next")
+ *    are never taken, and a waiting `g` is dropped.
+ * 5. `g` waiting (within the timeout): a go-to key goes, `?` shows the list,
+ *    anything else cancels.
+ * 6. Otherwise `g` starts waiting and `?` shows the list.
+ *
+ * Keys are matched on `event.key`, lower-cased, so other keyboard layouts work.
+ */
+export function interpretKey(
+  input: KeyInput,
+  context: ShortcutContext,
+  armedAt: number | null,
+  now: number,
+): { action: ShortcutAction; armedAt: number | null } {
+  if (!context.enabled || context.typing || context.modalOpen) {
+    return { action: NONE, armedAt: null };
+  }
+  if (input.isComposing || input.repeat) return { action: NONE, armedAt };
+  if (MODIFIER_KEYS.has(input.key)) return { action: NONE, armedAt };
+  if (input.ctrlKey || input.metaKey || input.altKey) {
+    return { action: NONE, armedAt: null };
+  }
+
+  const key = input.key.toLowerCase();
+  const waiting = armedAt !== null && now - armedAt <= SEQUENCE_TIMEOUT_MS;
+
+  if (input.key === "?") return { action: { type: "help" }, armedAt: null };
+
+  if (waiting) {
+    const target = input.shiftKey
+      ? undefined
+      : GO_TO_SHORTCUTS.find((shortcut) => shortcut.key === key);
+    if (target) return { action: { type: "go", href: target.href }, armedAt: null };
+    return { action: { type: "cancel" }, armedAt: null };
+  }
+
+  if (key === GO_TO_PREFIX && !input.shiftKey) {
+    return { action: { type: "arm" }, armedAt: now };
+  }
+  return { action: NONE, armedAt: null };
+}
