@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { NoteContent } from "@/components/note-content";
 
 /**
  * Reading is the default; editing is the deliberate act. The editor is only
@@ -9,15 +8,15 @@ import { NoteContent } from "@/components/note-content";
  */
 export function NoteView({
   header,
-  content,
-  links,
+  body,
   editor,
 }: {
   /** The title and its metadata, shown while reading; the editor has its
    *  own title field, so showing both would repeat it. */
   header?: ReactNode;
-  content: string;
-  links: Record<string, string | null>;
+  /** The note's text, already rendered by the server (maths and code included),
+   *  so the heavy renderers never ship to the browser. */
+  body: ReactNode;
   editor: ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
@@ -58,13 +57,7 @@ export function NoteView({
         </button>
       </div>
 
-      {content.trim() ? (
-        <NoteContent content={content} links={links} />
-      ) : (
-        <p className="text-sm text-text-muted">
-          This note is empty. Use Edit to write something.
-        </p>
-      )}
+      {body}
     </div>
   );
 }

@@ -12,7 +12,7 @@ Everything runs on your own machine. Your records stay in your own PostgreSQL da
 
 Anamnesis brings together parts of academic and personal life that usually sit in separate tools:
 
-- **Notes** in Markdown, with version history and restore, `[[wiki links]]` with backlinks, a graph view, tags, favourites, attachments, and import from PDF files and Markdown files (including Obsidian exports).
+- **Notes** in Markdown, with typeset maths (`$...$` inline, `$$...$$` as a block, rendered by KaTeX) and syntax-highlighted code, version history and restore, `[[wiki links]]` with backlinks, a graph view, tags, favourites, attachments, and import from PDF files and Markdown files (including Obsidian exports).
 - **Tasks** with due dates, priorities, tags, repeating schedules, and time blocks you can drag onto the calendar.
 - **Calendar** with month, week and day views, repeating events, and read-only import of `.ics` feeds such as university timetables.
 - **Projects and goals.** A project's progress is calculated from its tasks. A goal's progress is calculated from its own tasks and from the projects linked to it.

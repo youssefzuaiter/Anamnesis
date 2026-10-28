@@ -13,7 +13,7 @@
     "db:studio": "prisma studio",
     "eval": "tsx --conditions=react-server tests/ai/evals.ts",
     "postinstall": "prisma generate",
-    "test": "tsx --conditions=react-server --test \"tests/unit/*.test.ts\"",
+    "test": "tsx --conditions=react-server --test \"tests/unit/*.test.ts\" && tsx --test \"tests/render/*.test.ts\"",
     "test:integration": "tsx --conditions=react-server --test \"tests/integration/*.test.ts\"",
     "test:e2e": "playwright test"
   },
@@ -21,6 +21,7 @@
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
     "dotenv": "^18.0.9",
+    "katex": "^0.19.1",
     "next": "16.4.3",
     "next-auth": "5.0.0-beta.32",
     "ollama": "^0.6.4",
@@ -30,7 +31,10 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "server-only": "^0.0.1",
     "zod": "^4.6.6"
   },
