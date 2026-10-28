@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { NoteEditor } from "@/components/note-editor";
 import { createNoteAction } from "@/actions/notes";
+import { getTemplate, renderTemplate } from "@/lib/note-templates";
 import { requireUserId } from "@/lib/session";
 import { listProjectOptions } from "@/repositories/project-repository";
 import { listCourseOptions } from "@/repositories/course-repository";
@@ -16,6 +17,12 @@ export default async function NewNotePage({
   const userId = await requireUserId();
   const params = await searchParams;
   const presetTitle = typeof params.title === "string" ? params.title.slice(0, 200) : "";
+  // Only a plain string can name a template; an unknown id, a repeated
+  // parameter (an array) or an absurdly long value is Blank.
+  const template = getTemplate(
+    typeof params.template === "string" ? params.template : undefined,
+  );
+  const filled = renderTemplate(template, new Date());
   const [projects, courses, trackFocus] = await Promise.all([
     listProjectOptions(userId),
     listCourseOptions(userId),
@@ -41,10 +48,11 @@ export default async function NewNotePage({
         submitLabel="Create note"
         projects={projects}
         courses={courses}
+        templatePicker={{ initialTemplateId: template.id }}
         initial={{
-          title: presetTitle,
-          content: "",
-          tags: [],
+          title: presetTitle || filled.title,
+          content: filled.content,
+          tags: [...template.tags],
           isFavorite: false,
           projectId: null,
           courseId: null,
