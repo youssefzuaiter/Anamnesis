@@ -21,6 +21,7 @@ import {
 } from "@/services/daily-service";
 
 const NOW = new Date(2026, 9, 28, 18, 0); // Wed 28 Oct 2026, 18:00 local
+const DAY = "2026-10-28"; // the day a panel shown at NOW was proposed for
 /** A local time on the day `dayOffset` days from 28 Oct. */
 const at = (hour: number, minute: number, dayOffset = 0) =>
   new Date(2026, 9, 28 + dayOffset, hour, minute);
@@ -132,7 +133,7 @@ test("the proposal holds only the caller's open, dated tasks due today or overdu
   assert.equal(`${plan.tomorrow.getFullYear()}-${plan.tomorrow.getMonth() + 1}-${plan.tomorrow.getDate()}`, "2026-10-29");
 
   // Another account's id sent from the browser is ignored, and moves nothing.
-  await assert.rejects(() => applyShutdown(a.id, NOW, [bTask.id]), refusedAsValidation);
+  await assert.rejects(() => applyShutdown(a.id, NOW, [bTask.id], DAY), refusedAsValidation);
   const after = await prisma.task.findUniqueOrThrow({ where: { id: bTask.id } });
   assert.deepEqual(after.dueDate, at(9, 0));
 });
@@ -148,7 +149,7 @@ test("applying moves due dates to tomorrow at the same time and clears only a bl
     scheduledStart: at(10, 0, 1), scheduledEnd: at(11, 0, 1),
   });
 
-  const result = await applyShutdown(a.id, NOW, [dueToday.id, overdue.id]);
+  const result = await applyShutdown(a.id, NOW, [dueToday.id, overdue.id], DAY);
   assert.equal(result.moved, 2);
 
   const first = await prisma.task.findUniqueOrThrow({ where: { id: dueToday.id } });
@@ -170,7 +171,7 @@ test("an overdue task is left alone unless it is requested", async () => {
   const dueToday = await addTask(a.id, { title: "Due today", dueDate: at(9, 0) });
   const overdue = await addTask(a.id, { title: "Overdue", dueDate: at(9, 0, -3) });
 
-  await applyShutdown(a.id, NOW, [dueToday.id]);
+  await applyShutdown(a.id, NOW, [dueToday.id], DAY);
   const left = await prisma.task.findUniqueOrThrow({ where: { id: overdue.id } });
   assert.deepEqual(left.dueDate, at(9, 0, -3));
 });
@@ -179,8 +180,21 @@ test("shutting down twice moves nothing the second time", async () => {
   const a = await newUser();
   const task = await addTask(a.id, { title: "Due today", dueDate: at(9, 0) });
 
-  await applyShutdown(a.id, NOW, [task.id]);
-  await assert.rejects(() => applyShutdown(a.id, NOW, [task.id]), refusedAsValidation);
+  await applyShutdown(a.id, NOW, [task.id], DAY);
+  await assert.rejects(() => applyShutdown(a.id, NOW, [task.id], DAY), refusedAsValidation);
   const row = await prisma.task.findUniqueOrThrow({ where: { id: task.id } });
   assert.deepEqual(row.dueDate, at(9, 0, 1));
+});
+
+test("applying after midnight is refused, so nothing lands a day later than the panel said", async () => {
+  const a = await newUser();
+  const task = await addTask(a.id, { title: "Due today", dueDate: at(9, 0) });
+  const afterMidnight = at(0, 5, 1); // 00:05 on 29 Oct; the panel was proposed on the 28th
+
+  await assert.rejects(
+    () => applyShutdown(a.id, afterMidnight, [task.id], DAY),
+    refusedAsValidation,
+  );
+  const row = await prisma.task.findUniqueOrThrow({ where: { id: task.id } });
+  assert.deepEqual(row.dueDate, at(9, 0));
 });

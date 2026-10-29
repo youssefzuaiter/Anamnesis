@@ -901,6 +901,12 @@ confirmed step. It was shown as a clickable design and approved before any code.
   only the requested ids that are in it. Another account's valid id, a done task and one already
   moved are not in it. If none are left it refuses with `VALIDATION_ERROR` ("Those tasks have
   already moved or are done. Review the list again."). The ids are a capped array of uuids.
+  **The day is part of the proposal.** The panel remembers the day it was shown for and sends it
+  back with the ids; the server compares it with its own today and refuses if midnight has
+  passed ("The day changed while you were reviewing. Review the list again."). Without that,
+  a panel opened at 23:55 and confirmed at 00:05 re-derives against the new day and moves the
+  tasks to the day after the one the panel promised, which only the result line would have shown.
+  Found in the final review, not by a test; the value is only compared, never used as a date.
 - **Shared pieces moved out so pure code could use them.** `bucketOf` is in `lib/task-bucket.ts`
   (still re-exported from `task-service`). `dayBounds` is in `lib/day.ts`, moved out of
   `plan-service` unchanged, and "tomorrow" is `dayBounds(now).to` in every place that needs it,
@@ -924,6 +930,15 @@ a day other than today; making the note on its own at midnight; a `g` shortcut f
 moves are made one task after another, not in one transaction, so a task deleted between the
 proposal and the apply stops the run part-way with an error; reopening the review shows what
 is left.
+
+**Known limits of the note text.** It is built on the server and goes through `createNote`,
+which checks ownership but not length: the 100,000-character cap lives in the actions' schemas,
+so a day with more than about 400 items would make a note the editor then refuses to save until
+some lines are cut. Titles are copied as they are, and a calendar feed can put a newline in one
+(`unescapeText` turns `\n` into a real line break), which can add a stray line or heading to the
+note. Neither can reach another account or run anything; both are cosmetic or recoverable, and
+neither was fixed. A Today page left open overnight still says "Starts a note for" yesterday's
+date until it reloads; the button makes the note for the day it is pressed.
 
 ## The assistant, and what actually defends it
 

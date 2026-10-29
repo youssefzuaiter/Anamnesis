@@ -96,12 +96,24 @@ export async function proposeShutdown(
  * input. An id that is not in this account's own list (another account's task,
  * a done task, one already moved) is simply not in it and is ignored; if none
  * are left, nothing moves and the person is told to review again.
+ *
+ * `proposedDay` is the day the panel was shown for. If midnight has passed since,
+ * "tomorrow" is a different day from the one the person agreed to, so it is
+ * refused rather than moving tasks a day later than the panel said. It is only
+ * compared, never used as a date.
  */
 export async function applyShutdown(
   userId: string,
   now: Date,
   taskIds: string[],
+  proposedDay: string,
 ): Promise<{ moved: number; tomorrow: Date }> {
+  if (proposedDay !== dailyTitle(now)) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "The day changed while you were reviewing. Review the list again.",
+    );
+  }
   const plan = await proposeShutdown(userId, now);
   const wanted = new Set(taskIds);
   const items = [...plan.dueToday, ...plan.overdue].filter((item) =>

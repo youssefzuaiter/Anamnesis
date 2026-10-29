@@ -132,7 +132,7 @@ export function ShutDownDay() {
                 onClick={() => {
                   setError(null);
                   startTransition(async () => {
-                    const result = await applyShutdownAction([...selected]);
+                    const result = await applyShutdownAction([...selected], view.day);
                     if (result.success) {
                       setView(null);
                       setMessage(
