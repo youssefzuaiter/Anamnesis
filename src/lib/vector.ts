@@ -24,6 +24,13 @@ export type VectorSearchResult = {
   similarity: number;
 };
 
+/**
+ * The sources a search may return, by type: `{ note: [ids], task: [ids] }`.
+ * It narrows the query itself, before the top-k cut, as a second filter beside
+ * `userId` — never instead of it.
+ */
+export type SourceFilter = Partial<Record<EmbeddableSourceType, string[]>>;
+
 const MAX_SEARCH_LIMIT = 50;
 
 function toVectorLiteral(embedding: number[]): string {
@@ -88,8 +95,22 @@ export async function searchWorkspaceVectors(
   queryEmbedding: number[],
   limit = 8,
   sourceTypes?: EmbeddableSourceType[],
+  within?: SourceFilter,
 ): Promise<VectorSearchResult[]> {
   assertValidEmbedding(queryEmbedding);
+
+  // Two parallel arrays, never SQL built from strings. A filter that allows
+  // nothing is answered without a query.
+  const allowedTypes: string[] = [];
+  const allowedIds: string[] = [];
+  for (const [type, sourceIds] of Object.entries(within ?? {})) {
+    for (const sourceId of sourceIds ?? []) {
+      allowedTypes.push(type);
+      allowedIds.push(sourceId);
+    }
+  }
+  if (within && allowedIds.length === 0) return [];
+  const scoped = within !== undefined;
 
   const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), MAX_SEARCH_LIMIT);
   const vector = toVectorLiteral(queryEmbedding);
@@ -108,6 +129,12 @@ export async function searchWorkspaceVectors(
       WHERE "userId" = ${userId}
         AND "embedding" IS NOT NULL
         AND "sourceType" = ANY(${typeFilter}::text[])
+        AND (
+          ${scoped}::boolean = false
+          OR ("sourceType", "sourceId") IN (
+            SELECT s.t, s.i FROM unnest(${allowedTypes}::text[], ${allowedIds}::text[]) AS s(t, i)
+          )
+        )
       ORDER BY "embedding" <=> ${vector}::vector ASC
       LIMIT ${safeLimit}`;
   } catch (error) {

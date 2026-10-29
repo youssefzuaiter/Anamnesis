@@ -7,6 +7,11 @@ import {
   getConversation,
 } from "@/repositories/conversation-repository";
 import type { Citation } from "@/services/assistant-service";
+import { formatScopeParam, parseScopeParam } from "@/lib/assistant-scope";
+import type { ScopeChoices } from "@/components/scope-picker";
+import { listCourseOptions } from "@/repositories/course-repository";
+import { listProjectOptions } from "@/repositories/project-repository";
+import { getScopeEntity } from "@/repositories/scope-repository";
 
 export const metadata = { title: "Assistant · Anamnesis" };
 
@@ -21,12 +26,25 @@ export default async function AssistantPage({
   const userId = await requireUserId();
   const params = await searchParams;
   const requested = typeof params.c === "string" ? params.c : null;
+  // A scope named in the URL counts only if it is the caller's own; a malformed
+  // one, another account's, or a deleted one is just "Everything".
+  const requestedScope = parseScopeParam(params.scope);
 
-  const [indexedChunks, conversations, active] = await Promise.all([
-    prisma.workspaceEmbedding.count({ where: { userId } }),
-    listConversations(userId),
-    requested ? getConversation(userId, requested) : Promise.resolve(null),
-  ]);
+  const [indexedChunks, conversations, active, courses, projects, scopeEntity] =
+    await Promise.all([
+      prisma.workspaceEmbedding.count({ where: { userId } }),
+      listConversations(userId),
+      requested ? getConversation(userId, requested) : Promise.resolve(null),
+      listCourseOptions(userId),
+      listProjectOptions(userId),
+      requestedScope ? getScopeEntity(userId, requestedScope) : Promise.resolve(null),
+    ]);
+  const scope = scopeEntity ? requestedScope : null;
+  const scopeChoices: ScopeChoices = {
+    courses: courses.map((course) => ({ id: course.id, label: `${course.code} — ${course.title}` })),
+    projects: projects.map((project) => ({ id: project.id, label: project.title })),
+    note: scopeEntity && scope?.kind === "note" ? { id: scopeEntity.id, label: scopeEntity.label } : null,
+  };
 
   // Proposals are deliberately not replayed: confirming one is a live
   // decision, and a reopened thread showing yesterday's buttons would invite
@@ -67,9 +85,11 @@ export default async function AssistantPage({
 
         <div className="flex min-w-0 flex-1 flex-col">
           <AssistantChat
-            key={active?.id ?? "new"}
+            key={`${active?.id ?? "new"}:${scope ? formatScopeParam(scope) : ""}`}
             conversationId={active?.id ?? null}
             initialTurns={initialTurns}
+            scopeChoices={scopeChoices}
+            initialScope={scope}
           />
         </div>
       </div>

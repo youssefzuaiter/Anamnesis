@@ -36,7 +36,7 @@ services. Nothing may need a paid API key.
   from its date into free gaps, add the due flashcards and the course's notes. Pure
   arithmetic like `lib/day-planner.ts`, no model. Propose, then confirm, then re-derive on the
   server, the same shape as Plan my day.
-- [ ] **6. Scope assistant questions** (S, model). Restrict retrieval to one course, project or
+- [x] **6. Scope assistant questions** (S, model). Restrict retrieval to one course, project or
   note. The evals must show another account's data still never enters the context.
 - [ ] **7. Link suggestions and unlinked mentions** (M, model?). "This note is close to X, link
   it?" from the existing embeddings. Suggestions never write a link by themselves.

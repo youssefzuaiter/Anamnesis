@@ -19,7 +19,7 @@ Anamnesis brings together parts of academic and personal life that usually sit i
 - **Courses** with assessments, a grade calculator that shows what you need on the remaining work, and an exam-prep summary. An exam prep planner spreads review sessions over the days before an assessment, in the free gaps of your calendar, and adds them as planned tasks once you confirm.
 - **Flashcards and review.** Spaced repetition using the SM-2 algorithm. Cards can be generated from a note.
 - **Search.** Semantic search finds content by meaning. The command palette (Ctrl+K or ⌘K) does quick literal search and navigation.
-- **Assistant.** Ask questions about your workspace and get cited answers. It can also propose new tasks, events, notes or goals. Nothing is created until you confirm.
+- **Assistant.** Ask questions about your workspace and get cited answers. It can also propose new tasks, events, notes or goals. Nothing is created until you confirm. On the assistant page you can limit a question to one course, one project or one note ("Ask about"), from the control or from the "Ask about this course / project / note" links.
 - **Audit log and trash.** Every assistant proposal and your decision is recorded. Deleted notes, tasks, projects and goals go to a trash, where you can restore them or delete them permanently.
 - **Keyboard shortcuts.** Ctrl or ⌘ + K jumps to anything and Ctrl or ⌘ + J opens the assistant. Press `g`, then a letter (`g` `n` for notes, `g` `t` for tasks) to go to a page, and `?` for the full list. The single-key shortcuts pause while you type in a field and can be switched off from that list.
 - **Dashboard.** Today's tasks and schedule, recent notes, active projects and goals, and a "Plan my day" button. It proposes a plan that fits open tasks into your free time and changes nothing until you confirm.
@@ -70,7 +70,7 @@ If Ollama is not running, the notes page falls back to keyword matching and says
 | Area | Choice |
 | --- | --- |
 | Web framework | Next.js 16 (App Router), React 19, TypeScript |
-| Database | PostgreSQL 17 with pgvector (HNSW index for vector search) |
+| Database | PostgreSQL 17 with pgvector (exact similarity search, no vector index) |
 | ORM | Prisma 7 with the `pg` driver adapter |
 | Authentication | Auth.js (NextAuth v5 beta), email and password, JWT sessions |
 | Validation | Zod, for form input and AI tool calls |
