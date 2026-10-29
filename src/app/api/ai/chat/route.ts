@@ -2,7 +2,7 @@ import { z } from "zod";
 import { requireUserId } from "@/lib/session";
 import { toApiResponse } from "@/lib/api-response";
 import { assistantScopeSchema } from "@/lib/assistant-scope";
-import { resolveScope } from "@/services/scope-service";
+import { assertScopeOwned } from "@/services/scope-service";
 import { answerQuestion } from "@/services/assistant-service";
 import {
   createConversation,
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
 
     // Refused here, as a plain 404, so no thread is opened and nothing streams
     // for a scope that is not the caller's own.
-    if (parsed.scope) await resolveScope(userId, parsed.scope);
+    if (parsed.scope) await assertScopeOwned(userId, parsed.scope);
   } catch (error) {
     const body = toApiResponse(error);
     const code = body.error?.code;
