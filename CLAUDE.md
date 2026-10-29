@@ -940,6 +940,77 @@ note. Neither can reach another account or run anything; both are cosmetic or re
 neither was fixed. A Today page left open overnight still says "Starts a note for" yesterday's
 date until it reloads; the button makes the note for the day it is pressed.
 
+## Exam prep planner
+
+On a course page, **Exam prep** (ROADMAP item 5) turns an assessment into review sessions:
+pick an assessment, a review time and a session length, look at the plan, confirm. It was shown
+as a clickable design (light, dark, phone) and approved before any code.
+
+- **Arithmetic, no model.** `lib/exam-prep.ts` is pure and borrows the free-gap rule from
+  `lib/day-planner.ts`, the same split Plan my day makes: which day a session lands on is a sum.
+  `busyFrom` (events plus planned blocks as committed time) moved into the day planner so both
+  planners build it one way.
+- **The spread rule.** The window is tomorrow up to the day before the assessment, at most 21
+  days back. Sessions go evenly back from the day before, one a day, each in the first free gap
+  that fits; a target day with no room gives way to the nearest day with some, the one closer
+  to the assessment on a tie. Only when there are more sessions than days does a second pass
+  stack a second session on a day (never a third), ten minutes after the first. A session is
+  never shortened, so a plan can come back short, and the card says how many fit and names the
+  days that had no gap. **Never today and never on the assessment's own day:** today is Plan
+  my day's job, and the day itself is the assessment.
+- **Review time is chosen, not derived.** 3, 6 or 10 hours (default 6), sessions of 45, 60 or
+  90 minutes (default 60). The weight of an assessment says how much it counts, not how long
+  anyone should study for it, so the app does not guess; the card says six hours is a starting
+  point. Both are the only values the server accepts.
+- **A session is an ordinary task.** Titled `Review: Midterm (2 of 6)`, tagged `exam-prep`,
+  planned for its time, due at the end of its own day, with a description naming the course's
+  newest notes and how many flashcards are due. It is made through `createTask`, so the
+  calendar, Today and Plan my day already treat it as any planned block, with no change.
+- **One additive migration, a column and not a tag.** `Task.assessmentId` is nullable with a
+  foreign key that sets it null if the assessment is deleted (the sessions stay). A second
+  proposal needs to know what is already planned for *this* assessment; counting by course and
+  tag cannot tell a course's midterm from its final, and would put an id in the tag list a
+  person sees. The council that chose was run by me inline, not by independent subagents, so it
+  is weaker than four separate voices. The previous release does not know the column and keeps
+  working (the migration rule under "Operations"). It is optional on `TaskInput`, like
+  `recurrenceId`: Prisma treats a missing key as "leave unchanged", so the edit form and
+  `patchTask` do not touch it, and `createTask` re-checks that the assessment is the caller's.
+  The migration SQL came from `prisma migrate diff` against the live database, not from
+  `migrate dev`, which can offer to reset a database that holds real data.
+- **Counting what is planned.** The sessions of this assessment that are not deleted, done ones
+  included, take away from the chosen review time, so pressing the button again plans only what
+  is left; a fully planned assessment proposes nothing and says so.
+- **Propose, confirm, re-derive.** Same shape as Plan my day. The start times come back from the
+  browser, so they are only compared with the plan the server derives again; a time it did not
+  propose makes nothing, and a second confirmation finds nothing that still matches. **If the
+  calendar changed in another tab, or midnight passed, between the two, some ticked sessions
+  drop out; the card says "Added 3 of the 6 sessions you ticked: the other 3 no longer fit".**
+  That was found in the final review, not by a test: before it, the status line gave only the
+  number added. Sessions are made one after another, not in a transaction.
+- **Flashcards are a count and a link.** The review queue (`/cards`) is not filtered by course.
+- **The export** now carries `assessmentId` on each task while assessments are still not
+  exported, so the id points at nothing in the file, as `courseId` already does (see "Data
+  export").
+- **Found by looking at it on a real course, not by any test:** at the page's real width the
+  three-column controls squeezed the chips (10 h under the other two, session lengths stacked
+  one above another), so the select has its own row and the two chip groups sit side by side
+  and wrap on a phone. The confirmation said the sessions "show on Today", but the first one is
+  tomorrow, so someone checking Today straight away saw nothing; it now says each shows on its
+  own day. And a fully planned assessment said "Already planned: 6 sessions. This plan adds the
+  rest." directly above "That is already planned", so the first sentence is shown only when
+  there is a rest to add. Measured at 375px: every control 44px or more, no horizontal overflow,
+  in light and dark.
+- **Found while checking the tests:** after confirming, the course page shows the sessions
+  through any one of the action's `revalidatePath` calls or the card's `router.refresh()`.
+  Removing the refresh, or the course-page revalidation, or both left the browser tests green;
+  removing every one failed them. Both are kept, as Plan my day keeps both.
+
+**Not done:** the time of day of an exam (assessments store a date only); deleting or redoing a
+whole plan in one action (delete the sessions from Tasks, tagged `exam-prep`); a course filter on
+the flashcard queue; starting more than 21 days out; sessions on the assessment's own day; a
+shortcut from Today. **Not run locally:** the `evals` job (it needs Ollama) and the container
+rehearsal that exercises the migration; CI runs both.
+
 ## The assistant, and what actually defends it
 
 `services/assistant-service.ts` retrieves chunks, builds the prompt, and streams an
@@ -1301,7 +1372,9 @@ and calendar subscriptions, so "everything a user owns" is not yet literally
 true. It was not widened inside the goals change because each of those needs
 its own decision — attachment bytes live on disk and not in Postgres, a private
 calendar feed URL is usually a bearer secret, and version and message history
-are large — and none of that is about goals.
+are large — and none of that is about goals. Tasks now export their `assessmentId` (the exam
+prep planner sets it) while assessments are still left out, so that id points at nothing in the
+file, as `courseId` already does.
 
 ## Auth and route protection
 

@@ -133,8 +133,8 @@ export function ExamPrep({
             of your calendar. Nothing is added until you confirm.
           </p>
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="flex flex-col gap-4">
+            <div className="flex min-w-0 max-w-sm flex-col gap-1.5">
               <label htmlFor={selectId} className="text-xs font-semibold text-text-faint">
                 Assessment
               </label>
@@ -151,20 +151,22 @@ export function ExamPrep({
                 ))}
               </select>
             </div>
-            <Chips
-              label="Review time"
-              options={PREP_HOURS}
-              value={hours}
-              unit="h"
-              onPick={(value) => change(() => setHours(value))}
-            />
-            <Chips
-              label="Session length"
-              options={SESSION_MINUTES}
-              value={minutes}
-              unit="min"
-              onPick={(value) => change(() => setMinutes(value))}
-            />
+            <div className="flex flex-wrap gap-x-10 gap-y-4">
+              <Chips
+                label="Review time"
+                options={PREP_HOURS}
+                value={hours}
+                unit="h"
+                onPick={(value) => change(() => setHours(value))}
+              />
+              <Chips
+                label="Session length"
+                options={SESSION_MINUTES}
+                value={minutes}
+                unit="min"
+                onPick={(value) => change(() => setMinutes(value))}
+              />
+            </div>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -206,7 +208,7 @@ export function ExamPrep({
           <div>
             <h3 className="text-base font-bold text-text">Review plan for {proposal.title}</h3>
             <p className="mt-1 text-sm leading-normal text-text-muted">
-              {proposal.plannedCount > 0 &&
+              {proposal.plannedCount > 0 && proposal.sessions.length > 0 &&
                 `Already planned: ${plural(proposal.plannedCount, "session")} (${proposal.plannedHours} h). This plan adds the rest. `}
               {proposal.sessions.length > 0 &&
                 `${plural(proposal.sessions.length, "session")} of ${proposal.sessionMinutes} min, spread over the ${proposal.windowDays} days before ${proposal.dueLabel}. Nothing is planned on the day itself.`}

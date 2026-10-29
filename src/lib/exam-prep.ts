@@ -244,12 +244,11 @@ export function prepNotices(input: {
  * count.
  */
 export function prepAddedMessage(added: number, skipped: number): string {
-  const shows = added === 1 ? "shows" : "show";
-  const them = added === 1 ? "a planned block" : "planned blocks";
-  if (skipped === 0) {
-    return added === 1
-      ? "Added 1 session to your calendar. It shows on Today and the calendar as a planned block."
-      : `Added ${added} sessions to your calendar. They show on Today and the calendar as planned blocks.`;
+  if (skipped > 0) {
+    return `Added ${added} of the ${added + skipped} sessions you ticked: the other ${skipped} no longer fit. Propose a plan again to see what is left.`;
   }
-  return `Added ${added} of the ${added + skipped} sessions you ticked: the other ${skipped} no longer fit. Propose a plan again to see what is left. The ${added} added ${shows} on Today and the calendar as ${them}.`;
+  // The first session is tomorrow at the soonest, so Today shows each one on its own day, not straight away.
+  return added === 1
+    ? "Added 1 session to your calendar. It shows on its own day, on Today and in the calendar."
+    : `Added ${added} sessions to your calendar. Each one shows on its own day, on Today and in the calendar.`;
 }

@@ -131,3 +131,18 @@ test("on a phone the card fits and is easy to use", async ({ page }) => {
   expect(heights.length).toBeGreaterThanOrEqual(12);
   for (const height of heights) expect(height).toBeGreaterThanOrEqual(44);
 });
+
+test("a plan that is already complete says so once", async ({ page }) => {
+  await courseWithAssessment(page, { title: "Midterm", weight: 30, dueInDays: 12 });
+  await propose(page).click();
+  await expect(sessionRows(page)).toHaveCount(6, { timeout: 15_000 });
+  await addButton(page).click();
+  await expect(main(page).getByRole("status").filter({ hasText: "Added 6 sessions" })).toBeVisible();
+
+  await propose(page).click();
+  await expect(
+    main(page).getByText("That is already planned: 6 sessions (6 h) are on your calendar for Midterm."),
+  ).toBeVisible();
+  // The line that introduces the rest of a plan has no place when there is no rest.
+  await expect(main(page).getByText(/^Already planned: /)).toHaveCount(0);
+});
