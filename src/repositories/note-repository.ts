@@ -94,6 +94,40 @@ export async function findNotesByIds(
   });
 }
 
+/** Every live note's id and title: what a `[[link]]` can resolve to, ambiguity included. */
+export async function listNoteTitles(
+  userId: string,
+): Promise<{ id: string; title: string }[]> {
+  return prisma.note.findMany({
+    where: { userId, deletedAt: null },
+    select: { id: true, title: true },
+  });
+}
+
+/**
+ * Live notes whose text contains `text`, in any case, most recently edited first.
+ * Prisma's `contains` escapes `%` and `_`, so a title is matched literally. A
+ * narrowing step only: the caller confirms each hit as a mention of whole words.
+ */
+export async function listNotesContaining(
+  userId: string,
+  text: string,
+  excludeIds: string[],
+  take: number,
+): Promise<{ id: string; title: string; content: string }[]> {
+  return prisma.note.findMany({
+    where: {
+      userId,
+      deletedAt: null,
+      id: { notIn: excludeIds },
+      content: { contains: text, mode: "insensitive" },
+    },
+    orderBy: { updatedAt: "desc" },
+    take,
+    select: { id: true, title: true, content: true },
+  });
+}
+
 export async function getNote(
   userId: string,
   noteId: string,
