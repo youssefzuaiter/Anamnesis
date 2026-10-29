@@ -4,7 +4,7 @@ import { indexEntity, deleteEntityEmbeddings } from "@/lib/vector";
 import { AppError } from "@/lib/api-response";
 import * as taskRepository from "@/repositories/task-repository";
 import { assertProjectOwned, recalculateProgress } from "@/services/project-service";
-import { assertCourseOwned } from "@/services/course-service";
+import { assertAssessmentOwned, assertCourseOwned } from "@/services/course-service";
 import { assertGoalOwned, recalculateGoalProgress } from "@/services/goal-service";
 import { generateOccurrences, type RecurrenceFrequency } from "@/lib/recurrence";
 import { bucketOf, type TaskBucket } from "@/lib/task-bucket";
@@ -100,6 +100,7 @@ export async function createTask(
   await assertProjectOwned(userId, input.projectId);
   await assertCourseOwned(userId, input.courseId);
   await assertGoalOwned(userId, input.goalId);
+  await assertAssessmentOwned(userId, input.assessmentId);
   const task = await taskRepository.createTask(userId, resolveSchedule(input));
   await syncTaskIndex(userId, task);
   await recalculateProgress(userId, task.projectId);

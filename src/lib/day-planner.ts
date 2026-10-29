@@ -9,6 +9,24 @@
 
 export type Busy = { start: Date; end: Date };
 
+/**
+ * The commitments of a stretch of days: real appointments and blocks already
+ * set aside both count. A planned block with no end is skipped.
+ */
+export function busyFrom(
+  events: { startTime: Date; endTime: Date }[],
+  scheduled: { scheduledStart: Date | null; scheduledEnd: Date | null }[],
+): Busy[] {
+  return [
+    ...events.map((event) => ({ start: event.startTime, end: event.endTime })),
+    ...scheduled.flatMap((task) =>
+      task.scheduledStart && task.scheduledEnd
+        ? [{ start: task.scheduledStart, end: task.scheduledEnd }]
+        : [],
+    ),
+  ];
+}
+
 export type Plannable = {
   id: string;
   title: string;
@@ -31,7 +49,7 @@ export const DAY_END_HOUR = 21;
 const MIN_USABLE_MINUTES = 15;
 
 /** A breather between blocks, so a plan is not a wall of back-to-back work. */
-const GAP_MINUTES = 10;
+export const GAP_MINUTES = 10;
 
 const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
 

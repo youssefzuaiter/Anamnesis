@@ -24,6 +24,19 @@ export async function assertCourseOwned(
   }
 }
 
+/** The same check for an assessment id that came from the browser. */
+export async function assertAssessmentOwned(
+  userId: string,
+  assessmentId: string | null | undefined,
+): Promise<void> {
+  if (!assessmentId) return;
+
+  const assessment = await courseRepository.getAssessment(userId, assessmentId);
+  if (!assessment) {
+    throw new AppError("RESOURCE_NOT_FOUND", "That assessment no longer exists.");
+  }
+}
+
 /**
  * Keeps a course's vector index in step with its own fields and its
  * assessments — a course's embedded prose includes a grade rundown (see

@@ -32,7 +32,7 @@ services. Nothing may need a paid API key.
 
 ## B. Study value
 
-- [ ] **5. Exam-prep planner** (M, demo). Pick an assessment; schedule review blocks backwards
+- [x] **5. Exam-prep planner** (M, demo). Pick an assessment; schedule review blocks backwards
   from its date into free gaps, add the due flashcards and the course's notes. Pure
   arithmetic like `lib/day-planner.ts`, no model. Propose, then confirm, then re-derive on the
   server, the same shape as Plan my day.

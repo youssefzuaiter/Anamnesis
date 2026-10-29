@@ -16,7 +16,7 @@ Anamnesis brings together parts of academic and personal life that usually sit i
 - **Tasks** with due dates, priorities, tags, repeating schedules, and time blocks you can drag onto the calendar.
 - **Calendar** with month, week and day views, repeating events, and read-only import of `.ics` feeds such as university timetables.
 - **Projects and goals.** A project's progress is calculated from its tasks. A goal's progress is calculated from its own tasks and from the projects linked to it.
-- **Courses** with assessments, a grade calculator that shows what you need on the remaining work, and an exam-prep summary.
+- **Courses** with assessments, a grade calculator that shows what you need on the remaining work, and an exam-prep summary. An exam prep planner spreads review sessions over the days before an assessment, in the free gaps of your calendar, and adds them as planned tasks once you confirm.
 - **Flashcards and review.** Spaced repetition using the SM-2 algorithm. Cards can be generated from a note.
 - **Search.** Semantic search finds content by meaning. The command palette (Ctrl+K or ⌘K) does quick literal search and navigation.
 - **Assistant.** Ask questions about your workspace and get cited answers. It can also propose new tasks, events, notes or goals. Nothing is created until you confirm.

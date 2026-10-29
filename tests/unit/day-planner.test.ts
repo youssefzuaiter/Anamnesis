@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  busyFrom,
   planDay,
   freeIntervals,
   DAY_START_HOUR,
@@ -134,4 +135,19 @@ test("the returned plan is in chronological order", () => {
   );
   const starts = plan.map((block) => block.start.getTime());
   assert.deepEqual(starts, [...starts].sort((a, b) => a - b));
+});
+
+test("busyFrom counts events and planned blocks, and skips a block with no end", () => {
+  const busy = busyFrom(
+    [{ startTime: at(9), endTime: at(10) }],
+    [
+      { scheduledStart: at(13), scheduledEnd: at(14) },
+      { scheduledStart: at(15), scheduledEnd: null },
+      { scheduledStart: null, scheduledEnd: null },
+    ],
+  );
+  assert.deepEqual(busy, [
+    { start: at(9), end: at(10) },
+    { start: at(13), end: at(14) },
+  ]);
 });
