@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { requireUserId } from "@/lib/session";
 import { toApiResponse } from "@/lib/api-response";
+import { assistantScopeSchema } from "@/lib/assistant-scope";
+import { resolveScope } from "@/services/scope-service";
 import { answerQuestion } from "@/services/assistant-service";
 import {
   createConversation,
@@ -22,6 +24,10 @@ const chatSchema = z.object({
   // Absent on the first turn of a thread; the server creates one and says so
   // in the opening frame.
   conversationId: z.uuid().nullish(),
+  // Limits the search to one course, project or note; null or absent is
+  // everything. It is client input, so it is checked against the caller's own
+  // data below, before a thread is opened.
+  scope: assistantScopeSchema.nullish(),
 });
 
 export async function POST(request: Request) {
@@ -32,15 +38,30 @@ export async function POST(request: Request) {
     userId = await requireUserId();
     const result = chatSchema.safeParse(await request.json());
     if (!result.success) {
+      const badScope = result.error.issues.some((issue) => issue.path[0] === "scope");
       return Response.json(
-        { success: false, data: null, error: { code: "VALIDATION_ERROR", message: "Ask a question between 1 and 2000 characters." } },
+        {
+          success: false,
+          data: null,
+          error: {
+            code: "VALIDATION_ERROR",
+            message: badScope
+              ? "Choose a course, a project or a note to ask about."
+              : "Ask a question between 1 and 2000 characters.",
+          },
+        },
         { status: 400 },
       );
     }
     parsed = result.data;
+
+    // Refused here, as a plain 404, so no thread is opened and nothing streams
+    // for a scope that is not the caller's own.
+    if (parsed.scope) await resolveScope(userId, parsed.scope);
   } catch (error) {
     const body = toApiResponse(error);
-    const status = body.error?.code === "AUTH_REQUIRED" ? 401 : 500;
+    const code = body.error?.code;
+    const status = code === "AUTH_REQUIRED" ? 401 : code === "RESOURCE_NOT_FOUND" ? 404 : 500;
     return Response.json(body, { status });
   }
 
@@ -81,6 +102,7 @@ export async function POST(request: Request) {
           parsed.question,
           parsed.history,
           request.signal,
+          parsed.scope ?? null,
         )) {
           if (event.type === "delta") answer += event.text;
           if (event.type === "citations") citations = event.citations;

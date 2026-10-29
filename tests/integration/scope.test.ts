@@ -12,8 +12,9 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { AppError } from "@/lib/api-response";
-import { searchWorkspaceVectors, type EmbeddableSourceType, type SourceFilter } from "@/lib/vector";
+import { searchWorkspaceVectors, type EmbeddableSourceType } from "@/lib/vector";
 import { resolveScope } from "@/services/scope-service";
+import { answerQuestion, retrieveContext } from "@/services/assistant-service";
 import type { AssistantScope } from "@/lib/assistant-scope";
 
 const created: string[] = [];
@@ -248,6 +249,36 @@ test("without a filter the search is as it was: nearest first, the caller's own 
   assert.deepEqual(ids(onlyNotes), [middle, farthest]);
 });
 
-// A scope that is typed but not used here keeps the types honest.
-const _typecheck: { scope: AssistantScope; within: SourceFilter } | null = null;
-void _typecheck;
+// The assistant ------------------------------------------------------------
+
+async function drain(events: AsyncIterable<unknown>): Promise<void> {
+  for await (const event of events) void event;
+}
+
+test("a scope that does not resolve fails before the embedder or the model is touched", async () => {
+  const a = await newUser();
+  const b = await newUser();
+  const foreign: AssistantScope = { kind: "course", id: (await makeCourse(b.id)).id };
+  const unknown: AssistantScope = { kind: "note", id: randomUUID() };
+
+  await assert.rejects(() => retrieveContext(a.id, "anything", [], unknown), refusedAs("RESOURCE_NOT_FOUND"));
+  await assert.rejects(
+    () => drain(answerQuestion(a.id, "what is in my notes?", [], undefined, foreign)),
+    refusedAs("RESOURCE_NOT_FOUND"),
+  );
+  // An action-shaped question is checked the same way: the scope is validated first.
+  await assert.rejects(
+    () => drain(answerQuestion(a.id, "add a task to buy milk tomorrow", [], undefined, foreign)),
+    refusedAs("RESOURCE_NOT_FOUND"),
+  );
+});
+
+test("the caller's own scope is not refused (Ollama is off in this tier, so it fails later, for another reason)", async () => {
+  const a = await newUser();
+  const course = await makeCourse(a.id);
+  try {
+    await retrieveContext(a.id, "anything", [], { kind: "course", id: course.id });
+  } catch (error) {
+    assert.ok(!(error instanceof AppError && error.code === "RESOURCE_NOT_FOUND"), "an own course was refused");
+  }
+});
