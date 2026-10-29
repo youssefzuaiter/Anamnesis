@@ -1,6 +1,6 @@
 // The one line under a suggested note that says why it is offered. Pure text.
 
-import type { LinkReason } from "@/services/link-suggestion-service";
+export type LinkReason = "similar" | "named";
 
 const LABEL: Record<LinkReason, string> = {
   named: "Named in this note",

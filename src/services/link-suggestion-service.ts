@@ -1,7 +1,8 @@
 import "server-only";
 import { AppError } from "@/lib/api-response";
 import { MIN_MENTION_TITLE_LENGTH, mentionSnippet } from "@/lib/mentions";
-import { appendSeeAlso, canLinkTitle, linksTo, MAX_NOTE_LENGTH } from "@/lib/see-also";
+import type { LinkReason } from "@/lib/link-reason";
+import { appendSeeAlso, canLinkTitle, linkedTitles, linksTo, MAX_NOTE_LENGTH } from "@/lib/see-also";
 import { findSimilarEntities } from "@/lib/vector";
 import { MAX_LINKS, normalizeTitle, parseWikiLinks } from "@/lib/wiki-links";
 import * as linkRepository from "@/repositories/link-repository";
@@ -22,8 +23,6 @@ const SIMILAR_CANDIDATES = 20;
 const MAX_NAMED_CANDIDATES = 100;
 const MENTION_CANDIDATES = 50;
 
-export type LinkReason = "similar" | "named";
-
 export type LinkSuggestion = {
   id: string;
   title: string;
@@ -37,8 +36,16 @@ export type LinkSuggestion = {
 
 type TitledNote = { id: string; title: string };
 
-function foldForSearch(text: string): string {
-  return text.toLowerCase().replace(/\s+/g, " ");
+const TITLE_PROBLEM = {
+  unwritable: "That title can't be written as a link: it has brackets.",
+  shared:
+    "Another note has the same title, so a link would open that one instead. Rename one of them first.",
+} as const;
+
+/** Why a link to this note cannot be written by its title, or null if it can. */
+function titleProblem(note: TitledNote, shared: Set<string>): keyof typeof TITLE_PROBLEM | null {
+  if (!canLinkTitle(note.title)) return "unwritable";
+  return shared.has(normalizeTitle(note.title)) ? "shared" : null;
 }
 
 /** Titles that two or more live notes share once case and spacing are folded. */
@@ -106,63 +113,51 @@ export async function suggestLinks(userId: string, noteId: string): Promise<Link
   ]);
   const shared = sharedTitles(all);
   const linked = new Set(outgoing.map((target) => target.id));
+  const written = linkedTitles(note.content);
   const isOffered = (other: TitledNote) =>
     other.id !== noteId &&
     !linked.has(other.id) &&
-    canLinkTitle(other.title) &&
-    !shared.has(normalizeTitle(other.title)) &&
-    !linksTo(note.content, other.title);
+    !written.has(normalizeTitle(other.title)) &&
+    titleProblem(other, shared) === null;
 
-  const found = new Map<string, { title: string; snippet: string | null; similarity: number | null }>();
+  const found = new Map<string, LinkSuggestion>();
 
   // The exact test masks and scans the whole text, so each title first has to be there
-  // at all, as a substring of a lowercased copy with its whitespace folded. Without this
-  // a vault of 3,000 notes cost about 0.9 s of server time per page view.
-  const haystack = foldForSearch(note.content);
+  // at all, as a substring of the text with case and spacing folded the way links are.
+  // Without this a vault of 3,000 notes cost about 0.9 s of server time per page view.
+  const haystack = normalizeTitle(note.content);
   for (const other of all) {
     if (found.size >= MAX_NAMED_CANDIDATES) break;
-    const title = other.title.trim();
-    if (title.length < MIN_MENTION_TITLE_LENGTH || !isOffered(other)) continue;
-    if (!haystack.includes(foldForSearch(title))) continue;
-    const snippet = mentionSnippet(note.content, title);
-    if (snippet !== null) found.set(other.id, { title: other.title, snippet, similarity: null });
+    if (other.title.trim().length < MIN_MENTION_TITLE_LENGTH || !isOffered(other)) continue;
+    if (!haystack.includes(normalizeTitle(other.title))) continue;
+    const snippet = mentionSnippet(note.content, other.title);
+    if (snippet !== null) {
+      found.set(other.id, { id: other.id, title: other.title, reasons: ["named"], similarity: null, snippet });
+    }
   }
 
   const byId = new Map(all.map((other) => [other.id, other]));
   for (const hit of similar) {
     const other = byId.get(hit.id);
     if (!other || !isOffered(other)) continue;
-    const existing = found.get(other.id);
-    found.set(other.id, {
-      title: other.title,
-      snippet: existing?.snippet ?? null,
-      similarity: hit.similarity,
-    });
+    const named = found.get(other.id);
+    found.set(
+      other.id,
+      named
+        ? { ...named, reasons: ["named", "similar"], similarity: hit.similarity }
+        : { id: other.id, title: other.title, reasons: ["similar"], similarity: hit.similarity, snippet: null },
+    );
   }
 
-  const ranked = [...found.entries()]
-    .map(([id, entry]) => ({ id, ...entry }))
-    .sort(
-      (a, b) =>
-        Number(b.snippet !== null) - Number(a.snippet !== null) ||
-        (b.similarity ?? -1) - (a.similarity ?? -1) ||
-        a.title.localeCompare(b.title),
-    );
+  const ranked = [...found.values()].sort(
+    (a, b) =>
+      Number(b.reasons.includes("named")) - Number(a.reasons.includes("named")) ||
+      (b.similarity ?? -1) - (a.similarity ?? -1) ||
+      a.title.localeCompare(b.title),
+  );
 
   const openable = await openableIds(userId, ranked);
-  return ranked
-    .filter((entry) => openable.has(entry.id))
-    .slice(0, MAX_SUGGESTIONS)
-    .map((entry) => ({
-      id: entry.id,
-      title: entry.title,
-      reasons: [
-        ...(entry.snippet !== null ? (["named"] as const) : []),
-        ...(entry.similarity !== null ? (["similar"] as const) : []),
-      ],
-      similarity: entry.similarity,
-      snippet: entry.snippet,
-    }));
+  return ranked.filter((entry) => openable.has(entry.id)).slice(0, MAX_SUGGESTIONS);
 }
 
 /**
@@ -175,13 +170,13 @@ export async function findMentionsOf(userId: string, noteId: string): Promise<Li
   if (!note) return [];
 
   const title = note.title.trim();
-  if (!canLinkTitle(title) || title.length < MIN_MENTION_TITLE_LENGTH) return [];
+  if (title.length < MIN_MENTION_TITLE_LENGTH) return [];
 
   const [all, backlinks] = await Promise.all([
     noteRepository.listNoteTitles(userId),
     linkRepository.getBacklinks(userId, noteId),
   ]);
-  if (sharedTitles(all).has(normalizeTitle(title))) return [];
+  if (titleProblem(note, sharedTitles(all)) !== null) return [];
   if (!(await openableIds(userId, [note])).has(note.id)) return [];
 
   const rows = await noteRepository.listNotesContaining(
@@ -228,19 +223,8 @@ export async function addLink(
 
   if (linksTo(from.content, to.title)) return { added: false, ...result };
 
-  if (!canLinkTitle(to.title)) {
-    throw new AppError(
-      "VALIDATION_ERROR",
-      "That title can't be written as a link: it has brackets.",
-    );
-  }
-  const all = await noteRepository.listNoteTitles(userId);
-  if (sharedTitles(all).has(normalizeTitle(to.title))) {
-    throw new AppError(
-      "VALIDATION_ERROR",
-      "Another note has the same title, so a link would open that one instead. Rename one of them first.",
-    );
-  }
+  const problem = titleProblem(to, sharedTitles(await noteRepository.listNoteTitles(userId)));
+  if (problem !== null) throw new AppError("VALIDATION_ERROR", TITLE_PROBLEM[problem]);
   if (!(await openableIds(userId, [to])).has(to.id)) {
     throw new AppError(
       "VALIDATION_ERROR",

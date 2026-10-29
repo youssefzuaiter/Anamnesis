@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   appendSeeAlso,
   canLinkTitle,
+  linkedTitles,
   linksTo,
   MAX_NOTE_LENGTH,
   SEE_ALSO_HEADING,
@@ -203,4 +204,14 @@ test("a See also heading may carry an ATX closing sequence", () => {
     appendSeeAlso("## See also ##\n\n- [[A]]\n", "X").content,
     "## See also ##\n\n- [[A]]\n- [[X]]\n",
   );
+});
+
+test("linkedTitles lists every link in the text, normalised, past the 50 the index follows", () => {
+  assert.deepEqual(
+    [...linkedTitles("See [[ Gradient   Descent ]] and [[Other]], again [[gradient descent]].")].sort(),
+    ["gradient descent", "other"],
+  );
+  const many = Array.from({ length: 60 }, (_, i) => `[[Note ${i}]]`).join(" ");
+  assert.equal(linkedTitles(many).size, 60);
+  assert.equal(linkedTitles("no links [[ ]] here").size, 0);
 });

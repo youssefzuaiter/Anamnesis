@@ -26,16 +26,23 @@ export function canLinkTitle(title: string): boolean {
 }
 
 /**
- * Whether the text already holds a `[[...]]` that resolves to this title. Like the
- * index, it reads raw text, code blocks included, but it does not stop at the 50
- * links the index follows: a link that is written must never be written twice.
+ * The normalised title of every `[[...]]` in the text. Like the index it reads raw
+ * text, code blocks included, but it does not stop at the 50 links the index follows:
+ * a link that is written must never be written twice. Callers that test many titles
+ * against one text build this once.
  */
-export function linksTo(content: string, title: string): boolean {
-  const wanted = normalizeTitle(title);
+export function linkedTitles(content: string): Set<string> {
+  const titles = new Set<string>();
   for (const match of content.matchAll(wikiLinkPattern())) {
-    if (normalizeTitle(match[1]) === wanted) return true;
+    const title = normalizeTitle(match[1]);
+    if (title) titles.add(title);
   }
-  return false;
+  return titles;
+}
+
+/** Whether the text already holds a `[[...]]` that resolves to this title. */
+export function linksTo(content: string, title: string): boolean {
+  return linkedTitles(content).has(normalizeTitle(title));
 }
 
 /**
@@ -59,11 +66,13 @@ export function appendSeeAlso(
   while (lines.length > 0 && lines[lines.length - 1].trim() === "") lines.pop();
 
   // A fence left open would swallow the new section, so it is closed first.
-  const { open } = scanFences(lines);
-  if (open !== null) lines.push(open);
+  const { inFence, open } = scanFences(lines);
+  if (open !== null) {
+    lines.push(open);
+    inFence.push(true);
+  }
 
   const bullet = `- [[${title.trim()}]]`;
-  const { inFence } = scanFences(lines);
   const heading = lines.findIndex(
     (line, index) => !inFence[index] && SEE_ALSO_LINE.test(line),
   );
