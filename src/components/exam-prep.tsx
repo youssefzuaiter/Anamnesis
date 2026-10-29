@@ -82,8 +82,8 @@ export function ExamPrep({
   const router = useRouter();
   const selectId = useId();
   const [chosenId, setChosenId] = useState<string | null>(null);
-  const [hours, setHours] = useState<number>(DEFAULT_PREP_HOURS);
-  const [minutes, setMinutes] = useState<number>(DEFAULT_SESSION_MINUTES);
+  const [hours, setHours] = useState<(typeof PREP_HOURS)[number]>(DEFAULT_PREP_HOURS);
+  const [minutes, setMinutes] = useState<(typeof SESSION_MINUTES)[number]>(DEFAULT_SESSION_MINUTES);
   const [proposal, setProposal] = useState<PrepProposalView | null>(null);
   const [ticked, setTicked] = useState<Set<number>>(new Set());
   const [message, setMessage] = useState<string | null>(null);
@@ -153,14 +153,14 @@ export function ExamPrep({
             <Chips
               label="Review time"
               options={PREP_HOURS}
-              value={hours as (typeof PREP_HOURS)[number]}
+              value={hours}
               unit="h"
               onPick={(value) => change(() => setHours(value))}
             />
             <Chips
               label="Session length"
               options={SESSION_MINUTES}
-              value={minutes as (typeof SESSION_MINUTES)[number]}
+              value={minutes}
               unit="min"
               onPick={(value) => change(() => setMinutes(value))}
             />

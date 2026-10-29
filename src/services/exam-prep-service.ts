@@ -1,7 +1,7 @@
 import "server-only";
 import { AppError } from "@/lib/api-response";
 import { dayBounds } from "@/lib/day";
-import type { Busy } from "@/lib/day-planner";
+import { busyFrom } from "@/lib/day-planner";
 import {
   EXAM_PREP_TAG,
   planExamPrep,
@@ -84,16 +84,6 @@ export async function proposePrep(
     flashcardRepository.countDueForCourse(userId, assessment.course.id, now),
   ]);
 
-  // Real appointments and blocks already set aside both count as committed.
-  const busy: Busy[] = [
-    ...events.map((event) => ({ start: event.startTime, end: event.endTime })),
-    ...scheduled.flatMap((task) =>
-      task.scheduledStart && task.scheduledEnd
-        ? [{ start: task.scheduledStart, end: task.scheduledEnd }]
-        : [],
-    ),
-  ];
-
   const planned = {
     count: existing.length,
     minutes: existing.reduce((sum, task) => sum + task.estimatedMinutes, 0),
@@ -104,7 +94,7 @@ export async function proposePrep(
     now,
     sessions: requested,
     sessionMinutes: request.sessionMinutes,
-    busy,
+    busy: busyFrom(events, scheduled),
   });
 
   const problem: PrepProblem =

@@ -1,7 +1,7 @@
 import "server-only";
 import { AppError } from "@/lib/api-response";
 import { dayBounds } from "@/lib/day";
-import { planDay, type PlannedBlock, type Busy } from "@/lib/day-planner";
+import { busyFrom, planDay, type PlannedBlock } from "@/lib/day-planner";
 import * as eventRepository from "@/repositories/event-repository";
 import * as taskRepository from "@/repositories/task-repository";
 import { scheduleTask } from "@/services/task-service";
@@ -23,15 +23,7 @@ export async function proposePlan(
     taskRepository.listUnscheduled(userId, 20),
   ]);
 
-  // Both real appointments and blocks already set aside count as committed.
-  const busy: Busy[] = [
-    ...events.map((event) => ({ start: event.startTime, end: event.endTime })),
-    ...scheduled.flatMap((task) =>
-      task.scheduledStart && task.scheduledEnd
-        ? [{ start: task.scheduledStart, end: task.scheduledEnd }]
-        : [],
-    ),
-  ];
+  const busy = busyFrom(events, scheduled);
 
   return planDay(
     day,
