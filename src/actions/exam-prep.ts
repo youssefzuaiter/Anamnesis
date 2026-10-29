@@ -112,7 +112,7 @@ export async function applyPrepAction(input: {
   hours: number;
   sessionMinutes: number;
   starts: number[];
-}): Promise<ApiResponse<{ added: number }>> {
+}): Promise<ApiResponse<{ added: number; skipped: number }>> {
   const parsed = request
     .extend({ starts: z.array(z.number().int()).min(1).max(40) })
     .safeParse(input);
@@ -121,13 +121,13 @@ export async function applyPrepAction(input: {
   try {
     const userId = await requireUserId();
     const { starts, ...chosen } = parsed.data;
-    const { added, courseId } = await examPrepService.applyPrep(userId, chosen, starts, new Date());
+    const { added, skipped, courseId } = await examPrepService.applyPrep(userId, chosen, starts, new Date());
 
     revalidatePath("/");
     revalidatePath("/calendar");
     revalidatePath("/tasks");
     revalidatePath(`/courses/${courseId}`);
-    return ok({ added });
+    return ok({ added, skipped });
   } catch (error) {
     return toApiResponse(error);
   }

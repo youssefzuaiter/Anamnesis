@@ -15,6 +15,7 @@ import {
   DEFAULT_SESSION_MINUTES,
   PREP_HOURS,
   SESSION_MINUTES,
+  prepAddedMessage,
 } from "@/lib/exam-prep";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -330,9 +331,7 @@ export function ExamPrep({
                         return;
                       }
                       setProposal(null);
-                      setMessage(
-                        `Added ${plural(result.data.added, "session")} to your calendar. They show on Today and the calendar as planned blocks.`,
-                      );
+                      setMessage(prepAddedMessage(result.data.added, result.data.skipped));
                       router.refresh();
                     });
                   }}

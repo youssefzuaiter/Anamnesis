@@ -145,7 +145,7 @@ export async function applyPrep(
   request: PrepRequest,
   starts: number[],
   now: Date = new Date(),
-): Promise<{ added: number; courseId: string }> {
+): Promise<{ added: number; skipped: number; courseId: string }> {
   const proposal = await proposePrep(userId, request, now);
   const wanted = new Set(starts);
   const keeping = proposal.sessions.filter((session) => wanted.has(session.start.getTime()));
@@ -183,5 +183,10 @@ export async function applyPrep(
       scheduledEnd: session.end,
     });
   }
-  return { added: keeping.length, courseId: assessment.courseId };
+  return {
+    added: keeping.length,
+    // Ticked in the browser but not in the server's own plan: told to the person, not made.
+    skipped: wanted.size - keeping.length,
+    courseId: assessment.courseId,
+  };
 }

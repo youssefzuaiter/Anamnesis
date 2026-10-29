@@ -5,6 +5,7 @@ import {
   HORIZON_DAYS,
   MAX_SESSIONS,
   planExamPrep,
+  prepAddedMessage,
   prepNotices,
   sessionDescription,
   sessionTitle,
@@ -221,5 +222,24 @@ test("a short plan says how many fit and names the days with no gap", () => {
   assert.equal(
     notice({ ...short, sessionMinutes: 45 }).shortfall,
     "Only 3 of 4 sessions fit before Tue 10 Nov. Free up some time and propose again.",
+  );
+});
+
+test("the confirmation says how many were added, and when some ticked sessions no longer fit", () => {
+  assert.equal(
+    prepAddedMessage(5, 0),
+    "Added 5 sessions to your calendar. They show on Today and the calendar as planned blocks.",
+  );
+  assert.equal(
+    prepAddedMessage(1, 0),
+    "Added 1 session to your calendar. It shows on Today and the calendar as a planned block.",
+  );
+  assert.equal(
+    prepAddedMessage(3, 3),
+    "Added 3 of the 6 sessions you ticked: the other 3 no longer fit. Propose a plan again to see what is left. The 3 added show on Today and the calendar as planned blocks.",
+  );
+  assert.equal(
+    prepAddedMessage(1, 2),
+    "Added 1 of the 3 sessions you ticked: the other 2 no longer fit. Propose a plan again to see what is left. The 1 added shows on Today and the calendar as a planned block.",
   );
 });

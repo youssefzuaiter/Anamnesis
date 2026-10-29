@@ -130,7 +130,7 @@ test("confirming makes ordinary, tagged, planned tasks that carry the course, th
 
   const proposal = await proposePrep(a.id, request(assessment.id), NOW);
   const result = await applyPrep(a.id, request(assessment.id), proposal.sessions.map((s) => s.start.getTime()), NOW);
-  assert.deepEqual(result, { added: 6, courseId: course.id });
+  assert.deepEqual(result, { added: 6, skipped: 0, courseId: course.id });
 
   const tasks = await prisma.task.findMany({ where: { userId: a.id }, orderBy: { scheduledStart: "asc" } });
   assert.equal(tasks.length, 6);
@@ -185,6 +185,7 @@ test("a time the server did not propose makes nothing", async () => {
   const proposal = await proposePrep(a.id, request(assessment.id), NOW);
   const mixed = await applyPrep(a.id, request(assessment.id), [proposal.sessions[0].start.getTime(), invented], NOW);
   assert.equal(mixed.added, 1);
+  assert.equal(mixed.skipped, 1);
 });
 
 test("what is already planned reduces the request, deleted sessions do not count, and a full plan proposes nothing", async () => {
@@ -281,4 +282,21 @@ test("a session never overlaps an event or a planned block", async () => {
   const seventh = proposal.sessions.find((s) => s.start.getMonth() === 10 && s.start.getDate() === 7);
   assert.ok(seventh, "no session on 7 Nov");
   assert.ok(seventh.start >= at(10, 7, 12), seventh.start.toISOString());
+});
+
+test("confirming after midnight makes only what still matches, and says how many were left out", async () => {
+  const a = await newUser();
+  const { assessment } = await setup(a.id);
+  const shown = await proposePrep(a.id, request(assessment.id), NOW);
+  const starts = shown.sessions.map((s) => s.start.getTime());
+  const afterMidnight = at(9, 30, 0, 5); // 00:05 on 30 Oct: the panel was shown on the 29th
+
+  const result = await applyPrep(a.id, request(assessment.id), starts, afterMidnight);
+  assert.equal(result.added + result.skipped, 6);
+  assert.ok(result.skipped >= 1, "the session for 30 Oct can no longer be placed");
+  const made = await prisma.task.findMany({ where: { userId: a.id } });
+  assert.equal(made.length, result.added);
+  for (const task of made) {
+    assert.ok(starts.includes(task.scheduledStart?.getTime() ?? -1), "a session the person was never shown");
+  }
 });

@@ -236,3 +236,20 @@ export function prepNotices(input: {
     shortfall: `Only ${input.placed} of ${input.requested} sessions fit before ${dueLabel}. ${gaps}${trySomething(sessionMinutes)}`,
   };
 }
+
+/**
+ * What to say after confirming. `skipped` is how many of the ticked sessions the
+ * server left out because they no longer fit (the calendar changed, or midnight
+ * passed, while the panel was open): the person is told rather than left to
+ * count.
+ */
+export function prepAddedMessage(added: number, skipped: number): string {
+  const shows = added === 1 ? "shows" : "show";
+  const them = added === 1 ? "a planned block" : "planned blocks";
+  if (skipped === 0) {
+    return added === 1
+      ? "Added 1 session to your calendar. It shows on Today and the calendar as a planned block."
+      : `Added ${added} sessions to your calendar. They show on Today and the calendar as planned blocks.`;
+  }
+  return `Added ${added} of the ${added + skipped} sessions you ticked: the other ${skipped} no longer fit. Propose a plan again to see what is left. The ${added} added ${shows} on Today and the calendar as ${them}.`;
+}
