@@ -15,7 +15,7 @@ type TemplatePickerProps = {
  * are the same size, so choosing one never shifts the row, and the difference
  * does not rest on colour alone.
  */
-function Mark({ checked }: { checked: boolean }) {
+export function Mark({ checked }: { checked: boolean }) {
   return checked ? (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="12" cy="12" r="10" fill="currentColor" />

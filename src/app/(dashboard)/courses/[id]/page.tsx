@@ -8,6 +8,8 @@ import {
 import { countDueForCourse } from "@/repositories/flashcard-repository";
 import { summarise, nextUngraded, daysUntilLabel } from "@/lib/grades";
 import { GradePanel } from "@/components/grade-panel";
+import { ExamPrep } from "@/components/exam-prep";
+import { dateLabel } from "@/lib/note-templates";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { deleteCourseAction } from "@/actions/courses";
 
@@ -44,6 +46,14 @@ export default async function CoursePage({
 
   const grade = summarise(course.assessments);
   const next = nextUngraded(course.assessments, now);
+  // What the Exam prep card can plan towards: unscored, dated, still ahead, soonest first.
+  const prepTargets = course.assessments
+    .flatMap((row) =>
+      row.score === null && row.dueDate && row.dueDate > now
+        ? [{ id: row.id, label: `${row.title} · ${dateLabel(row.dueDate)}`, due: row.dueDate }]
+        : [],
+    )
+    .sort((a, b) => a.due.getTime() - b.due.getTime());
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -85,6 +95,11 @@ export default async function CoursePage({
           </Link>
         )}
       </section>
+
+      <ExamPrep
+        assessments={prepTargets.map(({ id, label }) => ({ id, label }))}
+        defaultId={prepTargets[0]?.id ?? null}
+      />
 
       <GradePanel
         courseId={course.id}
