@@ -117,9 +117,26 @@ Changing the embedding model to one with different output dimensions requires a
 new migration — `EMBEDDING_DIMENSIONS` in `src/lib/config.ts` is pinned to the
 `vector(768)` column for that reason.
 
-The pgvector ANN index is HNSW with `vector_cosine_ops`, declared in a hand-written
-migration because Prisma cannot express pgvector index types. Similarity queries use
-`1 - (embedding <=> $vector)`.
+**There is no vector index, and this paragraph used to say there was.** The HNSW index was
+created by `20260913144800_embedding_hnsw_index`, a hand-written migration because Prisma
+cannot express pgvector index types, and dropped again by the next migration,
+`20260913200054_focus_tracking_opt_in`: Prisma generated that migration by diffing the schema,
+saw an index it does not model, and removed it. Checked on 2026-10-29 in the dev database:
+`WorkspaceEmbedding` has only its primary key and two btree indexes. Search is therefore an
+exact scan (`ORDER BY embedding <=> $vector LIMIT k`), which is correct, and at the size of a
+personal workspace (thousands of chunks) fast enough; a restored index is an optimisation, not
+a repair. Similarity queries use `1 - (embedding <=> $vector)`.
+
+**If an approximate index is ever restored, scoped questions must be re-checked.** HNSW picks
+its nearest candidates first and applies a `WHERE` afterwards, so a narrow filter (one note, one
+course) can find none of its own rows among them and return nothing; pgvector 0.8's
+`hnsw.iterative_scan` setting exists for that. This is known pgvector behaviour, **not**
+something measured here: the one test written for it ("a narrow scope still finds its own
+chunks among hundreds that are closer") passed with a temporary HNSW index in place, because at
+600 rows the planner does not choose the index, so it cannot catch a restored one. Re-measure
+at real size, and set the iterative scan, before trusting scoped search on an indexed table. A
+new migration after this one must not drop what a hand-written one added: read what
+`prisma migrate dev` generates.
 
 **Always embed through `embedQuery()` or `embedDocuments()`, never `embedTexts()`
 directly.** `nomic-embed-text` is trained with asymmetric task prefixes
@@ -1010,6 +1027,64 @@ whole plan in one action (delete the sessions from Tasks, tagged `exam-prep`); a
 the flashcard queue; starting more than 21 days out; sessions on the assessment's own day; a
 shortcut from Today. **Not run locally:** the `evals` job (it needs Ollama) and the container
 rehearsal that exercises the migration; CI runs both.
+
+## Scoped assistant questions
+
+On the assistant page, **Ask about** limits a question to one course, one project or one note
+(ROADMAP item 6). Everything is the default, and a question without a scope is exactly what it
+was: the prompts, the relevance floor (0.55) and the chunk limit are unchanged, because those
+are what the injection evals measured and a prompt that mentioned a scope would move numbers
+nobody re-measured. The card says what is being searched instead ("Searching only this
+course: its notes, tasks, events and grades.").
+
+- **What a scope contains.** A course: the course row (its assessments and grades are in its
+  embedded text) and its notes, tasks and events, by `courseId`. A project: the project row and
+  its notes, tasks and events, by `projectId`. A note: that note alone. A note in both a course
+  and a project is in both scopes. Goals, flashcards and wiki-linked notes are not included.
+- **Resolved when the question is asked, not stored.** `resolveScope` lists the ids that belong
+  to the scope and the search is narrowed to them in SQL, before the top-k cut (a filter applied
+  afterwards would cut a good answer short). The alternative was a `courseId` / `projectId`
+  column on `WorkspaceEmbedding`: no id lists, but a migration, a backfill, and a re-index
+  whenever anything moves between courses, or a moved note stays searchable under its old course
+  until it is saved again. The council that chose was run by me inline, not by independent
+  subagents, so it is weaker than four separate voices. The cost of the id list is its size,
+  which follows the caller's own data; a move takes effect at once, tested and in the evals.
+- **Two filters, not one.** The search keeps `"userId" = ...` and adds the id filter, passed as
+  two parameter arrays (never built into the SQL text). Measured: dropping the `userId` filter
+  fails only the unscoped cross-tenant eval, because a scoped search's id lists hold only the
+  caller's own ids. Each layer is enough alone for a scoped question; neither was relied on.
+- **A scope from the browser is ownership-checked before anything else.** Another account's id,
+  a deleted one, one that never existed and a valid id of the wrong kind (a note's id sent as a
+  course) are the same refusal, with the same code and a static message per kind, so it reveals
+  nothing about which. The chat route answers it with a plain 404 **before a conversation is
+  opened**; inside the stream it would already have left a thread titled with the question. The
+  service functions check it themselves too and never accept a pre-resolved list. The request
+  schema is strict: a stray `userId` key is a 400, not an ignored field.
+- **An action request ignores the scope but is still validated first,** so a bad id fails the
+  same way for every question. With Ollama off that order cannot be seen from the integration
+  tier (a model failure in `decideAction` is swallowed), so it is asserted in the evals with the
+  real model: an action-shaped question with another account's scope is refused before any
+  proposal.
+- **Where the control is.** The `/ai` page only; `?scope=kind:uuid` preselects it, and the
+  course, project and note pages link to it ("Ask about this course"). A malformed, unknown,
+  deleted or wrong-kind id in the URL is simply Everything. The docked assistant is unscoped.
+  A saved thread does not remember its scope (`Conversation` has no column for it), so
+  reopening one starts at Everything.
+- **The evals** (`tests/ai/evals.ts`, "Scoped questions", 21 checks) use two courses, an
+  uncoursed note and a project on one topic, and an intruder whose note on it is the closest
+  match of all: each scope cites and shows the model only its own text; every kind of refusal;
+  a question quoting the intruder's secret; an empty course; answering with a scope; the action
+  request; and a note moved between courses. Run against the real embedder through a slice of
+  the harness; **the whole suite, which also calls the chat model for many minutes, is run by
+  CI**. The section deletes what it makes, since later sections search the same workspace.
+  Mutations: ignoring the scope in the search fails 11 checks.
+- **The vector index.** Writing this found that the HNSW index documented under "Stack
+  decisions" does not exist; see the correction there, and what to re-check if one returns.
+
+**Not done:** scoping the docked assistant; remembering a scope on a saved thread; goals,
+flashcards and linked notes as part of a scope; scoping a proposal (an action request creates
+nothing in the scope); a warning that a scope has nothing indexed (the answer says it could not
+find the answer, as it does for any empty result).
 
 ## The assistant, and what actually defends it
 
