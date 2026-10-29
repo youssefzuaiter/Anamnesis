@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import type { Citation } from "@/services/assistant-service";
 import type { ActionProposal } from "@/lib/ai-tools";
 import { ProposalCard } from "@/components/proposal-card";
+import { ScopePicker, scopeLabel, type ScopeChoices } from "@/components/scope-picker";
+import type { AssistantScope } from "@/lib/assistant-scope";
 
 type Turn = {
   role: "user" | "assistant";
@@ -60,21 +62,29 @@ export function AssistantChat({
   initialTurns = [],
   variant = "page",
   autoFocus = false,
+  scopeChoices,
+  initialScope = null,
 }: {
   conversationId?: string | null;
   initialTurns?: Turn[];
   /** `panel` fills the docked assistant beside another page. */
   variant?: "page" | "panel";
   autoFocus?: boolean;
+  /** When given, the page offers "Ask about" and limits a question to the choice. */
+  scopeChoices?: ScopeChoices;
+  initialScope?: AssistantScope | null;
 } = {}) {
   const [turns, setTurns] = useState<Turn[]>(initialTurns);
   const [conversationId, setConversationId] = useState<string | null>(
     initialConversationId,
   );
   const [question, setQuestion] = useState("");
+  const [scope, setScope] = useState<AssistantScope | null>(initialScope);
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const named = scopeChoices ? scopeLabel(scopeChoices, scope) : null;
+  const placeholder = named ? `Ask about ${named}…` : "Ask your workspace…";
 
   async function ask(raw: string) {
     const trimmed = raw.trim();
@@ -106,7 +116,7 @@ export function AssistantChat({
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: trimmed, history, conversationId }),
+        body: JSON.stringify({ question: trimmed, history, conversationId, scope }),
       });
 
       if (!response.ok || !response.body) {
@@ -243,30 +253,35 @@ export function AssistantChat({
         )}
       </div>
 
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          ask(question);
-        }}
-        className="mt-4 flex gap-2 border-t border-border-subtle pt-4"
-      >
-        <input
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Ask your workspace…"
-          aria-label="Ask your workspace"
-          autoFocus={autoFocus}
-          disabled={busy}
-          className="flex-1 rounded-lg border border-control bg-surface px-3 py-2.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none disabled:opacity-60"
-        />
-        <button
-          type="submit"
-          disabled={busy || !question.trim()}
-          className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+      <div className="mt-4 flex flex-col gap-3 border-t border-border-subtle pt-4">
+        {scopeChoices && (
+          <ScopePicker value={scope} choices={scopeChoices} onChange={setScope} />
+        )}
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            ask(question);
+          }}
+          className="flex gap-2"
         >
-          {busy ? "Thinking…" : "Ask"}
-        </button>
-      </form>
+          <input
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            placeholder={placeholder}
+            aria-label="Ask your workspace"
+            autoFocus={autoFocus}
+            disabled={busy}
+            className="flex-1 rounded-lg border border-control bg-surface px-3 py-2.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none disabled:opacity-60"
+          />
+          <button
+            type="submit"
+            disabled={busy || !question.trim()}
+            className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {busy ? "Thinking…" : "Ask"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
