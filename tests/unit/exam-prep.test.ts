@@ -5,6 +5,7 @@ import {
   HORIZON_DAYS,
   MAX_SESSIONS,
   planExamPrep,
+  prepNotices,
   sessionDescription,
   sessionTitle,
   sessionsNeeded,
@@ -168,4 +169,57 @@ test("the session description names the notes and the cards", () => {
   const empty = sessionDescription({ ...base, notes: [], noteCount: 0, dueCards: 0 });
   assert.ok(empty.includes("No notes in this course yet."));
   assert.ok(empty.includes("No flashcards are due right now."));
+});
+
+const notice = (over: Partial<Parameters<typeof prepNotices>[0]> = {}) =>
+  prepNotices({
+    problem: "none",
+    title: "Midterm",
+    dueLabel: "Tue 10 Nov",
+    sessionMinutes: 60,
+    plannedCount: 0,
+    plannedHours: 0,
+    placed: 6,
+    requested: 6,
+    windowDays: 11,
+    noGapLabels: [],
+    ...over,
+  });
+
+test("a plan that fits has nothing to say", () => {
+  assert.deepEqual(notice(), { message: null, shortfall: null });
+});
+
+test("an empty proposal says why", () => {
+  assert.equal(
+    notice({ problem: "fully-planned", plannedCount: 4, plannedHours: 4, placed: 0, requested: 0 }).message,
+    "That is already planned: 4 sessions (4 h) are on your calendar for Midterm.",
+  );
+  assert.equal(
+    notice({ problem: "no-window", placed: 0, windowDays: 0 }).message,
+    "There is no whole day between tomorrow and Tue 10 Nov to plan into.",
+  );
+  assert.equal(
+    notice({ problem: "nothing-fits", placed: 0 }).message,
+    "No session of 60 min fits before Tue 10 Nov. Try 45-minute sessions, or free up some time and propose again.",
+  );
+  assert.equal(
+    notice({ problem: "nothing-fits", placed: 0, sessionMinutes: 45 }).message,
+    "No session of 45 min fits before Tue 10 Nov. Free up some time and propose again.",
+  );
+});
+
+test("a short plan says how many fit and names the days with no gap", () => {
+  const short = { placed: 3, requested: 4 };
+  assert.equal(
+    notice({ ...short, noGapLabels: ["Sun 8 Nov"] }).shortfall,
+    "Only 3 of 4 sessions fit before Tue 10 Nov. There is no free gap of 60 min on Sun 8 Nov. Try 45-minute sessions, or free up some time and propose again.",
+  );
+  assert.ok(notice({ ...short, noGapLabels: ["Sat 7 Nov", "Sun 8 Nov"] }).shortfall?.includes("on Sat 7 Nov and Sun 8 Nov."));
+  assert.ok(notice({ ...short, noGapLabels: ["Fri 6 Nov", "Sat 7 Nov", "Sun 8 Nov"] }).shortfall?.includes("on Fri 6 Nov, Sat 7 Nov and Sun 8 Nov."));
+  assert.ok(notice({ ...short, windowDays: 9, noGapLabels: ["a", "b", "c", "d"] }).shortfall?.includes("on 4 of the 9 days."));
+  assert.equal(
+    notice({ ...short, sessionMinutes: 45 }).shortfall,
+    "Only 3 of 4 sessions fit before Tue 10 Nov. Free up some time and propose again.",
+  );
 });

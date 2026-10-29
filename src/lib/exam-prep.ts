@@ -172,3 +172,67 @@ export function sessionDescription(input: {
       : "No flashcards are due right now.",
   ].join("\n");
 }
+
+/** Why a proposal may be empty: no day to plan into, everything already planned, or no gap long enough. */
+export type PrepProblem = "none" | "no-window" | "fully-planned" | "nothing-fits";
+
+/** What to say when the shortest session is not already the choice. */
+function trySomething(sessionMinutes: number): string {
+  return sessionMinutes > 45
+    ? "Try 45-minute sessions, or free up some time and propose again."
+    : "Free up some time and propose again.";
+}
+
+function listLabels(labels: string[]): string {
+  return labels.length === 1
+    ? labels[0]
+    : `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
+}
+
+/**
+ * The words that go with a proposal. `message` explains one with nothing in it;
+ * `shortfall` says how many fit when only some did, and names the days that had
+ * no gap (up to three, then a count).
+ */
+export function prepNotices(input: {
+  problem: PrepProblem;
+  title: string;
+  dueLabel: string;
+  sessionMinutes: number;
+  plannedCount: number;
+  plannedHours: number;
+  placed: number;
+  requested: number;
+  windowDays: number;
+  noGapLabels: string[];
+}): { message: string | null; shortfall: string | null } {
+  const { problem, title, dueLabel, sessionMinutes, noGapLabels } = input;
+
+  if (problem === "fully-planned") {
+    return {
+      message: `That is already planned: ${input.plannedCount} sessions (${input.plannedHours} h) are on your calendar for ${title}.`,
+      shortfall: null,
+    };
+  }
+  if (problem === "no-window") {
+    return { message: `There is no whole day between tomorrow and ${dueLabel} to plan into.`, shortfall: null };
+  }
+  if (problem === "nothing-fits") {
+    return {
+      message: `No session of ${sessionMinutes} min fits before ${dueLabel}. ${trySomething(sessionMinutes)}`,
+      shortfall: null,
+    };
+  }
+  if (input.placed >= input.requested) return { message: null, shortfall: null };
+
+  const gaps =
+    noGapLabels.length === 0
+      ? ""
+      : noGapLabels.length <= 3
+        ? `There is no free gap of ${sessionMinutes} min on ${listLabels(noGapLabels)}. `
+        : `There is no free gap of ${sessionMinutes} min on ${noGapLabels.length} of the ${input.windowDays} days. `;
+  return {
+    message: null,
+    shortfall: `Only ${input.placed} of ${input.requested} sessions fit before ${dueLabel}. ${gaps}${trySomething(sessionMinutes)}`,
+  };
+}

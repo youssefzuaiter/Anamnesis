@@ -8,6 +8,7 @@ import {
   sessionDescription,
   sessionTitle,
   sessionsNeeded,
+  type PrepProblem,
   type PrepSession,
 } from "@/lib/exam-prep";
 import * as courseRepository from "@/repositories/course-repository";
@@ -47,7 +48,7 @@ export type PrepProposal = {
   notes: { id: string; title: string }[];
   noteCount: number;
   dueCards: number;
-  problem: "none" | "no-window" | "fully-planned" | "nothing-fits";
+  problem: PrepProblem;
 };
 
 /**
@@ -106,7 +107,7 @@ export async function proposePrep(
     busy,
   });
 
-  const problem =
+  const problem: PrepProblem =
     requested === 0
       ? "fully-planned"
       : plan.windowDays === 0
