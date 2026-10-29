@@ -23,6 +23,10 @@ import { RelatedItems } from "@/components/related-items";
 import { NoteAttachments } from "@/components/note-attachments";
 import { listForNote as listAttachments } from "@/repositories/attachment-repository";
 import { findRelated } from "@/services/search-service";
+import { findMentionsOf, suggestLinks, type LinkSuggestion } from "@/services/link-suggestion-service";
+import { LinkCard, type LinkRow } from "@/components/link-card";
+import { RAIL_CARD } from "@/components/rail-card";
+import { reasonLine } from "@/lib/link-reason";
 import { normalizeTitle } from "@/lib/wiki-links";
 import { Icon } from "@/components/icons";
 
@@ -35,7 +39,18 @@ const EDITED = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
 });
 
-const RAIL_CARD = "rounded-xl border border-border-subtle bg-surface p-4 shadow-card";
+const suggestionRow = (item: LinkSuggestion): LinkRow => ({
+  id: item.id,
+  title: item.title,
+  reason: reasonLine(item.reasons, item.similarity),
+  snippet: item.snippet,
+});
+const mentionRow = (item: LinkSuggestion): LinkRow => ({
+  id: item.id,
+  title: item.title,
+  reason: null,
+  snippet: item.snippet,
+});
 
 export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
   const userId = await requireUserId();
@@ -55,9 +70,11 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
       listForNote(userId, note.id),
       listAttachments(userId, note.id),
     ]);
-  const [{ resolved, unresolved }, related] = await Promise.all([
+  const [{ resolved, unresolved }, related, suggestions, mentions] = await Promise.all([
     resolveNoteTitles(userId, titles),
     findRelated(userId, "note", note.id, 5),
+    suggestLinks(userId, note.id),
+    findMentionsOf(userId, note.id),
   ]);
 
   // Normalized title -> id, so the renderer can turn [[Title]] into a real link
@@ -167,6 +184,25 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
             unresolved={unresolved}
           />
         </section>
+
+        <LinkCard
+          key={`suggested-${note.id}`}
+          heading="Suggested links"
+          buttonLabel="Add link"
+          writesInto="this"
+          noteId={note.id}
+          rows={suggestions.map(suggestionRow)}
+        />
+
+        <LinkCard
+          key={`mentions-${note.id}`}
+          heading="Mentions this note"
+          help='Adding a link puts this note under "See also" in that note.'
+          buttonLabel="Add link there"
+          writesInto="listed"
+          noteId={note.id}
+          rows={mentions.map(mentionRow)}
+        />
 
         <section className={RAIL_CARD}>
           <RelatedItems items={related} />
