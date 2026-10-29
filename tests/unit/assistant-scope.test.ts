@@ -4,7 +4,9 @@ import {
   SCOPE_KINDS,
   assistantScopeSchema,
   formatScopeParam,
+  historyForScope,
   parseScopeParam,
+  scopeKey,
   scopeHref,
   scopeSentence,
 } from "@/lib/assistant-scope";
@@ -69,4 +71,49 @@ test("each kind has its own sentence for what is searched", () => {
 
 test("the link to the assistant carries the scope", () => {
   assert.equal(scopeHref({ kind: "course", id: ID }), `/ai?scope=course:${ID}`);
+});
+
+const turn = (role: "user" | "assistant", content: string, scope?: string, error?: string) => ({
+  role,
+  content,
+  scope,
+  error,
+});
+
+test("the key of a scope is its URL form, and empty for Everything", () => {
+  assert.equal(scopeKey(null), "");
+  assert.equal(scopeKey({ kind: "course", id: ID }), `course:${ID}`);
+});
+
+test("history for a scope holds only the turns asked under that scope", () => {
+  const course = `course:${ID}`;
+  const turns = [
+    turn("user", "q1", course),
+    turn("assistant", "a1", course),
+    turn("user", "q2", ""),
+    turn("assistant", "a2", ""),
+    turn("user", "q3", course),
+    turn("assistant", "a3", course),
+  ];
+  assert.deepEqual(historyForScope(turns, { kind: "course", id: ID }), [
+    { role: "user", content: "q1" },
+    { role: "assistant", content: "a1" },
+    { role: "user", content: "q3" },
+    { role: "assistant", content: "a3" },
+  ]);
+  assert.deepEqual(historyForScope(turns, null), [
+    { role: "user", content: "q2" },
+    { role: "assistant", content: "a2" },
+  ]);
+  assert.deepEqual(historyForScope(turns, { kind: "project", id: ID }), []);
+});
+
+test("a turn with no recorded scope counts as Everything, and an errored turn is never sent", () => {
+  const turns = [turn("user", "old question"), turn("assistant", "old answer"), turn("user", "bad", "", "failed"), turn("assistant", "", "", "failed")];
+  assert.deepEqual(historyForScope(turns, null), [
+    { role: "user", content: "old question" },
+    { role: "assistant", content: "old answer" },
+  ]);
+  // Turns from a saved thread are not assumed to belong to any scope.
+  assert.deepEqual(historyForScope(turns, { kind: "note", id: ID }), []);
 });

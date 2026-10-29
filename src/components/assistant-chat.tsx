@@ -7,7 +7,7 @@ import type { Citation } from "@/services/assistant-service";
 import type { ActionProposal } from "@/lib/ai-tools";
 import { ProposalCard } from "@/components/proposal-card";
 import { ScopePicker, scopeLabel, type ScopeChoices } from "@/components/scope-picker";
-import type { AssistantScope } from "@/lib/assistant-scope";
+import { historyForScope, scopeKey, type AssistantScope } from "@/lib/assistant-scope";
 
 type Turn = {
   role: "user" | "assistant";
@@ -15,6 +15,8 @@ type Turn = {
   citations?: Citation[];
   proposals?: { proposalId: string; proposal: ActionProposal }[];
   error?: string;
+  /** The scope key it was asked under, so a follow-up under another scope does not carry it. */
+  scope?: string;
 };
 
 const SUGGESTIONS = [
@@ -90,16 +92,16 @@ export function AssistantChat({
     const trimmed = raw.trim();
     if (!trimmed || busy) return;
 
-    const history = turns
-      .filter((turn) => !turn.error)
-      .map(({ role, content }) => ({ role, content }));
+    // Only turns asked under this same scope: see historyForScope.
+    const history = historyForScope(turns, scope);
+    const asked = scopeKey(scope);
 
     setQuestion("");
     setBusy(true);
     setTurns((prev) => [
       ...prev,
-      { role: "user", content: trimmed },
-      { role: "assistant", content: "" },
+      { role: "user", content: trimmed, scope: asked },
+      { role: "assistant", content: "", scope: asked },
     ]);
 
     // Declared out here because the finally block reads it.

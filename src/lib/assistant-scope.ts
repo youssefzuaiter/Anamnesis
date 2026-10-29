@@ -52,3 +52,35 @@ export function scopeSentence(kind: ScopeKind): string {
       return "Searching only this note.";
   }
 }
+
+/** A stable key for a scope: its URL form, and "" for Everything. */
+export function scopeKey(scope: AssistantScope | null): string {
+  return scope ? formatScopeParam(scope) : "";
+}
+
+type HistoryTurn = {
+  role: "user" | "assistant";
+  content: string;
+  /** The scope key the turn was asked under; absent on turns loaded from a saved thread. */
+  scope?: string;
+  error?: string;
+};
+
+/**
+ * The turns of a thread that may go to the model as history for a question
+ * asked under `scope`: only those asked under the same scope. Earlier turns
+ * carry whatever was retrieved for them, so sending ones from another scope
+ * lets the model answer from material the new scope is meant to exclude, and
+ * cite a note that says nothing of the kind. A turn with no recorded scope
+ * counts as Everything, so a saved thread's turns are never carried into a
+ * scoped question. A failed turn is never sent.
+ */
+export function historyForScope(
+  turns: readonly HistoryTurn[],
+  scope: AssistantScope | null,
+): { role: "user" | "assistant"; content: string }[] {
+  const key = scopeKey(scope);
+  return turns
+    .filter((turn) => !turn.error && (turn.scope ?? "") === key)
+    .map(({ role, content }) => ({ role, content }));
+}

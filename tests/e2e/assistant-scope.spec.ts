@@ -176,3 +176,43 @@ test("on a phone the control fits and is easy to use", async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(0);
   expect((await picker(page).boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
 });
+
+test("a follow-up carries only the turns asked under the same scope", async ({ page }) => {
+  const course = await makeCourse(page);
+  const bodies: { history: { role: string; content: string }[]; scope: unknown }[] = [];
+  await page.route("**/api/ai/chat", async (route) => {
+    bodies.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 200,
+      contentType: "application/x-ndjson",
+      body: `${JSON.stringify({ type: "citations", citations: [] })}\n${JSON.stringify({ type: "delta", text: "ok" })}\n`,
+    });
+  });
+  const ask = async (question: string) => {
+    const before = bodies.length;
+    await page.getByLabel("Ask your workspace").fill(question);
+    await main(page).getByRole("button", { name: /^ask$/i }).click();
+    await expect.poll(() => bodies.length).toBe(before + 1);
+    await expect(page.getByLabel("Ask your workspace")).toBeEnabled();
+  };
+  const sent = (n: number) => bodies[n].history.map((turn) => turn.content);
+
+  await page.goto("/ai");
+  await picker(page).selectOption({ label: course.option });
+  await ask("one, about the course");
+  await ask("two, still the course");
+  expect(sent(0)).toEqual([]);
+  expect(sent(1)).toEqual(["one, about the course", "ok"]);
+
+  // Another scope must not see what was said under this one, or the model answers from it.
+  await picker(page).selectOption({ label: "Everything" });
+  await ask("three, about everything");
+  expect(sent(2)).toEqual([]);
+  await ask("four, still everything");
+  expect(sent(3)).toEqual(["three, about everything", "ok"]);
+
+  // Going back, the earlier course turns are the history again.
+  await picker(page).selectOption({ label: course.option });
+  await ask("five, the course again");
+  expect(sent(4)).toEqual(["one, about the course", "ok", "two, still the course", "ok"]);
+});
