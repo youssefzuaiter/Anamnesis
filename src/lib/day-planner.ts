@@ -31,7 +31,7 @@ export const DAY_END_HOUR = 21;
 const MIN_USABLE_MINUTES = 15;
 
 /** A breather between blocks, so a plan is not a wall of back-to-back work. */
-const GAP_MINUTES = 10;
+export const GAP_MINUTES = 10;
 
 const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
