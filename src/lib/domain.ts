@@ -27,3 +27,10 @@ export type TrashKind = (typeof TRASH_KINDS)[number];
 // Shared between the unscheduled-tasks drag source and the calendar's drop
 // targets so a typo in one place can't silently break the other.
 export const TASK_DRAG_MIME = "application/x-nexus-task-id";
+
+/**
+ * Announced on `window` after something moves tasks in or out of "due today"
+ * (Shut down day), so the Due now panel, which only polls on mount and every
+ * few minutes, refetches instead of showing tasks that have since moved.
+ */
+export const TASKS_CHANGED_EVENT = "anamnesis-tasks-changed";

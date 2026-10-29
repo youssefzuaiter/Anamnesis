@@ -868,6 +868,78 @@ before any code.
 **Not done:** user-made templates, templates on the edit form, per-course templates, a
 command-palette entry, and any schema change.
 
+## Daily note and Shut down day
+
+Two cards on Today (ROADMAP item 4): **Today's note** opens one note per day, started with that
+day's schedule and open tasks, and **Shut down day** moves unfinished tasks to tomorrow in one
+confirmed step. It was shown as a clickable design and approved before any code.
+
+- **No migration: a daily note is an ordinary note.** Its title is the local ISO date
+  (`2026-10-28`, so `[[2026-10-28]]` links to it) and it carries the tag `daily`.
+  `findDailyNote` finds it by account, not deleted, exact title and tag, earliest first. The
+  alternative was a nullable `Note.dailyDate` with a unique index, which makes the database
+  enforce one per day but touches the export, the restore and reindex paths and every
+  `NoteInput` call site. The council that chose between them was run by me inline, not by
+  independent subagents, so it is weaker than four separate voices. **Costs accepted:** renaming
+  the note, or trashing it and restoring it next to a new one, can leave two for one day; two
+  requests in the same instant can each create one, since nothing in the database forbids it.
+  Opening picks the earliest. If that ever bites, adding `dailyDate` later is backward
+  compatible (nullable, backfilled from the title).
+- **Created on a click, never on a page load.** Today only reads (`findTodayNote`), the same
+  rule as "The dashboard reads, never writes". The text is a snapshot of the day at that moment;
+  nothing updates it afterwards. It goes through `createNote`, so it is indexed, linked and
+  exported like any other note.
+- **"Unfinished" means open and dated.** Open tasks due today start ticked. Open tasks overdue
+  from earlier days start **unticked**: moving a three-week-old task to tomorrow is a decision,
+  not tidying, so it is the person's. Done tasks, undated tasks and events are never offered.
+- **What moving changes.** The due date becomes tomorrow at the same time of day, counted from
+  now, so an overdue task lands on tomorrow rather than on the day after its old date. A planned
+  block is cleared only if it starts today; one on another day stays. Nothing else changes, and
+  nothing is placed on tomorrow's calendar: the result line says to use Plan my day then.
+- **Propose, confirm, re-derive.** Same shape as Plan my day. The task ids come back from the
+  browser, so they are client input: `applyShutdown` rebuilds the caller's own list and moves
+  only the requested ids that are in it. Another account's valid id, a done task and one already
+  moved are not in it. If none are left it refuses with `VALIDATION_ERROR` ("Those tasks have
+  already moved or are done. Review the list again."). The ids are a capped array of uuids.
+  **The day is part of the proposal.** The panel remembers the day it was shown for and sends it
+  back with the ids; the server compares it with its own today and refuses if midnight has
+  passed ("The day changed while you were reviewing. Review the list again."). Without that,
+  a panel opened at 23:55 and confirmed at 00:05 re-derives against the new day and moves the
+  tasks to the day after the one the panel promised, which only the result line would have shown.
+  Found in the final review, not by a test; the value is only compared, never used as a date.
+- **Shared pieces moved out so pure code could use them.** `bucketOf` is in `lib/task-bucket.ts`
+  (still re-exported from `task-service`). `dayBounds` is in `lib/day.ts`, moved out of
+  `plan-service` unchanged, and "tomorrow" is `dayBounds(now).to` in every place that needs it,
+  after the first version worked it out three ways. `patchTask` in `task-service` holds the
+  "read the row, send every field back" block that `scheduleTask` and `carryTaskTo` both need.
+  Dropping a field from it is a compile error (checked with `tsc`), which is the only guard for
+  `description` and `estimatedMinutes`: Prisma treats a missing key as "leave unchanged", so no
+  runtime test can see that omission.
+- **Found by a test, not by reading:** after Shut down the "Due now" Reminders panel still listed
+  the moved tasks. A server-rendered page catches up with `router.refresh()`, but that panel
+  fetches on mount and every five minutes. `TASKS_CHANGED_EVENT` (in `lib/domain.ts`) is
+  dispatched after the move and `Reminders` re-polls on it; the event carries no data. Two
+  mutations (no dispatch; overdue preticked) each fail the e2e test.
+- **Dates** are the server's local calendar days, the same rule as the rest of the app; times
+  are 24-hour `HH:MM`. Both cards are absent on an empty workspace, which keeps its onboarding
+  message.
+
+**Not done:** an Undo for Shut down day (the panel shows what will move and Cancel; the result
+line is the only record); carrying a planned block of a task that has no due date; shutting down
+a day other than today; making the note on its own at midnight; a `g` shortcut for it. The
+moves are made one task after another, not in one transaction, so a task deleted between the
+proposal and the apply stops the run part-way with an error; reopening the review shows what
+is left.
+
+**Known limits of the note text.** It is built on the server and goes through `createNote`,
+which checks ownership but not length: the 100,000-character cap lives in the actions' schemas,
+so a day with more than about 400 items would make a note the editor then refuses to save until
+some lines are cut. Titles are copied as they are, and a calendar feed can put a newline in one
+(`unescapeText` turns `\n` into a real line break), which can add a stray line or heading to the
+note. Neither can reach another account or run anything; both are cosmetic or recoverable, and
+neither was fixed. A Today page left open overnight still says "Starts a note for" yesterday's
+date until it reloads; the button makes the note for the day it is pressed.
+
 ## The assistant, and what actually defends it
 
 `services/assistant-service.ts` retrieves chunks, builds the prompt, and streams an

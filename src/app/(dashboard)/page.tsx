@@ -6,6 +6,10 @@ import { daysUntilLabel } from "@/lib/grades";
 import { TaskRow } from "@/components/task-row";
 import { QuickCapture } from "@/components/quick-capture";
 import { PlanDay } from "@/components/plan-day";
+import { ShutDownDay } from "@/components/shut-down-day";
+import { TodayNote } from "@/components/today-note";
+import { dailyTitle } from "@/lib/daily";
+import { dateLabel } from "@/lib/note-templates";
 import { Reminders } from "@/components/reminders";
 import { Icon } from "@/components/icons";
 import type { EventModel as Event } from "@/generated/prisma/models";
@@ -169,6 +173,7 @@ export default async function DashboardPage() {
     nextAssessment,
     cardsDue,
     indexedChunks,
+    todayNote,
   } = await getDashboard(userId, now);
 
   const firstName = session?.user?.name?.split(" ")[0] ?? "there";
@@ -269,6 +274,7 @@ export default async function DashboardPage() {
 
               <div className="flex flex-col gap-4 px-5 pb-5">
                 <PlanDay />
+                <ShutDownDay />
 
                 {slots.length > 0 ? (
                   <Timeline slots={slots} now={now} />
@@ -307,6 +313,21 @@ export default async function DashboardPage() {
             </section>
 
             <div className="flex flex-col gap-6">
+              <section aria-labelledby="today-note-title" className={`${CARD} px-5 py-4`}>
+                <TodayNote
+                  existing={
+                    todayNote
+                      ? {
+                          id: todayNote.id,
+                          title: dailyTitle(now),
+                          editedLabel: TIME.format(todayNote.updatedAt),
+                        }
+                      : null
+                  }
+                  dayLabel={dateLabel(now)}
+                />
+              </section>
+
               {nextAssessment && (
                 <section aria-labelledby="exam-title" className={`${CARD} px-5 py-4`}>
                   <p id="exam-title" className="text-xs font-semibold text-text-faint">

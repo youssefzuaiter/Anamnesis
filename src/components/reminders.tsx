@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { dueRemindersAction, type Reminder } from "@/actions/reminders";
+import { TASKS_CHANGED_EVENT } from "@/lib/domain";
 
 const POLL_MS = 5 * 60 * 1000;
 const STORAGE_KEY = "nexus:notified-reminders";
@@ -95,9 +96,13 @@ export function Reminders() {
 
     void poll();
     const id = setInterval(poll, POLL_MS);
+    // Something moved tasks about (Shut down day): look again now, not in five minutes.
+    const onTasksChanged = () => void poll();
+    window.addEventListener(TASKS_CHANGED_EVENT, onTasksChanged);
     return () => {
       cancelled = true;
       clearInterval(id);
+      window.removeEventListener(TASKS_CHANGED_EVENT, onTasksChanged);
     };
   }, []);
 

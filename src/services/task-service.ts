@@ -7,11 +7,14 @@ import { assertProjectOwned, recalculateProgress } from "@/services/project-serv
 import { assertCourseOwned } from "@/services/course-service";
 import { assertGoalOwned, recalculateGoalProgress } from "@/services/goal-service";
 import { generateOccurrences, type RecurrenceFrequency } from "@/lib/recurrence";
+import { bucketOf, type TaskBucket } from "@/lib/task-bucket";
 import { embeddableTextFor } from "@/services/embeddable-text";
 import type { TaskInput, TaskStatus, TaskPriority } from "@/repositories/task-repository";
 import type { TaskModel as Task } from "@/generated/prisma/models";
 
-export type TaskBucket = "overdue" | "today" | "upcoming" | "someday";
+// The rule moved to lib/task-bucket so pure code can use it; callers still import it from here.
+export { bucketOf };
+export type { TaskBucket };
 
 export type GroupedTasks = {
   overdue: Task[];
@@ -28,21 +31,6 @@ async function syncTaskIndex(userId: string, task: Task): Promise<void> {
     console.error(`[WARN] Failed to index task ${task.id}:`, error);
     await deleteEntityEmbeddings(userId, "task", task.id).catch(() => {});
   }
-}
-
-// Buckets are whole-day, not instant-based: a task due at 09:00 is still "today"
-// at 18:00, not overdue. Only a due date before midnight this morning is overdue.
-export function bucketOf(task: Task, now = new Date()): TaskBucket {
-  if (!task.dueDate) return "someday";
-
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
-
-  const endOfToday = new Date(now);
-  endOfToday.setHours(23, 59, 59, 999);
-
-  if (task.dueDate < startOfToday) return "overdue";
-  return task.dueDate <= endOfToday ? "today" : "upcoming";
 }
 
 export async function groupTasks(
@@ -260,15 +248,16 @@ export async function deleteTaskSeriesFrom(
 }
 
 /**
- * Drops a task onto `scheduledStart`, leaving its end to `resolveSchedule`'s
- * usual estimatedMinutes default. `updateTask` replaces the whole record, so
- * every other field is read back from the existing row first rather than
- * only sending the two schedule fields and silently wiping the rest.
+ * Changes some fields of a task and keeps the rest. `updateTask` replaces the
+ * whole record, so every other field is read back from the existing row first
+ * rather than sending only the ones that change and silently wiping the rest.
+ * The row is read scoped by `userId`, so another account's task id finds
+ * nothing. Callers must not pass a key with the value `undefined`.
  */
-export async function scheduleTask(
+async function patchTask(
   userId: string,
   taskId: string,
-  scheduledStart: Date,
+  changes: Partial<TaskInput>,
 ): Promise<Task> {
   const existing = await taskRepository.getTask(userId, taskId);
   if (!existing) {
@@ -285,7 +274,36 @@ export async function scheduleTask(
     dueDate: existing.dueDate,
     estimatedMinutes: existing.estimatedMinutes,
     projectId: existing.projectId,
-    scheduledStart,
-    scheduledEnd: null,
+    scheduledStart: existing.scheduledStart,
+    scheduledEnd: existing.scheduledEnd,
+    ...changes,
+  });
+}
+
+/**
+ * Drops a task onto `scheduledStart`, leaving its end to `resolveSchedule`'s
+ * usual estimatedMinutes default.
+ */
+export async function scheduleTask(
+  userId: string,
+  taskId: string,
+  scheduledStart: Date,
+): Promise<Task> {
+  return patchTask(userId, taskId, { scheduledStart, scheduledEnd: null });
+}
+
+/**
+ * Moves a task's due date for Shut down day, and takes it off the calendar when
+ * `clearBlock` is set.
+ */
+export async function carryTaskTo(
+  userId: string,
+  taskId: string,
+  dueDate: Date,
+  clearBlock: boolean,
+): Promise<Task> {
+  return patchTask(userId, taskId, {
+    dueDate,
+    ...(clearBlock ? { scheduledStart: null, scheduledEnd: null } : {}),
   });
 }
