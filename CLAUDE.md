@@ -1065,6 +1065,19 @@ course: its notes, tasks, events and grades.").
   tier (a model failure in `decideAction` is swallowed), so it is asserted in the evals with the
   real model: an action-shaped question with another account's scope is refused before any
   proposal.
+- **The thread's history is scoped too.** Earlier turns carry whatever was retrieved for them,
+  and the client sends them with the next question, so a follow-up under another scope was
+  answered from the first scope's text and cited a note that says nothing of the kind. Found by
+  asking the same question under a course and then under a project with the real model, not by
+  any test: the retrieval was correctly scoped (the citation was the project's own note) and the
+  answer still repeated the course's. `historyForScope` now sends only turns asked under the
+  current scope; turns loaded from a saved thread have no recorded scope and are never carried
+  into a scoped question. The same two questions afterwards: the second answer no longer carries
+  the course's content.
+- **A narrow scope can leave the model one weak note.** Under the project scope the answer
+  stretched a note at the relevance floor (similarity 0.55) into a claim it does not make. That is
+  the existing 3B-model-plus-floor limit, not a leak, and the floor (measured per embedding model)
+  was not touched; but few chunks competing makes it easier to meet.
 - **Where the control is.** The `/ai` page only; `?scope=kind:uuid` preselects it, and the
   course, project and note pages link to it ("Ask about this course"). A malformed, unknown,
   deleted or wrong-kind id in the URL is simply Everything. The docked assistant is unscoped.
