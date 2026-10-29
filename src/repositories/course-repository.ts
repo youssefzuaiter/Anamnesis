@@ -226,3 +226,36 @@ export async function getCourseRow(
     where: { id: courseId, userId, deletedAt: null },
   });
 }
+
+/**
+ * One assessment with its course, scoped by `userId`. The course must be live:
+ * an assessment of a deleted course is not something to plan for.
+ */
+export async function getAssessment(
+  userId: string,
+  assessmentId: string,
+): Promise<(Assessment & { course: { id: string; code: string; title: string } }) | null> {
+  return prisma.assessment.findFirst({
+    where: { id: assessmentId, userId, course: { deletedAt: null } },
+    include: { course: { select: { id: true, code: true, title: true } } },
+  });
+}
+
+/** The newest live notes of a course (titles only) and how many there are in all. */
+export async function listCourseNoteTitles(
+  userId: string,
+  courseId: string,
+  take: number,
+): Promise<{ notes: { id: string; title: string }[]; total: number }> {
+  const where = { userId, courseId, deletedAt: null };
+  const [notes, total] = await Promise.all([
+    prisma.note.findMany({
+      where,
+      orderBy: { updatedAt: "desc" },
+      select: { id: true, title: true },
+      take,
+    }),
+    prisma.note.count({ where }),
+  ]);
+  return { notes, total };
+}

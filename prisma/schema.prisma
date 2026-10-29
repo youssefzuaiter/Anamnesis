@@ -133,6 +133,10 @@ model Task {
   courseId         String?
   noteId           String?
   goalId           String?
+  // Set on the review sessions the exam-prep planner makes, so a second plan
+  // can count what is already planned for the same assessment. Optional on
+  // purpose, like recurrenceId: a caller that does not mention it leaves it alone.
+  assessmentId     String?
   title            String
   description      String?
   status           String    @default("todo")
@@ -156,11 +160,13 @@ model Task {
   course  Course?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
   note    Note?    @relation(fields: [noteId], references: [id], onDelete: SetNull)
   goal    Goal?    @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  assessment Assessment? @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([dueDate])
   @@index([recurrenceId])
   @@index([goalId])
+  @@index([assessmentId])
 }
 
 model Event {
@@ -274,6 +280,7 @@ model Assessment {
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  tasks  Task[]
 
   @@index([userId, courseId])
 }

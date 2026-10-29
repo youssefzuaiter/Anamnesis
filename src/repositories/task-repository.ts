@@ -20,6 +20,8 @@ export type TaskInput = {
   scheduledStart: Date | null;
   scheduledEnd: Date | null;
   recurrenceId?: string | null;
+  /** Set by the exam-prep planner only. Optional like `recurrenceId`: leaving it out leaves it as it was. */
+  assessmentId?: string | null;
 };
 
 export async function listTasks(
@@ -204,5 +206,16 @@ export async function listTaskTags(userId: string): Promise<string[]> {
 export async function countOpenTasks(userId: string): Promise<number> {
   return prisma.task.count({
     where: { userId, deletedAt: null, status: { not: "done" } },
+  });
+}
+
+/** The live review sessions made for one assessment, done ones included: they are time already given to it. */
+export async function listPrepSessions(
+  userId: string,
+  assessmentId: string,
+): Promise<{ id: string; estimatedMinutes: number }[]> {
+  return prisma.task.findMany({
+    where: { userId, assessmentId, deletedAt: null },
+    select: { id: true, estimatedMinutes: true },
   });
 }
