@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState, useSyncExternalStore, useTransition } from "react";
 import { addLinkAction } from "@/actions/link-suggestions";
 import { RAIL_CARD } from "@/components/rail-card";
+import { isNoteEditing, subscribeNoteEditing } from "@/lib/note-editing";
 
 export type LinkRow = {
   id: string;
@@ -48,6 +49,10 @@ export function LinkCard({
   const [done, setDone] = useState<Record<string, Done>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [announcement, setAnnouncement] = useState("");
+  const editingHere = useSyncExternalStore(subscribeNoteEditing, isNoteEditing, () => false);
+  // A link added to this note while its editor is open would be overwritten by the
+  // next save, which sends the editor's older text.
+  const held = writesInto === "this" && editingHere;
 
   // The rows still offered, with each confirmed one back in the place it had.
   const list: { row: LinkRow; done: Done | null }[] = rows
@@ -86,6 +91,11 @@ export function LinkCard({
     <section className={RAIL_CARD}>
       <h2 className="mb-1.5 text-xs font-semibold text-text-faint">{heading}</h2>
       {help && <p className="mb-2 text-xs text-text-muted">{help}</p>}
+      {held && (
+        <p className="mb-2 text-xs text-text-muted">
+          Save or close the editor first: a link added now would be lost when you save.
+        </p>
+      )}
 
       <ul className="flex flex-col gap-2">
         {list.map(({ row, done: finished }, index) => (
@@ -124,7 +134,7 @@ export function LinkCard({
                 )}
                 <button
                   type="button"
-                  disabled={pending}
+                  disabled={pending || held}
                   onClick={() => add(row, index)}
                   className="mt-2 inline-flex min-h-11 items-center rounded-lg border border-border-strong bg-surface px-3.5 text-sm font-semibold text-text transition-colors hover:bg-surface-hover disabled:opacity-60"
                 >

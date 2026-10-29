@@ -155,6 +155,20 @@ test("a note named in this note's text is suggested with no vector at all", asyn
   assert.ok(suggestions[0].snippet?.includes("gradient descent"));
 });
 
+test("a name written with other case and irregular spacing is still found, one split by a line break is not", async () => {
+  const user = await newUser();
+  await addNote(user.id, { title: "Gradient descent" });
+  await addNote(user.id, { title: "Weight decay" });
+  const source = await addNote(user.id, {
+    title: "Study log",
+    content: "Revised GRADIENT \t  descent today, then weight\ndecay.",
+  });
+  assert.deepEqual(
+    (await suggestLinks(user.id, source.id)).map((s) => s.title),
+    ["Gradient descent"],
+  );
+});
+
 test("a title shorter than five characters is never found in the text, even when it is there", async () => {
   const user = await newUser();
   const source = await addNote(user.id, { title: "Study log", content: "The ML course and the math." });
@@ -345,6 +359,38 @@ test("punctuation in a title is matched literally, wildcard characters included"
 
   assert.deepEqual((await findMentionsOf(user.id, percent.id)).map((m) => m.id), [wanted.id]);
   assert.deepEqual((await findMentionsOf(user.id, underscore.id)).map((m) => m.id), [wanted.id]);
+});
+
+test("a title is looked for as written: look-alikes cannot crowd out a real mention", async () => {
+  const user = await newUser();
+  const underscore = await addNote(user.id, { title: "snake_case rules" });
+  const percent = await addNote(user.id, { title: "50% rule" });
+  // Fifty-five newer notes that a wildcard search would match first.
+  for (let index = 0; index < 55; index++) {
+    await addNote(user.id, {
+      title: `Decoy ${index}`,
+      content: "snakeXcase rules and 50 big rule",
+      updatedAt: new Date(Date.UTC(2026, 5, 1, 0, 0, index)),
+    });
+  }
+  const real = await addNote(user.id, {
+    title: "Real mention",
+    content: "Read the snake_case rules and the 50% rule.",
+    updatedAt: new Date(Date.UTC(2026, 0, 1)),
+  });
+
+  assert.deepEqual((await findMentionsOf(user.id, underscore.id)).map((m) => m.id), [real.id]);
+  assert.deepEqual((await findMentionsOf(user.id, percent.id)).map((m) => m.id), [real.id]);
+});
+
+test("a title with non-ASCII letters is found whatever the case of the text", async () => {
+  const user = await newUser();
+  const target = await addNote(user.id, { title: "Öğrenme oranı" });
+  const mentioner = await addNote(user.id, {
+    title: "Günlük",
+    content: "Bugün ÖĞRENME oranı üzerine çalıştım.",
+  });
+  assert.deepEqual((await findMentionsOf(user.id, target.id)).map((m) => m.id), [mentioner.id]);
 });
 
 test("mentions are not offered for a title that is short, bracketed, shared or would not resolve", async () => {

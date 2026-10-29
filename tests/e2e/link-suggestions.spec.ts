@@ -147,3 +147,27 @@ test("on a phone the suggestion fits the screen and its button is easy to hit", 
   );
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test("while this note is open in the editor, adding a link to it is held back", async ({ page }) => {
+  const stamp = Date.now();
+  const target = `Adam optimiser ${stamp}`;
+  const targetUrl = await makeNote(page, target, "Adaptive learning rates.");
+  await makeNote(page, `Study log ${stamp}`, `Compared ${target} with plain descent.`);
+
+  await main(page).getByRole("button", { name: /^edit$/i }).click();
+  const add = rowOf(page, "Suggested links", target).getByRole("button", { name: "Add link" });
+  await expect(add).toBeDisabled();
+  await expect(card(page, "Suggested links")).toContainText("Save or close the editor first");
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await main(page).getByRole("button", { name: "Done" }).click();
+  await expect(add).toBeEnabled();
+  await expect(card(page, "Suggested links")).not.toContainText("Save or close the editor first");
+
+  // A note that mentions this one is a different note, so it can still be linked while this one is open.
+  await page.goto(targetUrl);
+  await main(page).getByRole("button", { name: /^edit$/i }).click();
+  await expect(
+    rowOf(page, "Mentions this note", "Study log").getByRole("button", { name: "Add link there" }),
+  ).toBeEnabled();
+});

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { setNoteEditing } from "@/lib/note-editing";
 
 /**
  * Reading is the default; editing is the deliberate act. The editor is only
@@ -20,6 +21,13 @@ export function NoteView({
   editor: ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
+
+  // Tells the rail's link cards, which sit outside this component, so they do not
+  // rewrite the saved text under an editor that still holds the old one.
+  useEffect(() => {
+    setNoteEditing(editing);
+    return () => setNoteEditing(false);
+  }, [editing]);
 
   if (editing) {
     return (

@@ -10,7 +10,9 @@ export const SEE_ALSO_HEADING = "See also";
 export const MAX_NOTE_LENGTH = 100_000;
 
 const MAX_TITLE_LENGTH = 200;
-const SEE_ALSO_LINE = /^ {0,3}##[ \t]+see also[ \t]*#*[ \t]*$/i;
+// `[ \t]*#*[ \t]*` here was quadratic on a line of spaces (6 s for 100,000); an ATX
+// closing sequence needs a space before it, which makes each branch linear.
+const SEE_ALSO_LINE = /^ {0,3}##[ \t]+see also(?:[ \t]+#+)?[ \t]*$/i;
 const ANY_HEADING = /^ {0,3}#{1,6}(?:[ \t]|$)/;
 
 /** A title can be written as `[[...]]` only if it has no brackets or line break. */

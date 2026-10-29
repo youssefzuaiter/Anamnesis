@@ -10,10 +10,16 @@ const SNIPPET_LENGTH = 90;
 const MASK = "\u0000";
 
 // Places a title is not "mentioned": code, an existing link, an address.
+//
+// The two link patterns have bounded quantifiers on purpose. Unbounded, a run of `[`
+// with no `]` after it makes every `[` scan to the end of its line, which is quadratic:
+// 100,000 characters took six seconds and stalled the whole server. Bounded, each
+// start costs at most a few hundred steps. A link longer than the bound is not
+// recognised as one, so a mention inside it counts, which is the safe direction.
 const MASKED_SPANS = [
   /(`+)(.+?)\1/g, // inline code
-  /\[\[[^\[\]\n]*\]\]/g, // a wiki link, whether or not it points at this title
-  /!?\[[^\]\n]*\]\([^)\n]*\)/g, // a Markdown link or image, text and address
+  /\[\[[^\[\]\n]{0,200}\]\]/g, // a wiki link, whether or not it points at this title
+  /!?\[[^\]\n]{0,200}\]\([^)\n]{0,500}\)/g, // a Markdown link or image, text and address
   /<?https?:\/\/[^\s>]+>?/g, // a bare address
 ];
 

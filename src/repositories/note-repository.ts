@@ -105,9 +105,13 @@ export async function listNoteTitles(
 }
 
 /**
- * Live notes whose text contains `text`, in any case, most recently edited first.
- * Prisma's `contains` escapes `%` and `_`, so a title is matched literally. A
+ * Live notes whose text contains `text`, in any case, most recently edited first. A
  * narrowing step only: the caller confirms each hit as a mention of whole words.
+ *
+ * Not Prisma's `contains`: that is an ILIKE and does not escape `%` or `_`, so a
+ * title such as "snake_case rules" matched "snakeXcase rules" and look-alikes could
+ * fill the `take` budget ahead of a real mention. `strpos` is a literal search, and
+ * the text is still a bound parameter, never part of the SQL string.
  */
 export async function listNotesContaining(
   userId: string,
@@ -115,17 +119,16 @@ export async function listNotesContaining(
   excludeIds: string[],
   take: number,
 ): Promise<{ id: string; title: string; content: string }[]> {
-  return prisma.note.findMany({
-    where: {
-      userId,
-      deletedAt: null,
-      id: { notIn: excludeIds },
-      content: { contains: text, mode: "insensitive" },
-    },
-    orderBy: { updatedAt: "desc" },
-    take,
-    select: { id: true, title: true, content: true },
-  });
+  if (text.trim() === "") return [];
+  return prisma.$queryRaw<{ id: string; title: string; content: string }[]>`
+    SELECT "id", "title", "content"
+    FROM "Note"
+    WHERE "userId" = ${userId}
+      AND "deletedAt" IS NULL
+      AND NOT ("id" = ANY(${excludeIds}::text[]))
+      AND strpos(lower("content"), lower(${text})) > 0
+    ORDER BY "updatedAt" DESC
+    LIMIT ${take}`;
 }
 
 export async function getNote(

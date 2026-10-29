@@ -153,3 +153,33 @@ test("Windows line endings do not reach the snippet", () => {
   const snippet = mentionSnippet("first\r\nI revised gradient descent today\r\nlast", TITLE);
   assert.equal(snippet, "I revised gradient descent today");
 });
+
+test("hostile text of the editor's maximum length does not stall the scan", () => {
+  const N = 100_000;
+  const shapes: Record<string, string> = {
+    "a run of [": "[".repeat(N),
+    "[a repeated": "[a".repeat(N / 2),
+    "[[ repeated": "[[".repeat(N / 2),
+    "[]( repeated": "[](".repeat(N / 4),
+    "![](a repeated": "![](a".repeat(N / 5),
+    "backticks": "`".repeat(N),
+    "`a repeated": "`a".repeat(N / 2),
+    "addresses": "http://".repeat(N / 7),
+    "list markers": "- ".repeat(N / 2),
+  };
+  for (const [name, text] of Object.entries(shapes)) {
+    const started = performance.now();
+    mentionSnippet(`${text}\ngradient descent`, TITLE);
+    const took = performance.now() - started;
+    assert.ok(took < 1000, `${name}: ${took.toFixed(0)} ms`);
+  }
+});
+
+test("a mention still counts when it follows a long run of brackets on another line", () => {
+  assert.ok(mentionSnippet(`${"[".repeat(5000)}\nI revised gradient descent today`, TITLE));
+});
+
+test("a link too long to be a link is not hidden, and a mention in it counts", () => {
+  const long = "word ".repeat(200);
+  assert.ok(mentionSnippet(`[${long} gradient descent ${long}](https://x.example)`, TITLE));
+});

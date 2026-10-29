@@ -188,3 +188,19 @@ test("a title that cannot be a link is a programming error, not an edit", () => 
   assert.throws(() => appendSeeAlso("Intro.", "a]b"));
   assert.throws(() => appendSeeAlso("Intro.", ""));
 });
+
+test("a heading line followed by a very long run of spaces does not stall", () => {
+  const started = performance.now();
+  const result = appendSeeAlso(`## see also${" ".repeat(100_000)}x\n`, "X");
+  const took = performance.now() - started;
+  assert.ok(took < 1000, `${took.toFixed(0)} ms`);
+  // That line is not the heading, so a section of its own is added.
+  assert.ok(result.content.endsWith("\n\n## See also\n\n- [[X]]\n"));
+});
+
+test("a See also heading may carry an ATX closing sequence", () => {
+  assert.equal(
+    appendSeeAlso("## See also ##\n\n- [[A]]\n", "X").content,
+    "## See also ##\n\n- [[A]]\n- [[X]]\n",
+  );
+});
