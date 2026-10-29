@@ -7,6 +7,7 @@ import {
   indexEntity,
   searchWorkspaceVectors,
   deleteEntityEmbeddings,
+  findSimilarEntities,
   type EmbeddableSourceType,
 } from "@/lib/vector";
 import { AppError } from "@/lib/api-response";
@@ -24,6 +25,7 @@ import * as goalRepository from "@/repositories/goal-repository";
 import { reindexEverything } from "@/services/reindex-service";
 import * as dashboardService from "@/services/dashboard-service";
 import * as linkRepository from "@/repositories/link-repository";
+import * as linkSuggestionService from "@/services/link-suggestion-service";
 import { parseWikiLinks } from "@/lib/wiki-links";
 import { parseNaturalDate, stripMatches } from "@/lib/natural-date";
 import { parseCapture } from "@/services/parse-service";
@@ -2569,6 +2571,185 @@ async function main() {
     } finally {
       await prisma.user.delete({ where: { id: linkUser.id } });
     }
+
+    // ---- link suggestions begin
+    section("Link suggestions");
+    const suggestUser = await prisma.user.create({
+      data: { email: `suggest-${randomUUID()}@test.local`, passwordHash: "eval" },
+    });
+    const suggestOther = await prisma.user.create({
+      data: { email: `suggest-other-${randomUUID()}@test.local`, passwordHash: "eval" },
+    });
+    try {
+      const mkSuggest = (userId: string, title: string, content: string) =>
+        noteService.createNote(userId, {
+          title,
+          content,
+          tags: [],
+          isFavorite: false,
+          projectId: null,
+          courseId: null,
+        });
+
+      const GD =
+        "Gradient descent minimises a loss by stepping against the gradient. The learning rate sets the step size; too large and the loss diverges, too small and training crawls.";
+      const BP =
+        "Backpropagation computes the gradient of the loss with respect to every weight by applying the chain rule backwards through the network layers.";
+      const gd = await mkSuggest(suggestUser.id, "Gradient descent", GD);
+      const bp = await mkSuggest(suggestUser.id, "Backpropagation", BP);
+      const reg = await mkSuggest(
+        suggestUser.id,
+        "Regularisation",
+        "Regularisation limits overfitting. L2 weight decay shrinks the weights, dropout silences units during training, and early stopping halts when validation loss rises.",
+      );
+      const pasta = await mkSuggest(
+        suggestUser.id,
+        "Weeknight pasta",
+        "Weeknight pasta: boil the spaghetti, fry garlic in olive oil, add tomatoes and basil, and finish with grated parmesan.",
+      );
+      const bread = await mkSuggest(
+        suggestUser.id,
+        "Bread baking",
+        "Sourdough needs a ripe starter, a long cold proof overnight, and a very hot oven with steam for the first fifteen minutes.",
+      );
+      const lisbon = await mkSuggest(
+        suggestUser.id,
+        "Lisbon trip",
+        "Lisbon trip: book the tram tour, eat pastel de nata in Belém, and take the day train to Sintra for the palaces.",
+      );
+      const log = await mkSuggest(
+        suggestUser.id,
+        "Study log",
+        "Today I revised gradient descent and then read about Regularisation before dinner.",
+      );
+
+      // Another account holds notes with the same titles and, for two of them, the same text.
+      const theirGd = await mkSuggest(suggestOther.id, "Gradient descent", GD);
+      const theirBp = await mkSuggest(suggestOther.id, "Backpropagation", BP);
+      const theirLog = await mkSuggest(
+        suggestOther.id,
+        "Study log",
+        "Revisited gradient descent and Backpropagation tonight.",
+      );
+      const theirs = new Set([theirGd.id, theirBp.id, theirLog.id]);
+      const titleById = new Map(
+        [gd, bp, reg, pasta, bread, lisbon, log].map((note) => [note.id, note.title]),
+      );
+      const FLOOR = linkSuggestionService.SUGGESTION_MIN_SIMILARITY;
+
+      // Scores are printed so a change of embedding model shows up in the log, where the
+      // floor (measured for nomic-embed-text) would otherwise move without anyone seeing.
+      const nearest = await findSimilarEntities(suggestUser.id, "note", gd.id, 10, ["note"]);
+      console.log(
+        `  NOTE  nearest to "Gradient descent": ${nearest
+          .map((hit) => `${titleById.get(hit.sourceId) ?? "?"} ${Number(hit.similarity).toFixed(2)}`)
+          .join(" | ")} (floor ${FLOOR})`,
+      );
+      check(
+        "the similarity query returns only the account's own notes",
+        nearest.length > 0 && nearest.every((hit) => titleById.has(hit.sourceId)),
+        `${nearest.length} hits`,
+      );
+
+      const forGd = await linkSuggestionService.suggestLinks(suggestUser.id, gd.id);
+      console.log(
+        `  NOTE  suggested for "Gradient descent": ${
+          forGd.map((s) => `${s.title} ${s.similarity?.toFixed(2) ?? "-"}`).join(" | ") || "(none)"
+        }`,
+      );
+      check(
+        "a closely related note is suggested from the stored vectors",
+        forGd.some((s) => s.id === bp.id && s.reasons.includes("similar")),
+      );
+      check(
+        "an unrelated note is not suggested",
+        !forGd.some((s) => [pasta.id, bread.id, lisbon.id].includes(s.id)),
+      );
+      check(
+        "every score shown is at or above the floor",
+        forGd.every((s) => s.similarity === null || s.similarity >= FLOOR),
+      );
+      check(
+        "another account's identical note is never suggested",
+        !forGd.some((s) => theirs.has(s.id)),
+      );
+
+      const forLog = await linkSuggestionService.suggestLinks(suggestUser.id, log.id);
+      check(
+        "notes named in the text are suggested by name",
+        [gd.id, reg.id].every((id) => forLog.some((s) => s.id === id && s.reasons.includes("named"))),
+        `${forLog.map((s) => s.title).join(", ")}`,
+      );
+      check(
+        "a title another account also uses is still suggested, and only the owner's note",
+        forLog.filter((s) => s.title === "Gradient descent").length === 1 &&
+          !forLog.some((s) => theirs.has(s.id)),
+      );
+
+      await deleteEntityEmbeddings(suggestUser.id, "note", log.id);
+      const forLogNoVectors = await linkSuggestionService.suggestLinks(suggestUser.id, log.id);
+      check(
+        "with no stored vectors the named suggestions remain and nothing throws",
+        forLogNoVectors.length >= 2 &&
+          forLogNoVectors.every((s) => s.reasons.length === 1 && s.reasons[0] === "named"),
+        `${forLogNoVectors.length} suggestions`,
+      );
+
+      const mentions = await linkSuggestionService.findMentionsOf(suggestUser.id, gd.id);
+      check(
+        "a note that writes the title in plain words is listed as a mention",
+        mentions.some((m) => m.id === log.id && m.snippet !== null),
+      );
+      check(
+        "another account's note that writes the title is not",
+        !mentions.some((m) => theirs.has(m.id)),
+      );
+
+      check(
+        "adding a link to another account's note is refused",
+        await expectAppError("RESOURCE_NOT_FOUND", () =>
+          linkSuggestionService.addLink(suggestUser.id, gd.id, theirBp.id),
+        ),
+      );
+      check(
+        "adding a link from another account's note is refused",
+        await expectAppError("RESOURCE_NOT_FOUND", () =>
+          linkSuggestionService.addLink(suggestUser.id, theirGd.id, gd.id),
+        ),
+      );
+      check(
+        "the other account's note was not touched",
+        (await prisma.note.findUniqueOrThrow({ where: { id: theirGd.id } })).content === GD,
+      );
+
+      const added = await linkSuggestionService.addLink(suggestUser.id, gd.id, bp.id);
+      const gdAfter = await noteRepository.getNote(suggestUser.id, gd.id);
+      check(
+        "adding a link writes it under See also",
+        added.added && /\n\n## See also\n\n- \[\[Backpropagation\]\]\n$/.test(gdAfter?.content ?? ""),
+      );
+      check(
+        "the link is registered",
+        (await linkRepository.getOutgoingLinks(suggestUser.id, gd.id)).some((n) => n.id === bp.id),
+      );
+      check(
+        "the old text is kept as a version",
+        (await prisma.noteVersion.count({ where: { noteId: gd.id } })) === 1,
+      );
+      check(
+        "a linked note is no longer suggested",
+        !(await linkSuggestionService.suggestLinks(suggestUser.id, gd.id)).some((s) => s.id === bp.id),
+      );
+
+      await linkSuggestionService.addLink(suggestUser.id, log.id, gd.id);
+      check(
+        "a mention disappears once it links",
+        !(await linkSuggestionService.findMentionsOf(suggestUser.id, gd.id)).some((m) => m.id === log.id),
+      );
+    } finally {
+      await prisma.user.deleteMany({ where: { id: { in: [suggestUser.id, suggestOther.id] } } });
+    }
+    // ---- link suggestions end
 
     section("Note graph");
     const graphUser = await prisma.user.create({
