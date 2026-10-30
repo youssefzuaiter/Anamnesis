@@ -111,6 +111,24 @@ export async function updateCourse(
   return prisma.course.findFirst({ where: { id: courseId, userId } });
 }
 
+/**
+ * Sets a course's credits and official final letter, and nothing else. `updateCourse`
+ * replaces the whole row from a `CourseInput`, so these two fields have a write of their
+ * own that cannot wipe or be wiped by it. Scoped by `userId` in the write itself, and
+ * false when no live course of the caller's matched.
+ */
+export async function setCourseGrade(
+  userId: string,
+  courseId: string,
+  input: { credits: number | null; finalGrade: string | null },
+): Promise<boolean> {
+  const { count } = await prisma.course.updateMany({
+    where: { id: courseId, userId, deletedAt: null },
+    data: input,
+  });
+  return count > 0;
+}
+
 export async function softDeleteCourse(
   userId: string,
   courseId: string,

@@ -481,6 +481,80 @@ kinds; ranking by the link graph; a "dismiss" that remembers; suggestions while 
 editor; a title split by a hard line break (matching is within a line); a mention in a note beyond
 the 50 most recently edited ones that contain the title.
 
+## GPA and CGPA
+
+The Courses page has a **Grade point average** card, and a course has a **Credits and final grade**
+card (ROADMAP item 8). It was shown as a clickable design (desktop and phone, light and dark, and the
+course page) and approved before any code. What it does: a cumulative GPA, a GPA per term, a projection
+from letters the person expects, and the average the open credits must reach for a target.
+
+- **The grade is the official letter the person records. It is never worked out from marks.** A council,
+  run by me inline and so weaker than four independent voices, chose between that (A) and deriving a
+  letter from percent thresholds (B), unanimously for A: many universities, Turkish ones included,
+  curve, so a percentage does not decide a letter and B would show a confident wrong number, and B needs
+  roughly twice the schema, UI and tests. The Skeptic's change to the question: a "scale" is only a
+  letter-to-points table. **Cost accepted:** the card starts empty until grades are entered, and "what
+  will I get" is the person's estimate (the what-if), not the app's.
+- **Which course counts, exactly** (`summariseGpa` in `lib/gpa.ts`): credits missing or 0 means **not
+  counted**; else no letter means **open** (it is part of the open credits); else a letter in the scale
+  **counts**; else **not counted**, never silently zero. Every not-counted course is listed with its
+  reason (a letter such as `S` that is not in the scale, or credits not set). Soft-deleted courses never
+  appear.
+- **The answer for a target has three shapes**, as `neededForTarget` in `lib/grades.ts` does for a single
+  course: already safe even on the lowest grade, out of reach even on the highest, or an average in
+  points ("between BA and AA", "exactly BA"). With no credits at all there is no answer rather than a
+  made-up one. The cumulative figure is `—`, never `NaN`, while nothing counts.
+- **Data, additive and nullable, so the previous release keeps working:** `Course.credits`,
+  `Course.finalGrade`, `UserProfile.targetGpa`, `UserProfile.gpaScale` (JSON; null means the preset).
+  The migration is four `ADD COLUMN` statements generated with `prisma migrate diff`, not `migrate dev`;
+  "the previous release keeps working" is reasoned from the nullability, and CI's `container` job
+  rehearses it. A stored scale is validated again on every read and falls back to the preset, so
+  malformed JSON can never break the page; a scale is 1 to 20 distinct letters of 1 to 4 characters
+  with points from 0 to 10, checked on write too.
+- **The preset is a starting point I could not verify.** AA 4.0, BA 3.5, BB 3.0, CB 2.5, CC 2.0, DC 1.5,
+  DD 1.0, FD 0.5, FF 0.0 is a common Turkish scheme; I do not know Bahçeşehir's exact table, and the UI
+  says to check it against the transcript. The scale editor changes points only (draft with live
+  preview, then Save scale or Reset to preset); adding or removing letters is not built.
+- **Two gaps in the approved mock, ruled while planning:** its Final grade control listed only the
+  scale's letters, so a pass/fail letter such as `S` could not be entered and such a course would sit in
+  the open credits for ever; the control has a last option **Other letter…** (1 to 4 characters). And its
+  reason text said to add the letter to the scale, which the editor cannot do; the reason says only that
+  the letter is left out. Also added: a "No target" option, a Saved indicator, and a "Change grade"
+  button on that row.
+- **What is saved and what is not.** The target saves when it changes; credits and the letter save on
+  every change; the scale saves only on Save scale; the expected letters are a what-if and are never
+  saved. Next dispatches a client's actions one at a time, in order, so the course controls send the
+  latest **absolute** values, never a delta (tested with four quick clicks).
+- **Ownership.** `setCourseGrade` is one `updateMany` scoped by `id`, `userId` and `deletedAt: null`;
+  another account's course, a deleted one and a missing one are the same `RESOURCE_NOT_FOUND`. Input is
+  validated before ownership, so a foreign id with bad input only says `VALIDATION_ERROR`, which reveals
+  nothing. `getGpaOverview(userId, loaded)` can take the course list a page already loaded; its only two
+  callers pass their own.
+
+**What testing and the review found.** (1) A surviving mutation exposed weak tests: "the GPA card ignores
+the scale draft" passed all nine browser tests, because `toContainText("3.75")` also matched the same
+number in the Target select's option list. The stat blocks are now named groups and the tests assert on
+them. (2) Measured, not read, on hostile 100,000-character input (the lesson of item 7): the letter and
+term patterns, `validateScale` and `summariseGpa` all took 0.6 ms or less, and a million-entry scale is
+stopped by the length check in 1.6 ms. (3) The course page loaded the account's courses twice, about 13
+ms at 300 courses; it loads them once. (4) A Next dev overlay "1 Issue" and a hydration warning appeared
+once during the browser look; it was my own measurement script opening the `<details>` before React had
+hydrated, confirmed by a clean load.
+
+**Tests.** 33 unit tests (`gpa-scale`, `gpa`), 11 integration tests (the columns, ownership, deleted and
+missing courses, the overview, malformed stored scales, targets and scales, a profile made on demand,
+cross-account settings), and 9 browser tests (credits and a letter counting, a target with an expected
+letter, a letter outside the scale, a course with no credits, the scale edited and saved, the target kept
+across a reload, quick clicks, and a phone in light and dark). Every rule was mutation-checked: 5 on the
+arithmetic, 7 on the server and 5 in the browser, each failing a test, with the files verified identical
+to their backups afterwards. **No model is involved, so there are no evals.**
+
+**Not done:** adding or removing letters on the scale (so a plus/minus scheme needs one the preset does
+not have); a carry-in CGPA for terms before the app (add those as courses with credits and a letter); the
+assistant knowing the GPA; courses are still missing from the JSON export (the new profile columns do
+travel with the profile); a graduation-credits count; a what-if saved across visits; the GPA on Today.
+Two tabs can overwrite each other's field on a course, since each save sends both credits and the letter.
+
 ## Trash and soft-delete recovery
 
 `/trash` lists the soft-deletable entities — `TRASH_KINDS` in
