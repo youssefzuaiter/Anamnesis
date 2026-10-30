@@ -52,6 +52,12 @@ model UserProfile {
   // and the server refuses to record anything while this is false.
   focusTrackingEnabled Boolean @default(false)
 
+  // The GPA tracker. A target cumulative GPA, and the letter-to-points table as
+  // JSON ([{ letter, points }]); a null scale means the built-in preset. Both are
+  // optional so an older release, which does not know them, keeps working.
+  targetGpa Float?
+  gpaScale  Json?
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -251,6 +257,12 @@ model Course {
   code      String
   title     String
   term      String
+  /// What the course is worth, in the university's own unit. Null until set; a
+  /// course without credits is not counted in the GPA.
+  credits   Float?
+  /// The official final letter, as the person recorded it. Never worked out from
+  /// the marks, because many universities curve. Null while the course is open.
+  finalGrade String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
