@@ -1,6 +1,6 @@
 import "server-only";
 import { AppError } from "@/lib/api-response";
-import type { GpaCourse } from "@/lib/gpa";
+import { MAX_CREDITS, type GpaCourse } from "@/lib/gpa";
 import { summarise } from "@/lib/grades";
 import {
   maxPoints,
@@ -11,9 +11,6 @@ import {
 } from "@/lib/gpa-scale";
 import * as courseRepository from "@/repositories/course-repository";
 import * as profileRepository from "@/repositories/profile-repository";
-
-/** The most credits one course can be worth. */
-export const MAX_CREDITS = 30;
 
 export type GpaOverview = {
   /** The caller's live courses only. */
@@ -34,9 +31,16 @@ function effectiveScale(stored: unknown): { scale: GradeScale; usesDefaultScale:
     : { scale: scaleOrDefault(null), usesDefaultScale: true };
 }
 
-export async function getGpaOverview(userId: string): Promise<GpaOverview> {
+/**
+ * Everything the GPA card needs. A page that has already loaded the caller's courses
+ * can pass them in rather than load them twice; they must be that caller's own.
+ */
+export async function getGpaOverview(
+  userId: string,
+  loaded?: courseRepository.CourseSummary[],
+): Promise<GpaOverview> {
   const [courses, settings] = await Promise.all([
-    courseRepository.listCourses(userId),
+    loaded ?? courseRepository.listCourses(userId),
     profileRepository.getGpaSettings(userId),
   ]);
 

@@ -35,6 +35,9 @@ export type GpaSummary = {
   notCounted: { course: GpaCourse; reason: NotCountedReason }[];
 };
 
+/** The most credits one course can be worth. */
+export const MAX_CREDITS = 30;
+
 const EPSILON = 1e-9;
 
 const hasCredits = (credits: number | null): credits is number =>

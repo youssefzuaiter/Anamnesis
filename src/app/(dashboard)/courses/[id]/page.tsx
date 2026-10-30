@@ -9,6 +9,9 @@ import { countDueForCourse } from "@/repositories/flashcard-repository";
 import { summarise, nextUngraded, daysUntilLabel } from "@/lib/grades";
 import { GradePanel } from "@/components/grade-panel";
 import { ExamPrep } from "@/components/exam-prep";
+import { CourseGrade } from "@/components/course-grade";
+import { summariseGpa } from "@/lib/gpa";
+import { getGpaOverview } from "@/services/gpa-service";
 import { dateLabel } from "@/lib/note-templates";
 import { scopeHref } from "@/lib/assistant-scope";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
@@ -39,10 +42,16 @@ export default async function CoursePage({
   if (!course) notFound();
 
   const now = new Date();
-  const [contents, dueCards] = await Promise.all([
+  const [contents, dueCards, overview] = await Promise.all([
     listCourseContents(userId, course.id),
     countDueForCourse(userId, course.id, now),
+    getGpaOverview(userId),
   ]);
+  // Every other counted course, so the card can say what this one does to the CGPA.
+  const others = summariseGpa(
+    overview.courses.filter((other) => other.id !== course.id),
+    overview.scale,
+  );
   const deleteThisCourse = deleteCourseAction.bind(null, course.id);
 
   const grade = summarise(course.assessments);
@@ -102,6 +111,14 @@ export default async function CoursePage({
           </Link>
         )}
       </section>
+
+      <CourseGrade
+        courseId={course.id}
+        credits={course.credits}
+        finalGrade={course.finalGrade}
+        scale={overview.scale}
+        base={{ credits: others.credits, qualityPoints: others.qualityPoints }}
+      />
 
       <ExamPrep
         assessments={prepTargets.map(({ id, label }) => ({ id, label }))}

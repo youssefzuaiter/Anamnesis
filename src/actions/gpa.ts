@@ -4,12 +4,13 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireUserId } from "@/lib/session";
 import { type ApiResponse, ok, fail, toApiResponse } from "@/lib/api-response";
+import { MAX_CREDITS } from "@/lib/gpa";
 import { MAX_POINTS, MAX_SCALE_ENTRIES, type GradeScale } from "@/lib/gpa-scale";
 import * as gpaService from "@/services/gpa-service";
 
 const courseGradeSchema = z.object({
   courseId: z.uuid(),
-  credits: z.number().min(0).max(gpaService.MAX_CREDITS).nullable(),
+  credits: z.number().min(0).max(MAX_CREDITS).nullable(),
   finalGrade: z.string().trim().max(4).nullable(),
 });
 
