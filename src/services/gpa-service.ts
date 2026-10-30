@@ -17,19 +17,10 @@ export type GpaOverview = {
   courses: GpaCourse[];
   /** Marks so far per course id, for reference: never turned into a letter. */
   marks: Record<string, { average: number | null; remaining: number }>;
+  /** The stored scale, or the preset when none is stored or the stored one is unusable. */
   scale: GradeScale;
-  /** True when no usable scale is stored, so the preset is in use. */
-  usesDefaultScale: boolean;
   targetGpa: number | null;
 };
-
-/** The scale stored for this account, checked on every read: stored JSON is not trusted. */
-function effectiveScale(stored: unknown): { scale: GradeScale; usesDefaultScale: boolean } {
-  const check = validateScale(stored);
-  return check.ok
-    ? { scale: check.scale, usesDefaultScale: false }
-    : { scale: scaleOrDefault(null), usesDefaultScale: true };
-}
 
 /**
  * Everything the GPA card needs. A page that has already loaded the caller's courses
@@ -60,7 +51,8 @@ export async function getGpaOverview(
       finalGrade: course.finalGrade,
     })),
     marks,
-    ...effectiveScale(settings.gpaScale),
+    // Checked on every read: a stored scale is not trusted.
+    scale: scaleOrDefault(settings.gpaScale),
     targetGpa: settings.targetGpa,
   };
 }
@@ -106,7 +98,7 @@ export async function setCourseGrade(
 /** A target must be above zero and no higher than the best grade in the account's scale. */
 export async function setTargetGpa(userId: string, target: number | null): Promise<void> {
   if (target !== null) {
-    const { scale } = effectiveScale((await profileRepository.getGpaSettings(userId)).gpaScale);
+    const scale = scaleOrDefault((await profileRepository.getGpaSettings(userId)).gpaScale);
     if (typeof target !== "number" || !Number.isFinite(target) || target <= 0 || target > maxPoints(scale)) {
       throw new AppError("VALIDATION_ERROR", "That target is outside your scale.");
     }

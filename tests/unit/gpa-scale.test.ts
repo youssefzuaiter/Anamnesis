@@ -6,6 +6,7 @@ import {
   MAX_SCALE_ENTRIES,
   maxPoints,
   normaliseLetter,
+  sameScale,
   scaleOrDefault,
   validateScale,
 } from "@/lib/gpa-scale";
@@ -114,4 +115,18 @@ test("the preset handed out is a copy, so changing it cannot change the preset",
 test("the highest points in a scale", () => {
   assert.equal(maxPoints(DEFAULT_GRADE_SCALE), 4);
   assert.equal(maxPoints([{ letter: "A", points: 10 }, { letter: "B", points: 7 }]), 10);
+});
+
+test("two scales are the same when they hold the same letters and points, in any order", () => {
+  const reversed = [...DEFAULT_GRADE_SCALE].reverse();
+  assert.equal(sameScale(DEFAULT_GRADE_SCALE, DEFAULT_GRADE_SCALE.map((entry) => ({ ...entry }))), true);
+  assert.equal(sameScale(DEFAULT_GRADE_SCALE, reversed), true);
+});
+
+test("a changed point, a missing letter or a different letter makes scales differ", () => {
+  const changed = DEFAULT_GRADE_SCALE.map((entry) => (entry.letter === "BB" ? { ...entry, points: 3.1 } : entry));
+  assert.equal(sameScale(DEFAULT_GRADE_SCALE, changed), false);
+  assert.equal(sameScale(DEFAULT_GRADE_SCALE, DEFAULT_GRADE_SCALE.slice(1)), false);
+  assert.equal(sameScale([{ letter: "A", points: 4 }], [{ letter: "B", points: 4 }]), false);
+  assert.equal(sameScale([], []), true);
 });

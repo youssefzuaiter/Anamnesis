@@ -79,6 +79,14 @@ export function scaleOrDefault(stored: unknown): GradeScale {
   return result.ok ? result.scale : DEFAULT_GRADE_SCALE.map((entry) => ({ ...entry }));
 }
 
+/** The same letters with the same points, whatever the order. */
+export function sameScale(a: GradeScale, b: GradeScale): boolean {
+  return (
+    a.length === b.length &&
+    a.every((entry) => b.some((other) => other.letter === entry.letter && other.points === entry.points))
+  );
+}
+
 export function maxPoints(scale: GradeScale): number {
   return scale.reduce((top, entry) => Math.max(top, entry.points), 0);
 }

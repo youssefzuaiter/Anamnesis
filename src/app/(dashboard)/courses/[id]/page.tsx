@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUserId } from "@/lib/session";
 import {
-  getCourse,
   listCourseContents,
+  listCourses,
 } from "@/repositories/course-repository";
 import { countDueForCourse } from "@/repositories/flashcard-repository";
 import { summarise, nextUngraded, daysUntilLabel } from "@/lib/grades";
@@ -38,14 +38,16 @@ export default async function CoursePage({
   const userId = await requireUserId();
   const { id } = await params;
 
-  const course = await getCourse(userId, id);
+  // One load of the account's courses serves this page and the GPA card beside it.
+  const courses = await listCourses(userId);
+  const course = courses.find((item) => item.id === id);
   if (!course) notFound();
 
   const now = new Date();
   const [contents, dueCards, overview] = await Promise.all([
     listCourseContents(userId, course.id),
     countDueForCourse(userId, course.id, now),
-    getGpaOverview(userId),
+    getGpaOverview(userId, courses),
   ]);
   // Every other counted course, so the card can say what this one does to the CGPA.
   const others = summariseGpa(

@@ -188,11 +188,10 @@ test("the overview holds only the caller's live courses, with their marks", asyn
   assert.deepEqual(overview.marks[bare.id], { average: null, remaining: 0 });
 });
 
-test("a fresh account has the preset, no target, and counts as using the preset", async () => {
+test("a fresh account has the preset and no target", async () => {
   const user = await newUser();
   const overview = await gpaService.getGpaOverview(user.id);
   assert.deepEqual(overview.scale, DEFAULT_GRADE_SCALE);
-  assert.equal(overview.usesDefaultScale, true);
   assert.equal(overview.targetGpa, null);
   assert.equal(overview.courses.length, 0);
 });
@@ -213,7 +212,6 @@ test("a stored scale that is unusable gives the preset instead of an error", asy
     });
     const overview = await gpaService.getGpaOverview(user.id);
     assert.deepEqual(overview.scale, DEFAULT_GRADE_SCALE, JSON.stringify(stored));
-    assert.equal(overview.usesDefaultScale, true);
   }
 });
 
@@ -229,7 +227,6 @@ test("a custom scale is saved, sorted, and read back; a bad one is refused and n
     { letter: "A", points: 4 },
     { letter: "B", points: 3 },
   ]);
-  assert.equal(custom.usesDefaultScale, false);
 
   await expectCode(
     gpaService.saveGradeScale(user.id, [
@@ -245,7 +242,6 @@ test("a custom scale is saved, sorted, and read back; a bad one is refused and n
   await gpaService.saveGradeScale(user.id, null);
   const reset = await gpaService.getGpaOverview(user.id);
   assert.deepEqual(reset.scale, DEFAULT_GRADE_SCALE);
-  assert.equal(reset.usesDefaultScale, true);
   assert.equal((await prisma.userProfile.findUniqueOrThrow({ where: { userId: user.id } })).gpaScale, null);
 });
 

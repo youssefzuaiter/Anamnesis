@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { saveGradeScaleAction, setTargetGpaAction } from "@/actions/gpa";
+import { Icon } from "@/components/icons";
+import type { ApiResponse } from "@/lib/api-response";
 import {
   defaultExpectedLetter,
   formatGpa,
@@ -15,6 +17,7 @@ import {
   MAX_POINTS,
   maxPoints,
   normaliseLetter,
+  sameScale,
   type GradeScale,
 } from "@/lib/gpa-scale";
 import type { GpaOverview } from "@/services/gpa-service";
@@ -27,27 +30,7 @@ const STEP =
 const OUTLINED =
   "inline-flex min-h-11 items-center justify-center rounded-lg border border-border-strong bg-surface px-3.5 text-sm font-semibold text-text transition-colors hover:bg-surface-hover disabled:opacity-60";
 const SECTION_HEADING = "mb-2 mt-6 text-xs font-semibold text-text-faint";
-const ICON = {
-  width: 18,
-  height: 18,
-  viewBox: "0 0 24 24",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 2,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-  "aria-hidden": true,
-};
-
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-
-/** The same letters with the same points, whatever the order. */
-function sameScale(a: GradeScale, b: GradeScale): boolean {
-  return (
-    a.length === b.length &&
-    a.every((entry) => b.some((other) => other.letter === entry.letter && other.points === entry.points))
-  );
-}
 
 /**
  * The GPA card on the Courses page. Everything shown is worked out here, from the same
@@ -80,7 +63,7 @@ export function GpaCard({ courses, marks, scale, targetGpa }: GpaOverview) {
   const dirty = !sameScale(draft, savedScale);
   const offPreset = !sameScale(draft, DEFAULT_GRADE_SCALE) || !sameScale(savedScale, DEFAULT_GRADE_SCALE);
 
-  function run(task: () => Promise<{ success: boolean; error: { message: string } | null }>, done: string, then?: () => void) {
+  function run(task: () => Promise<ApiResponse<null>>, done: string, then?: () => void) {
     setMessage(null);
     setError(null);
     startTransition(async () => {
@@ -89,7 +72,7 @@ export function GpaCard({ courses, marks, scale, targetGpa }: GpaOverview) {
         setMessage(done);
         then?.();
       } else {
-        setError(result.error?.message ?? "That could not be saved.");
+        setError(result.error.message);
       }
     });
   }
@@ -126,7 +109,7 @@ export function GpaCard({ courses, marks, scale, targetGpa }: GpaOverview) {
   let headline = "";
   let detail = "";
   let tone = "bg-surface-subtle text-text-muted";
-  let icon: "needed" | "achieved" | "impossible" | null = null;
+  let icon: "target" | "tasks" | "alert" | null = null;
   if (needed?.kind === "needed") {
     const where = needed.exact
       ? `exactly ${needed.upper}`
@@ -136,14 +119,14 @@ export function GpaCard({ courses, marks, scale, targetGpa }: GpaOverview) {
     headline = `You need an average of ${formatGpa(needed.points)} on the ${summary.openCredits} open credits.`;
     detail = `That is ${where}. Your expected letters give ${formatGpa(projected.expectedAverage)}.`;
     tone = "bg-accent-soft text-accent-ink";
-    icon = "needed";
+    icon = "target";
   } else if (needed?.kind === "achieved") {
     headline = `You are already at or above ${formatGpa(target)}.`;
     detail = noneOpen
       ? "No credits are open, so this is your final GPA."
       : `Even a straight ${draft[draft.length - 1].letter} on the ${summary.openCredits} open credits would leave you at ${formatGpa(needed.worst)}.`;
     tone = "bg-ok-soft text-ok";
-    icon = "achieved";
+    icon = "tasks";
   } else if (needed?.kind === "impossible") {
     headline = noneOpen
       ? `${formatGpa(target)} is out of reach with no credits open.`
@@ -152,7 +135,7 @@ export function GpaCard({ courses, marks, scale, targetGpa }: GpaOverview) {
       ? `Your GPA is ${formatGpa(needed.best)}, which is ${formatGpa(needed.short)} short.`
       : `A straight ${draft[0].letter} on all ${summary.openCredits} of them gives ${formatGpa(needed.best)}, which is ${formatGpa(needed.short)} short.`;
     tone = "bg-warn-soft text-warn";
-    icon = "impossible";
+    icon = "alert";
   } else if (needed?.kind === "no-credits") {
     headline = "Nothing to work from yet.";
     detail = "Give a course its credits, and a final grade once you have one.";
@@ -232,24 +215,8 @@ export function GpaCard({ courses, marks, scale, targetGpa }: GpaOverview) {
       ) : (
         <>
           <div className={`mt-4 flex items-start gap-2.5 rounded-[10px] px-3.5 py-3 text-sm leading-relaxed ${tone}`}>
-            {icon === "needed" && (
-              <svg {...ICON} className="mt-px flex-none">
-                <circle cx="12" cy="12" r="9" />
-                <circle cx="12" cy="12" r="4" />
-              </svg>
-            )}
-            {icon === "achieved" && (
-              <svg {...ICON} className="mt-px flex-none">
-                <circle cx="12" cy="12" r="9" />
-                <path d="m8.5 12.5 2.5 2.5 4.5-5" />
-              </svg>
-            )}
-            {icon === "impossible" && (
-              <svg {...ICON} className="mt-px flex-none">
-                <path d="M12 3 2.5 20h19L12 3Z" />
-                <path d="M12 10v4" />
-                <path d="M12 17.5h.01" />
-              </svg>
+            {icon !== null && (
+              <Icon name={icon} className="mt-px size-[18px]" />
             )}
             <span className="min-w-0">
               <strong className="block font-semibold">{headline}</strong>
@@ -390,11 +357,7 @@ export function GpaCard({ courses, marks, scale, targetGpa }: GpaOverview) {
                 key={course.id}
                 className="flex flex-wrap items-start gap-2.5 rounded-[10px] border border-border-subtle bg-surface px-3.5 py-3 sm:flex-nowrap sm:items-center"
               >
-                <svg {...ICON} width={16} height={16} className="mt-0.5 flex-none text-warn">
-                  <path d="M12 3 2.5 20h19L12 3Z" />
-                  <path d="M12 10v4" />
-                  <path d="M12 17.5h.01" />
-                </svg>
+                <Icon name="alert" className="mt-0.5 size-4 text-warn" />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm leading-snug text-text">
                     <span className="font-mono text-[13px] text-accent-ink">{course.code}</span> {course.title}
