@@ -40,7 +40,7 @@ services. Nothing may need a paid API key.
   note. The evals must show another account's data still never enters the context.
 - [x] **7. Link suggestions and unlinked mentions** (M, model?). "This note is close to X, link
   it?" from the existing embeddings. Suggestions never write a link by themselves.
-- [ ] **8. GPA and CGPA tracker** (S to M, demo, migration). Credits per course, a scale, a
+- [x] **8. GPA and CGPA tracker** (S to M, demo, migration). Credits per course, a scale, a
   target. Pure arithmetic in `lib/`, unit-tested.
 - [ ] **9. Cloze cards, per-course decks, cards from selected text** (M, migration).
 - [ ] **10. "Quiz me" mode** (M, model, depends on 9). Questions from a note or course using
