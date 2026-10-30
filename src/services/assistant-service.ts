@@ -13,7 +13,10 @@ import { recordProposed } from "@/services/action-service";
 import {
   searchWorkspaceVectors,
   type EmbeddableSourceType,
+  type SourceFilter,
 } from "@/lib/vector";
+import type { AssistantScope } from "@/lib/assistant-scope";
+import { resolveScope } from "@/services/scope-service";
 
 export type Citation = {
   index: number;
@@ -227,13 +230,38 @@ async function resolveTitles(
   return new Map();
 }
 
+/**
+ * The excerpts a question is answered from. With a `scope` the search is
+ * limited to one course, project or note. The scope is resolved first, before
+ * anything is embedded: it came from the browser, so it must be the caller's
+ * own (another account's id is refused, never answered as "nothing found").
+ * Nothing else changes: the prompts and the relevance floor are the ones the
+ * injection evals measured.
+ */
 export async function retrieveContext(
   userId: string,
   question: string,
   history: ChatMessage[] = [],
+  scope: AssistantScope | null = null,
+): Promise<RetrievedContext> {
+  const resolved = scope ? await resolveScope(userId, scope) : null;
+  return buildContext(userId, question, history, resolved?.within);
+}
+
+async function buildContext(
+  userId: string,
+  question: string,
+  history: ChatMessage[],
+  within?: SourceFilter,
 ): Promise<RetrievedContext> {
   const hits = (
-    await searchWorkspaceVectors(userId, await embedQuery(question), MAX_CHUNKS)
+    await searchWorkspaceVectors(
+      userId,
+      await embedQuery(question),
+      MAX_CHUNKS,
+      undefined,
+      within,
+    )
   ).filter((hit) => hit.similarity >= RELEVANCE_FLOOR);
 
   const byType = new Map<EmbeddableSourceType, string[]>();
@@ -315,12 +343,17 @@ export async function* answerQuestion(
   question: string,
   history: ChatMessage[] = [],
   signal?: AbortSignal,
+  scope: AssistantScope | null = null,
 ): AsyncGenerator<AssistantEvent> {
+  // Checked first, so a scope that is not the caller's fails the same way for
+  // every kind of question, an action request included (which does not search).
+  const resolved = scope ? await resolveScope(userId, scope) : null;
+
   const actions = await decideAction(question);
 
   // Retrieval is skipped entirely for action requests — no embedding, no search.
   const { citations, messages } = actions.length === 0
-    ? await retrieveContext(userId, question, history)
+    ? await buildContext(userId, question, history, resolved?.within)
     : { citations: [] as Citation[], messages: [] as ChatMessage[] };
 
   // An action request is answered by proposing, not by searching: running the

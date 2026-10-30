@@ -3073,6 +3073,235 @@ async function main() {
       `${intruderContext.citations.length} citations`,
     );
 
+    // ---- scoped questions: begin
+    section("Scoped questions");
+    // Two courses and an uncoursed note on one topic, a project, and an intruder
+    // whose note on that topic is the closest match of all. A scoped question
+    // must see only its scope, and never the intruder, however close.
+    const REEF_Q = "What causes coral bleaching on the Great Barrier Reef?";
+    const courseA = await prisma.course.create({
+      data: { userId: owner.id, code: "BIO3001", title: "Marine Biology", term: "Fall 2026" },
+    });
+    const courseB = await prisma.course.create({
+      data: { userId: owner.id, code: "HIS2002", title: "Maritime History", term: "Fall 2026" },
+    });
+    const emptyCourse = await prisma.course.create({
+      data: { userId: owner.id, code: "ART1000", title: "Drawing", term: "Fall 2026" },
+    });
+    const reefProject = await projectService.createProject(owner.id, {
+      title: "Reef photo essay",
+      category: "University",
+      goalId: null,
+    });
+    const reefNote = (title: string, content: string, courseId: string | null, projectId: string | null = null) =>
+      noteService.createNote(owner.id, { title, content, tags: [], isFavorite: false, projectId, courseId });
+    const noteA = await reefNote(
+      "Reef survey notes",
+      "ALPHA-MARKER-2201. Coral bleaching on the Great Barrier Reef is driven by marine heatwaves; the survey recorded widespread bleaching in the northern sector.",
+      courseA.id,
+    );
+    const noteB = await reefNote(
+      "Reef logbook history",
+      "BRAVO-MARKER-3302. Accounts of coral bleaching on the Great Barrier Reef appear in the maritime logbooks that historians use to date colonial shipping routes.",
+      courseB.id,
+    );
+    const noteU = await reefNote(
+      "Reef holiday plan",
+      "UNIFORM-MARKER-4403. A holiday plan to see coral bleaching recovery on the Great Barrier Reef and snorkel over the reef flats.",
+      null,
+    );
+    const noteP = await reefNote(
+      "Reef essay outline",
+      "PAPA-MARKER-5504. The photo essay documents coral bleaching on the Great Barrier Reef through before and after images.",
+      null,
+      reefProject.id,
+    );
+    const taskA = await taskService.createTask(owner.id, {
+      title: "Write up the coral bleaching survey of the Great Barrier Reef",
+      description: null,
+      priority: "medium",
+      tags: [],
+      dueDate: null,
+      estimatedMinutes: 60,
+      projectId: null,
+      courseId: courseA.id,
+      goalId: null,
+      scheduledStart: null,
+      scheduledEnd: null,
+    });
+    const eventA = await eventService.createEvent(owner.id, {
+      title: "Coral bleaching fieldwork briefing",
+      description: "Great Barrier Reef survey team briefing.",
+      startTime: new Date(2026, 10, 3, 9, 0),
+      endTime: new Date(2026, 10, 3, 10, 0),
+      location: "Lab 2",
+      projectId: null,
+    });
+    // A timetable import is what links an event to a course; do the same.
+    await prisma.event.update({ where: { id: eventA.id }, data: { courseId: courseA.id } });
+
+    const intruderCourse = await prisma.course.create({
+      data: { userId: intruder.id, code: "BIO3001", title: "Marine Biology", term: "Fall 2026" },
+    });
+    const reefIntruderProject = await projectService.createProject(intruder.id, {
+      title: "Reef photo essay",
+      category: "University",
+      goalId: null,
+    });
+    const intruderReef = await noteService.createNote(intruder.id, {
+      title: "Great Barrier Reef bleaching summary",
+      content:
+        "INTRUDER-SECRET-7731. Coral bleaching on the Great Barrier Reef is caused by marine heatwaves that stress the coral.",
+      tags: [],
+      isFavorite: false,
+      projectId: null,
+      courseId: intruderCourse.id,
+    });
+
+    const setOf = (...ids: string[]) => new Set(ids);
+    const reefPrompt = (ctx: { messages: { content: string }[] }) => ctx.messages.at(-1)!.content;
+    const reefExcerpts = (ctx: { messages: { content: string }[] }) => {
+      const prompt = reefPrompt(ctx);
+      return prompt.slice(
+        prompt.indexOf("<<<BEGIN QUOTED WORKSPACE DATA>>>"),
+        prompt.lastIndexOf("<<<END QUOTED WORKSPACE DATA>>>"),
+      );
+    };
+    const MARKERS = ["ALPHA-MARKER-2201", "BRAVO-MARKER-3302", "UNIFORM-MARKER-4403", "PAPA-MARKER-5504", "INTRUDER-SECRET-7731"];
+    /** Only `kept` may appear in the excerpts the model is shown. */
+    const onlyMarkers = (ctx: { messages: { content: string }[] }, kept: string[]) =>
+      MARKERS.every((marker) => reefExcerpts(ctx).includes(marker) === kept.includes(marker));
+
+    const everything = await assistantService.retrieveContext(owner.id, REEF_Q);
+    check(
+      "an unscoped question sees material from more than one course",
+      everything.citations.some((c) => c.sourceId === noteA.id) &&
+        everything.citations.some((c) => c.sourceId === noteB.id || c.sourceId === noteU.id),
+      everything.citations.map((c) => c.title).join(" | "),
+    );
+    check(
+      "an unscoped question never shows the intruder's note, though it is the closest match",
+      !reefExcerpts(everything).includes("INTRUDER-SECRET-7731") &&
+        everything.citations.every((c) => c.sourceId !== intruderReef.id),
+    );
+
+    const allowedA = setOf(courseA.id, noteA.id, taskA.id, eventA.id);
+    const inA = await assistantService.retrieveContext(owner.id, REEF_Q, [], { kind: "course", id: courseA.id });
+    check(
+      "a course scope cites only that course's own notes, tasks and events",
+      inA.citations.length > 0 && inA.citations.every((c) => allowedA.has(c.sourceId)),
+      inA.citations.map((c) => `${c.sourceType}:${c.title}`).join(" | "),
+    );
+    check("a course scope still finds its own note", inA.citations.some((c) => c.sourceId === noteA.id));
+    check(
+      "a course scope shows the model only that course's text",
+      onlyMarkers(inA, ["ALPHA-MARKER-2201"]),
+    );
+
+    const inB = await assistantService.retrieveContext(owner.id, REEF_Q, [], { kind: "course", id: courseB.id });
+    check(
+      "another course's scope is just as narrow",
+      inB.citations.length > 0 && inB.citations.every((c) => c.sourceId === noteB.id || c.sourceId === courseB.id),
+    );
+    check("another course's scope shows only its own text", onlyMarkers(inB, ["BRAVO-MARKER-3302"]));
+
+    const inU = await assistantService.retrieveContext(owner.id, REEF_Q, [], { kind: "note", id: noteU.id });
+    check(
+      "a note scope cites that note alone",
+      inU.citations.length > 0 && inU.citations.every((c) => c.sourceId === noteU.id),
+    );
+    check("a note scope shows only that note's text", onlyMarkers(inU, ["UNIFORM-MARKER-4403"]));
+
+    const inP = await assistantService.retrieveContext(owner.id, REEF_Q, [], { kind: "project", id: reefProject.id });
+    check(
+      "a project scope cites only that project's own material",
+      inP.citations.length > 0 &&
+        inP.citations.every((c) => c.sourceId === noteP.id || c.sourceId === reefProject.id),
+    );
+    check("a project scope shows only its own text", onlyMarkers(inP, ["PAPA-MARKER-5504"]));
+
+    for (const [what, scope] of [
+      ["another account's course", { kind: "course", id: intruderCourse.id }],
+      ["another account's project", { kind: "project", id: reefIntruderProject.id }],
+      ["another account's note", { kind: "note", id: intruderReef.id }],
+      ["a course that does not exist", { kind: "course", id: randomUUID() }],
+      ["a note's id sent as a course", { kind: "course", id: noteA.id }],
+    ] as const) {
+      check(
+        `${what} as the scope is refused, not answered`,
+        await expectAppError("RESOURCE_NOT_FOUND", () =>
+          assistantService.retrieveContext(owner.id, REEF_Q, [], scope),
+        ),
+      );
+    }
+
+    const quoting = await assistantService.retrieveContext(
+      owner.id,
+      "What is INTRUDER-SECRET-7731 and how does it relate to coral bleaching?",
+      [],
+      { kind: "course", id: courseA.id },
+    );
+    check(
+      "a scoped question that quotes the intruder's secret still gets none of it",
+      !reefExcerpts(quoting).includes("INTRUDER-SECRET-7731") &&
+        quoting.citations.every((c) => c.sourceId !== intruderReef.id),
+    );
+
+    const emptyScope = await assistantService.retrieveContext(owner.id, REEF_Q, [], { kind: "course", id: emptyCourse.id });
+    check(
+      "an empty course has nothing to cite, and the model is told so",
+      emptyScope.citations.length === 0 &&
+        reefPrompt(emptyScope).includes("No workspace excerpts matched"),
+    );
+
+    let first: assistantService.AssistantEvent | null = null;
+    for await (const event of assistantService.answerQuestion(owner.id, REEF_Q, [], undefined, { kind: "course", id: courseA.id })) {
+      first = event;
+      break; // the citations frame comes before any model output
+    }
+    check(
+      "answering with a scope sends citations from that scope only",
+      first?.type === "citations" && first.citations.length > 0 && first.citations.every((c) => allowedA.has(c.sourceId)),
+    );
+
+    const emitted: string[] = [];
+    const refusedAction = await expectAppError("RESOURCE_NOT_FOUND", async () => {
+      for await (const event of assistantService.answerQuestion(
+        owner.id,
+        "Add a task to review the reef survey tomorrow",
+        [],
+        undefined,
+        { kind: "course", id: intruderCourse.id },
+      )) {
+        emitted.push(event.type);
+      }
+    });
+    check(
+      "an action request with another account's scope is refused before any proposal",
+      refusedAction && emitted.length === 0,
+      emitted.join(","),
+    );
+
+    await prisma.note.update({ where: { id: noteB.id }, data: { courseId: courseA.id } });
+    const movedIn = await assistantService.retrieveContext(owner.id, REEF_Q, [], { kind: "course", id: courseA.id });
+    const movedOut = await assistantService.retrieveContext(owner.id, REEF_Q, [], { kind: "course", id: courseB.id });
+    check(
+      "a note moved between courses is searched under its new course at once, with no re-index",
+      movedIn.citations.some((c) => c.sourceId === noteB.id) &&
+        !movedOut.citations.some((c) => c.sourceId === noteB.id),
+    );
+    await prisma.note.update({ where: { id: noteB.id }, data: { courseId: courseB.id } });
+
+    // The later sections search this same workspace: leave nothing of this one behind.
+    for (const note of [noteA, noteB, noteU, noteP]) await noteService.deleteNote(owner.id, note.id);
+    await taskService.deleteTask(owner.id, taskA.id);
+    await eventService.deleteEvent(owner.id, eventA.id);
+    await projectService.deleteProject(owner.id, reefProject.id);
+    await noteService.deleteNote(intruder.id, intruderReef.id);
+    await projectService.deleteProject(intruder.id, reefIntruderProject.id);
+    await prisma.course.deleteMany({ where: { id: { in: [courseA.id, courseB.id, emptyCourse.id, intruderCourse.id] } } });
+    // ---- scoped questions: end
+
     section("Prompt injection — structural defenses (deterministic)");
     const forgedNote = await noteService.createNote(owner.id, {
       title: "Reading list",

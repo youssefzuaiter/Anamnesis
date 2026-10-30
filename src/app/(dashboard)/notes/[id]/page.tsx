@@ -6,6 +6,7 @@ import { NoteEditor } from "@/components/note-editor";
 import { updateNoteAction, deleteNoteAction } from "@/actions/notes";
 import { listProjectOptions } from "@/repositories/project-repository";
 import { listCourseOptions } from "@/repositories/course-repository";
+import { scopeHref } from "@/lib/assistant-scope";
 import { isTrackingEnabled } from "@/repositories/focus-repository";
 import { FocusTracker } from "@/components/focus-tracker";
 import {
@@ -103,13 +104,21 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
             {place && <span aria-hidden="true"> / </span>}
             {place && <span>{place}</span>}
           </span>
-          <Link
-            href={`/notes/${note.id}/history`}
-            className="inline-flex shrink-0 items-center gap-1.5 font-medium transition-colors hover:text-text"
-          >
-            <Icon name="clock" className="size-4" />
-            History
-          </Link>
+          <span className="flex shrink-0 items-center gap-4">
+            <Link
+              href={scopeHref({ kind: "note", id: note.id })}
+              className="font-medium transition-colors hover:text-text"
+            >
+              Ask about this note
+            </Link>
+            <Link
+              href={`/notes/${note.id}/history`}
+              className="inline-flex shrink-0 items-center gap-1.5 font-medium transition-colors hover:text-text"
+            >
+              <Icon name="clock" className="size-4" />
+              History
+            </Link>
+          </span>
         </nav>
 
         <NoteView

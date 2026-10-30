@@ -7,6 +7,7 @@ import {
 } from "@/repositories/project-repository";
 import { listGoalOptions } from "@/repositories/goal-repository";
 import type { ProjectCategory } from "@/lib/domain";
+import { scopeHref } from "@/lib/assistant-scope";
 import { ProjectForm } from "@/components/project-form";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { TaskRow } from "@/components/task-row";
@@ -58,6 +59,12 @@ export default async function ProjectPage({
             Goal: {goal.title}
           </Link>
         )}
+        <Link
+          href={scopeHref({ kind: "project", id: project.id })}
+          className="mt-2 block w-fit text-sm text-accent hover:underline"
+        >
+          Ask about this project
+        </Link>
         <div className="mt-3 flex items-center gap-3">
           <div
             className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-subtle"
