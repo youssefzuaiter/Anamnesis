@@ -38,7 +38,7 @@ services. Nothing may need a paid API key.
   server, the same shape as Plan my day.
 - [ ] **6. Scope assistant questions** (S, model). Restrict retrieval to one course, project or
   note. The evals must show another account's data still never enters the context.
-- [ ] **7. Link suggestions and unlinked mentions** (M, model?). "This note is close to X, link
+- [x] **7. Link suggestions and unlinked mentions** (M, model?). "This note is close to X, link
   it?" from the existing embeddings. Suggestions never write a link by themselves.
 - [ ] **8. GPA and CGPA tracker** (S to M, demo, migration). Credits per course, a scale, a
   target. Pure arithmetic in `lib/`, unit-tested.

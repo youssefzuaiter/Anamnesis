@@ -353,6 +353,117 @@ shows the week containing September 1st, not the current week. Day view skips
 the per-cell item cap (month: 5–6, week: same) and renders a flat chronological
 agenda instead — a day has room for the full list.
 
+## Link suggestions and unlinked mentions
+
+On a note's page, two cards in the side rail (ROADMAP item 7): **Suggested links** (notes this one
+could link to) and **Mentions this note** (other notes that write its title without linking to it).
+A button on each adds the link; nothing is ever written when a page loads. The entry is tagged
+*model?*, not *demo*, so it was built straight from the roadmap sentence and looked at in the browser.
+
+- **A click appends a bullet under "## See also"; it does not rewrite the text.** The alternatives
+  were turning the plain-text mention into `[[...]]` in place (needs a Markdown-aware rewrite that
+  must skip code, maths, links and addresses, and a wrong rewrite corrupts what someone wrote) and
+  pre-filling the editor (the rail and the editor are separate client trees). The append changes
+  nothing the person wrote, is the same edit for every kind of suggestion, and goes through
+  `noteService.updateNote`, so a version of the old text is kept (History undoes it), the note is
+  re-indexed and its links are re-derived. The council that chose was run by me inline, not by
+  independent subagents, so it is weaker than four separate voices. **Cost accepted:** the link sits
+  in a footer section, not at the word.
+- **Three sources, two cards.** Suggestions are notes close in meaning (the stored vectors, one
+  self-join, no model call) and notes whose titles this note's text names, merged: a note that is
+  both appears once, with both reasons, ranked first. Mentions are other notes whose text contains
+  this note's title as whole words. Both are pure text rules in `lib/mentions.ts` (outside code
+  fences, inline code, `[[links]]`, Markdown links and addresses, case-insensitive, within a line)
+  and `lib/see-also.ts`; `lib/markdown-fences.ts` is the one fence rule both use.
+- **A suggested title must open the note it names.** `resolveNoteTitles` sends an ambiguous title to
+  the most recently updated note bearing it, and it compares titles with `equals` (case folded,
+  whitespace *not* collapsed), so a note titled `Trail ` (trailing space) does not resolve from the
+  trimmed text between the brackets and a link to it silently registers nothing. A suggestion and
+  `addLink` therefore require all of: the title can be written as a link (no `[`, `]` or line
+  break), no other live note shares it once case and spacing are folded (this note included), and
+  `resolveNoteTitles` returns that note for it. A note that already holds 50 distinct links is
+  refused too: the index follows at most 50 (`MAX_LINKS`), so a 51st would be written and never
+  registered, and its suggestion would come back for ever.
+- **The similarity floor, 0.70, is measured, not guessed, and it is model-specific.** Under
+  `nomic-embed-text`, on 12 short notes in 5 fields (chunk against chunk, best match), notes in the
+  same field scored 0.60 to 0.81 (n=26, median 0.67, p90 0.79) and notes in different fields 0.47
+  to 0.71 (n=106, median 0.55, p90 0.65). They overlap, so there is no clean cut. At 0.70, 10 of 26
+  same-field pairs are kept and 2 of 106 cross-field ones (about 83% precision, 38% recall); at 0.60,
+  24 of 26 and 34 of 106. A wrong suggestion costs attention and a missed one costs nothing (the
+  Related card still lists the nearest items), so the floor favours precision. **The sample is
+  small, synthetic and made of one- or two-sentence notes**; a long note is scored by its best chunk,
+  which can only push scores up. Through the app's own embedded note text (the evals) a related note
+  scored 0.75 to 0.81 and cooking or travel notes 0.53 to 0.56. The evals print those scores so a
+  change of embedding model shows in the log. This is not the assistant's `RELEVANCE_FLOOR` (0.55):
+  that is for a question against a chunk, and note against note separates less cleanly.
+- **Ownership.** `addLink(userId, fromId, toId)` reads both notes with `userId`-scoped lookups and a
+  foreign id, a deleted one and one that never existed all give the same `RESOURCE_NOT_FOUND`
+  (`fromId === toId` is a `VALIDATION_ERROR` before any lookup, which reveals nothing). The action
+  does `requireUserId()` first, then Zod (`z.uuid()` twice). With a title shared with another
+  account's note, mine is neither hidden nor made "ambiguous" (tested with a twin title).
+- **With Ollama off, suggestions still work** (stored vectors, no embed call at page view); if the
+  similarity lookup fails the named ones remain. Saving through `addLink` re-embeds like every save,
+  so with Ollama stopped the note's embeddings are dropped until its next save (the existing rule).
+- **While this note is open in the editor, the Suggested links buttons are disabled** with a line
+  saying why. The rail sits outside `NoteView`, so without this a click rewrote the stored text
+  under an editor that still held the old one and the next Save silently removed the link (History
+  keeps it). Found while reviewing the code, not by a test. `lib/note-editing.ts` is a one-flag
+  store read with `useSyncExternalStore`, since the two parts share no client parent. The Mentions
+  buttons write into a different note and stay enabled.
+- **The card keeps its confirmation.** The page refreshes after a click and the note drops out of
+  the list it came from, which would take the "Added to See also" message with it, and the whole card
+  after the last row. `components/link-card.tsx` is therefore a client component the page always
+  mounts: it keeps each confirmed row in its place, with a link to that note's History, hides itself
+  when it has nothing, and holds a `role="status"` region that exists before it changes.
+
+**What the security review of the diff found, by measuring rather than reading** (all fixed
+test-first; the numbers are from this machine):
+
+- Prisma's `contains` is an `ILIKE` and does **not** escape `%` or `_`: `snake_case` matched
+  `snakeXcase`, and 55 newer look-alikes crowded a real mention out of the 50-candidate budget. The
+  first draft of the repository comment claimed it escaped them. The query is now a literal
+  `strpos(lower(content), lower($text))` with every value a bound parameter.
+- Two of my own regular expressions were quadratic. A run of `[` with no `]` made each `[` scan to
+  the end of its line: 100,000 characters took **6.2 s** of the single Node process (also `[[` 6.2 s,
+  `[a` 3 s). The link patterns now have bounded quantifiers (now 30 to 65 ms), so a link text over
+  200 characters is not recognised as a link and a mention inside it counts. The "See also"
+  heading pattern took 6.1 s on a heading line followed by 100,000 spaces (now 1 ms).
+- A page view cost 0.9 s in a vault of 3,000 notes, because the longest-word prefilter let nearly
+  every title through to the full scan. It is now a whole-title substring test on a case- and
+  whitespace-folded copy, and the note's own links are read once: a typical note 919 to 18 ms, a
+  100,000-character note 778 to 164 ms (3,000 notes, at nice 19).
+- **Not fixed:** `addLink` reads the note, builds the new text and saves. `updateNote` re-reads and
+  snapshots first, so an edit saved in between is kept as a version but is not in the live text (a
+  window of a few queries; a compare-and-set on `updatedAt` would close it). No rate limit on the
+  action, as no action here has one. The 200-character link bound and the 50 and 100 candidate caps
+  are judgements, not measured limits.
+
+**Tests.** Unit tests for the pure parts (`see-also`, `mentions`, `markdown-fences`, `link-reason`),
+26 integration tests (cross-tenant, shared and unwritable titles, soft-deleted notes, version and
+carried fields, idempotence, the length and 50-link limits, wildcard look-alikes, non-ASCII titles),
+8 browser tests and an 18-check "Link suggestions" eval section. Each rule was mutation-checked (a
+test failed each time), and two checks were found to be masked by a second layer until a fixture
+was added: `resolveNoteTitles` hid a missing `userId` on the title query, and `suggestLinks`
+dropping any hit that is not the caller's own note hid an unscoped similarity join (hence a direct
+check on `findSimilarEntities`). **Not run locally:** the whole `pnpm eval` suite (it also calls the
+chat model for many minutes; this section ran 18 of 18 on its own against the real embedder, and
+CI's `evals` job runs it whole) and the container rehearsal.
+
+**What running the browser suite turned up, and it is not about this feature.** On this 8 GB machine,
+with the dev server at `nice -n 19` next to a busy Ollama, "a goal rolls up a linked task..." and
+sometimes "navigation reaches every section" time out: the server is starved right after the
+assistant test, and one task creation took 15 s (a chat-to-embedding model swap in Ollama is the
+likely cause, not measured). **`main` fails the same way under the same conditions** (the goals test
+and the maths test, 41 of 43), so it is pre-existing; one earlier pass on `main` was luck. At normal
+priority 50 of 51 passed on this branch, the one failure being the same goals test (a 10 s wait for
+a new task that creation had not finished). Running Playwright at the lowest priority is what makes
+them flaky here.
+
+**Not done:** rewriting the mention in place at the word; suggestions for tasks, events or other
+kinds; ranking by the link graph; a "dismiss" that remembers; suggestions while typing in the
+editor; a title split by a hard line break (matching is within a line); a mention in a note beyond
+the 50 most recently edited ones that contain the title.
+
 ## Trash and soft-delete recovery
 
 `/trash` lists the soft-deletable entities — `TRASH_KINDS` in
