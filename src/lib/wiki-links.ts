@@ -9,7 +9,8 @@ const WIKI_LINK = /\[\[([^\[\]\n]+)\]\]/g;
 export function wikiLinkPattern(): RegExp {
   return new RegExp(WIKI_LINK.source, "g");
 }
-const MAX_LINKS = 50;
+/** The most distinct links a note is read for; links beyond it are never registered. */
+export const MAX_LINKS = 50;
 
 /**
  * Extracts `[[Note title]]` references. Titles are compared case-insensitively
