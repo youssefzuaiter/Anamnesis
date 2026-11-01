@@ -161,7 +161,9 @@ for tasks, events, and projects:
   upkeep. Throws `AppError`, never returns an `ApiResponse`.
 - **Action** (`actions/notes.ts`) — `requireUserId()`, Zod parse, call the service,
   `revalidatePath`, return `ApiResponse`. `redirect()` must sit *outside* any
-  try/catch, since it signals by throwing.
+  try/catch, since it signals by throwing. A note's `content` goes through
+  `noteContent` (`lib/note-text.ts`), which makes line breaks LF before the length
+  check; see "Maths and code in notes".
 
 **Index upkeep is a service concern, not a UI one.** Creating or updating an entity
 re-indexes it; soft-deleting removes its embeddings immediately, so the assistant
@@ -1168,6 +1170,95 @@ can be tested without a database.
 - **`pnpm test` is two runs.** Unit tests run with `--conditions=react-server`, and under
   that condition `react-dom/server` refuses to load, so the render tests live in
   `tests/render/` and run second, without it.
+
+**A note of 99,000 characters did not save, and it was not slow (found 2026-11-01).** A
+browser-driven create of about 99,000 characters of maths lines (`Line N has the value
+$x_{N}^2$ in it, ok.` joined by blank lines) with Ollama off never reached `/notes/<id>` in
+120 s, while 30,000 characters took about 5 s. That looked like a stage growing faster than the
+text. It was a refusal:
+
+- **A browser sends every line break of a textarea as CR LF**, so the server receives more
+  characters than were typed. Measured on the wire (the multipart body, field `_1_content`):
+  99,000 typed characters with 4,130 line breaks arrived as **103,130** (4,130 CR LF, no bare LF),
+  and `actions/notes.ts` capped `content` at 100,000. `createNoteAction` returned in **1 ms**, the
+  page stayed on the form, the reason sat in a `role="alert"` paragraph under a 16-row textarea
+  ("Too big: expected string to have <=100000 characters"), and `waitForURL` waited for a redirect
+  that could not come. The boundary followed typed length plus line breaks: 95,000 typed (3,966
+  breaks, 98,966 sent) saved, 96,000 typed (4,008 breaks, 100,008 sent) was refused, and 99,000
+  with no line breaks was accepted. The edit form shares the schema (read in the code, not driven).
+- **The fix is at the boundary, in `lib/note-text.ts`.** `noteContent` turns CR LF and a lone CR
+  into LF, then applies the limit, and the LF text is what is stored. A note is judged by the length
+  the person typed, and everything that assumes at most `MAX_NOTE_LENGTH` (the render and mention
+  costs measured above, `addLink`'s length check) keeps its premise. The alternative, counting LF
+  but storing CR LF, would have allowed up to 200,000 stored characters. The message now gives the
+  limit and says a line break counts as one. Anything over 200,000 submitted characters is refused
+  on its length alone: nothing past twice the limit can shrink into a valid note, and rewriting
+  15,000,000 bare CRs (the form body limit is 15 MB) cost 0.6 to 0.7 s of the single server process.
+- **Notes saved earlier hold CR LF** (`see-also.ts` already kept a note's own line ending).
+  `updateNote` compares both sides with line breaks normalised before taking a version, so Save on
+  an old note with no edit does not push one of the 20 kept versions out, and restoring a version
+  equal to the current text still takes none.
+
+**What was measured and cleared**, 30,000 / 60,000 / 99,000 characters, dev database, one process,
+on a loaded machine (about 80 MB free, load average 4 to 13). *Ollama off:* chunking 0.2 / 0.2 /
+0.4 ms (26 / 51 / 85 chunks), link parsing 0.1 ms or less, the Markdown render 318 / 400 / 452 ms
+(capped by `MAX_FORMULAS`; 643 formulas at 30,000, as reported), `createNote` end to end 9.0 / 6.7 /
+9.7 ms, every query the note page makes under 15 ms; a failed embed is a refused connection and
+takes about 1 ms. *Ollama on* (two runs each, within about 5%): embedding is linear in chunks,
+about 75 ms per chunk for this maths-heavy text (2.0 / 3.9 / 6.3 s for 26 / 52 / 85 chunks) and
+about 30 ms for plain words (0.73 / 1.5 / 2.4 s); the INSERT transaction took 0.06 to 0.26 s;
+`createNote` 2.0 / 4.1 / 6.7 s. No stage grows faster than the text. **The superlinear step in the
+original test was the test's own:** `page.fill` into a bare `<textarea>`, with no React on the
+page, took 0.8 / 2.9 / 11.8 s (Chromium's editing path), so the new browser tests set the value in
+one input event, as a paste does.
+
+**CI failed on this branch's own test (found 2026-11-01, first run of PR #32).** The `e2e` job failed 2
+of 99, each at the 60 s test timeout, while every other test took 1 to 2 s: the new "a note under
+the limit as typed saves even though the browser sends it over", and straight after it the existing
+"a note whose code nests absurdly deep…". The new test saved 98,000 characters of text, which is **82
+chunks**, and a save indexes the note before the page moves on. CI embeds each chunk with a real
+Ollama on a CPU runner, so it did not finish inside the minute; the developer's Mac does 85 chunks
+in about 6.7 s (above), and with Ollama off locally it passed. The second failure is a 12,000-character
+note that saves in about a second on `main`; it timed out because its embeddings queued behind the
+first test's in Ollama, and the next saves took 1.3 s once that cleared. **That the second failure
+is a queue and not a bug is inferred from those timings, not seen.** The test now saves `x`, 50,000
+blank lines and `y`: 50,002 typed, 100,002 sent, **1 chunk**, the same rule (typed under the limit,
+sent over it), with a 20 s limit on the redirect so a refusal fails at once. With the normalisation
+removed it fails with that timeout; with it, the three large-note tests pass in about 9 s. The
+exact boundary (100,000 kept, 100,001 refused) stays in the unit tests. **Unproven until CI runs
+it:** the fix, because CI's Ollama was not run here. **Not changed:** a legal note of 100,000
+characters of text is about 83 chunks, and on a slow CPU the save waits for all of them.
+
+**Hostile 100,000-character inputs**, as the lesson in "Link suggestions" asks. The create path
+(chunking and link parsing, 13 shapes: runs of `.`, `!?.`, `[[`, spaces after a newline, bare CR, …)
+took 3.3 ms or less. The render of 16 shapes took 1.5 s or less each, except a line of 100,000 `>`
+(and one `[a](b ` run that took 2.8 s once and 0.35 s on the next measurement). The `>` line took
+**8.7 s** (13.1 s once) and grows about 4× per doubling (157 / 556 / 2,098 / 8,686 ms at 12,500 /
+25,000 / 50,000 / 100,000), so it is quadratic; it ends in the `RangeError` that `NoteContent`
+already catches, so each view of such a note costs that time before the raw-text fallback.
+**Not fixed**: a real note nests quotes a few levels, and capping the nesting or falling back to
+raw text early is a design choice of its own.
+
+**Seen once, not reproduced.** In the dev server, with Ollama freshly started by another process and
+the machine swapping, one save of a 99,000-character single-line note spent 27 s in
+`createNoteAction`, and its INSERT loop outlived Prisma's default 5 s transaction timeout
+(`Transaction API error … 11569 ms passed`); `syncNoteIndex` caught it and the note was saved without
+its embeddings, which is the existing rule. In isolation the same loop took 0.12 to 0.26 s (four
+runs). `indexEntity` still sends one INSERT per chunk inside that default timeout, so a slow machine
+can lose the index of a long note; one multi-row insert or an explicit timeout would remove the
+dependence. Not changed.
+
+**Tests.** 10 unit tests (`note-text`: the rule, the 99,000-character reproduction that failed
+before the fix, the exact limit, the message, six million-character hostile shapes in 48 ms in
+total, and an assertion that refusing 15 MB costs at least 20× less than rewriting it, because a
+fixed number would not survive another machine), 4 integration tests (`note-line-breaks`) and 2
+browser tests (a 98,000-character note with 49,000 line breaks saves; 100,001 characters stays on
+the form and says why). Mutation-checked: 12 changes to `note-text.ts` and `note-service.ts` each
+failed a test (a quadratic normaliser was killed by the timing test after 66 s, and removing the
+early bound is seen only by the cost assertion), and reverting the action to the old inline schema
+failed both browser tests, one of them with the original `waitForURL` timeout. The repo's
+`playwright.config.ts` is pinned to port 3100 and reuses whatever answers there, so a branch
+cannot be checked in the browser while another checkout's server holds that port.
 
 **Found by looking at it on a phone, not by a check:** the note page's grid had no
 explicit column track, so a wide formula widened the whole page (the same cause as the

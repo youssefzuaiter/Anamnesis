@@ -7,6 +7,7 @@ import { requireUserId } from "@/lib/session";
 import { type ApiResponse, ok, fail, toApiResponse } from "@/lib/api-response";
 import * as noteService from "@/services/note-service";
 import { extractPdfText } from "@/lib/pdf";
+import { noteContent } from "@/lib/note-text";
 
 const MAX_TAGS = 12;
 
@@ -15,7 +16,7 @@ const emptyToNull = (value: unknown) =>
 
 const noteSchema = z.object({
   title: z.string().trim().min(1, "Give the note a title.").max(200),
-  content: z.string().max(100_000).default(""),
+  content: noteContent.default(""),
   tags: z
     .string()
     .default("")
