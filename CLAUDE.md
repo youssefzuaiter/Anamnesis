@@ -1212,6 +1212,23 @@ original test was the test's own:** `page.fill` into a bare `<textarea>`, with n
 page, took 0.8 / 2.9 / 11.8 s (Chromium's editing path), so the new browser tests set the value in
 one input event, as a paste does.
 
+**CI failed on this branch's own test (found 2026-11-01, first run of PR #32).** The `e2e` job failed 2
+of 99, each at the 60 s test timeout, while every other test took 1 to 2 s: the new "a note under
+the limit as typed saves even though the browser sends it over", and straight after it the existing
+"a note whose code nests absurdly deep…". The new test saved 98,000 characters of text, which is **82
+chunks**, and a save indexes the note before the page moves on. CI embeds each chunk with a real
+Ollama on a CPU runner, so it did not finish inside the minute; the developer's Mac does 85 chunks
+in about 6.7 s (above), and with Ollama off locally it passed. The second failure is a 12,000-character
+note that saves in about a second on `main`; it timed out because its embeddings queued behind the
+first test's in Ollama, and the next saves took 1.3 s once that cleared. **That the second failure
+is a queue and not a bug is inferred from those timings, not seen.** The test now saves `x`, 50,000
+blank lines and `y`: 50,002 typed, 100,002 sent, **1 chunk**, the same rule (typed under the limit,
+sent over it), with a 20 s limit on the redirect so a refusal fails at once. With the normalisation
+removed it fails with that timeout; with it, the three large-note tests pass in about 9 s. The
+exact boundary (100,000 kept, 100,001 refused) stays in the unit tests. **Unproven until CI runs
+it:** the fix, because CI's Ollama was not run here. **Not changed:** a legal note of 100,000
+characters of text is about 83 chunks, and on a slow CPU the save waits for all of them.
+
 **Hostile 100,000-character inputs**, as the lesson in "Link suggestions" asks. The create path
 (chunking and link parsing, 13 shapes: runs of `.`, `!?.`, `[[`, spaces after a newline, bare CR, …)
 took 3.3 ms or less. The render of 16 shapes took 1.5 s or less each, except a line of 100,000 `>`
