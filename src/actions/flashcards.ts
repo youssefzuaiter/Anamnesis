@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireUserId } from "@/lib/session";
 import { type ApiResponse, ok, fail, toApiResponse } from "@/lib/api-response";
 import { MAX_CLOZE_TEXT } from "@/lib/cloze";
+import { MAX_CARD_ANSWER, MAX_CARD_QUESTION } from "@/lib/domain";
 import { REVIEW_GRADES } from "@/lib/spaced-repetition";
 import * as flashcardService from "@/services/flashcard-service";
 
@@ -15,8 +16,8 @@ const createCardSchema = z.object({
   input: z.discriminatedUnion("kind", [
     z.object({
       kind: z.literal("basic"),
-      question: z.string().trim().max(1000),
-      answer: z.string().trim().max(2000),
+      question: z.string().trim().max(MAX_CARD_QUESTION),
+      answer: z.string().trim().max(MAX_CARD_ANSWER),
     }),
     z.object({ kind: z.literal("cloze"), text: z.string().trim().max(MAX_CLOZE_TEXT) }),
   ]),

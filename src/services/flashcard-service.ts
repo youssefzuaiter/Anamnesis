@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { completeJson, type ChatMessage } from "@/lib/ollama";
 import { AppError } from "@/lib/api-response";
+import { MAX_CARD_ANSWER, MAX_CARD_QUESTION } from "@/lib/domain";
 import { answerFor, validateCloze } from "@/lib/cloze";
 import { scheduleReview, type ReviewGrade } from "@/lib/spaced-repetition";
 import * as courseRepository from "@/repositories/course-repository";
@@ -120,9 +121,6 @@ export async function generateCardsForNote(
   return { created };
 }
 
-const MAX_QUESTION = 1000;
-const MAX_ANSWER = 2000;
-
 export type NewCard =
   | { kind: "basic"; question: string; answer: string }
   | { kind: "cloze"; text: string };
@@ -143,11 +141,11 @@ export async function createCardsForNote(
   if (input.kind === "basic") {
     const question = input.question.trim();
     const answer = input.answer.trim();
-    if (question === "" || question.length > MAX_QUESTION) {
-      throw new AppError("VALIDATION_ERROR", `A question is 1 to ${MAX_QUESTION} characters.`);
+    if (question === "" || question.length > MAX_CARD_QUESTION) {
+      throw new AppError("VALIDATION_ERROR", `A question is 1 to ${MAX_CARD_QUESTION} characters.`);
     }
-    if (answer === "" || answer.length > MAX_ANSWER) {
-      throw new AppError("VALIDATION_ERROR", `An answer is 1 to ${MAX_ANSWER} characters.`);
+    if (answer === "" || answer.length > MAX_CARD_ANSWER) {
+      throw new AppError("VALIDATION_ERROR", `An answer is 1 to ${MAX_CARD_ANSWER} characters.`);
     }
     rows = [{ question, answer, clozeIndex: null }];
   } else {

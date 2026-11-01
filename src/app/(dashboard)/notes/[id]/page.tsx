@@ -17,6 +17,7 @@ import {
 import { parseWikiLinks } from "@/lib/wiki-links";
 import { NoteLinks } from "@/components/note-links";
 import { listForNote } from "@/repositories/flashcard-repository";
+import { CardMaker } from "@/components/card-maker";
 import { GenerateCards } from "@/components/generate-cards";
 import { NoteView } from "@/components/note-view";
 import { NoteContent } from "@/components/note-content";
@@ -178,8 +179,9 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
 
         {trackFocus && <FocusTracker selector='textarea[name="content"]' />}
 
-        <section className="mt-10 border-t border-border-subtle pt-6">
+        <section className="mt-10 flex flex-col gap-3 border-t border-border-subtle pt-6">
           <GenerateCards noteId={note.id} existing={cards.length} />
+          <CardMaker noteId={note.id} />
         </section>
       </article>
 
