@@ -508,6 +508,158 @@ version was caught by writing the goals Playwright test, which deletes a goal
 at 100% and checks it after restoring; the project version is the same bug,
 fixed alongside it.
 
+## Cloze cards, decks and cards from selection
+
+Cards can be fill-in-the-blank, can be written by hand or made from words selected in a note, and
+the review queue can be limited to one course's deck (ROADMAP item 9). The entry is tagged
+*M, migration*, not *demo*, so it was built from the roadmap sentence and looked at in the browser
+(desktop, a 375px phone, light and dark), not shown as a mock first. The decisions below came out of
+a council that I ran inline, not with independent subagents, so it is weaker than four separate
+voices.
+
+- **A deck is a course, derived from the card's note.** There is no `Flashcard.courseId`. A stored
+  one would let a card exist without a note, but it goes stale when a note changes course unless
+  every note write path (bulk assign included) also updates its cards. Every card the app makes
+  has a note (generated, from a selection, or by hand on a note page), so the deck is
+  `note.courseId`. A card with no note, a note with no course, or a note whose course has been
+  deleted is in **No course**. **Cost accepted:** a card cannot exist without a note; a deck follows
+  its notes when they move.
+- **One row per distinct blank number.** `{{c1::answer}}` and `{{c1::answer::hint}}` (Anki's
+  syntax; `lib/cloze.ts`). Every deletion with the same number is one card, so `{{c1::a}} ...
+  {{c2::b}} ... {{c1::c}}` makes two cards. Each row holds the whole text in `question`, that
+  group's answers joined with `", "` in `answer`, and the number in `clozeIndex` (null for a basic
+  card). `answer` repeats what the text says: it cannot drift because cards cannot be edited, and it
+  keeps the row readable and usable by item 10 ("Quiz me"). **Cost accepted:** a text's cards are
+  siblings only by sharing `noteId` and `question`.
+- **Siblings are held back.** The front of one card shows another's answer in plain text, so a
+  session shows the first card of each text and the rest stay due for the next session (the page
+  says how many). `spreadSiblings` is pure; the page fetches 200, spreads, and shows at most 50, so
+  held-back cards do not shorten a session.
+- **A trashed note's cards are not due.** `liveCards` is the one filter behind the nav badge,
+  Today, the deck counts and the queue, so they agree; the cards return when the note is restored.
+  Before this, `countDue` and the queue counted them while `countDueForCourse` did not.
+- **The grammar, exactly.** A number is 1 to 99 with no leading zero (`c0`, `c100`, `c01` are plain
+  text); a deletion's body cannot contain `{{`, so an opener followed by another opener before any
+  `}}` is text; the first `::` in the body splits the answer from the hint (the hint may contain
+  more). A text is refused, with a message, if `{{` or `}}` is left over after reading it (a missing
+  `}}` must not become a half card), if it has no deletion or an empty one, is over 2,000 characters
+  or uses more than 10 different numbers.
+- **One editor for by-hand and from-selection** (`components/card-maker.tsx`, a native `<dialog>`).
+  A tray appears while text in the note is selected; the New card button reads the current selection
+  too, so a keyboard user gets the same prefill. The server is never sent the selection, only the
+  text the person finally submits, and only needs the note to be theirs. "Hide selected words" wraps
+  the textarea's selection in the next free number, because braces are awkward to type, especially
+  on a phone. Cards are plain text: `$...$` stays literal on a card.
+- **What counts as a selection in the note.** It must begin inside the note's text (the element
+  marked `data-note-body`, reading view only). It may end at the very start of whatever follows the
+  note, which is what a triple-click on the last paragraph does, and is then cut off at the end of
+  the note; a selection that begins in the title or runs into the side rail shows no tray. A KaTeX
+  formula is drawn twice (MathML and boxes), so the selected text is read from a clone with each
+  formula replaced by its own `$...$` source, once. Braces already in the note are turned into `{ {`
+  and `} }` in the prefill so they cannot be read as markers; the sentence around the selection is
+  the prefill, or the selection with up to 120 characters each side if the sentence is over 400.
+- **Data, additive and nullable, so the previous release keeps working:** one column,
+  `Flashcard.clozeIndex INTEGER`. The migration SQL is written by hand, not `migrate dev` and not a
+  `migrate diff` against the dev database: that database also holds item 8's GPA columns, which this
+  branch's schema lacks, so either would offer to drop them. It was proved against the schema by
+  replaying every migration into a throwaway database and diffing: empty with the migration, exactly
+  the one `ALTER TABLE` without it. **Prisma 7 has no `--shadow-database-url` flag:** the shadow
+  database goes in the config file (`datasource.shadowDatabaseUrl`), and the main `url` must differ
+  from it (P3025), so a temporary config file was used and removed. Applied with `migrate deploy`.
+- **The deck page.** `/cards?course=<course id>|none`. Only a plain string that is a course id or
+  `none` names a deck; anything else, a repeated parameter included, is all decks. A course id that
+  is not yours is a deck with nothing in it: the id is only ever used inside queries that also
+  filter by your user id, and the deck names come from your own courses.
+
+**Measured, on this machine.** The parser is linear: 11 hostile 100,000-character inputs (openers
+with no closer or one closer at the end, nested pairs, a 100,000-character hint, braces, colons,
+sentence ends) took at most 39 ms in total through parse, validate, render and the selection
+helper. A parser that searched for the closer again at every opener is quadratic but still takes
+only 18 ms at 100,000 characters (native `indexOf`), so the 100,000-character test could not tell it
+from a linear one; at 1.6 million characters it takes 4.8 s against 12 ms, and that case is the
+test. The deck query (`deckCounts`, one `GROUP BY` over a left join) took 9 ms at 5,000 cards and 91
+ms at 50,000, and the sum of the decks' due counts equalled the plain due count at both sizes with
+10 trashed notes in the data; listing one course's due cards took 11 ms at 50,000 (101 ms once, at
+5,000, on freshly loaded rows before the planner had statistics). In the browser a selection of a
+35,000-character note with 643 formulas and 21,220 elements showed the tray in 49 ms.
+
+**What testing and review turned up.**
+
+- **The old review screen skipped cards, and it had no browser test.** `CardReview` followed its
+  `queue` prop, but every grade revalidates `/cards` and the card just graded is no longer due, so
+  the list shrank under the review position: with three due, grading the first showed the third, and
+  the end of a session changed from "That's the queue cleared." to "Nothing due right now.". My
+  first tests passed by asserting before the refresh landed and then failed on a faster run. A
+  session is now the queue it started with (`useState`), and a test that waits for the refresh and
+  then checks each card fails without it. **Cost accepted:** a session does not pick up cards that
+  become due while the page stays open, so its end has a **Check for more cards** button that
+  reloads the page; that is also how held-back siblings come back ("your next session"). Found in
+  the review: re-clicking Cards in the sidebar (the same address) did nothing, because the frozen
+  session is not remounted.
+- **A caret restored in `requestAnimationFrame` overwrote the next keystrokes** ("Hide selected
+  words" gave `{{c1::P{{c2::aris}}}}` when keys came in the next frame). It now edits the field with
+  `setRangeText`, which places the caret at once. The same test then failed 4 times in 10 for a
+  second reason: it checked the field's value, which `setRangeText` changes the instant the button is
+  pressed, before React has rendered. React's own write of the field's default value can put the
+  caret back where the wrap left it if a key arrives first (a person cannot press one within the
+  ~30 ms; a test can). It now waits for "This makes 1 card.", which only the render shows: 10 of 10.
+  Adding logging to see the race made it disappear, so that explanation fits the evidence (the order
+  of writes in a good run, the exact selection `aris}}` in a bad one) but was not caught in the act.
+- **Chrome's triple-click stops at an inline formula** and selects only the text after it, so the
+  formula test selects the whole paragraph the way a drag would.
+- **Mutation checks found two weak tests.** Dropping the question from the sibling key survived
+  (two different texts in one note must not hold each other back), and removing the check that a
+  selection begins in the note survived because the check on where it ends caught the same
+  selection; selections that begin in the title and end in the text, and begin in the text and end in
+  the rail, are tested now. The two guards against a double submit each cover the other: removing
+  either alone survives, removing both is caught.
+- **A runner that "caught" everything was wrong:** exit 127 (command not found) looks like a failing
+  test. zsh does not word-split an unquoted variable, so the command never ran. The runner now treats
+  126 and 127 as errors.
+- **A rejected server action left Add dead.** The double-submit guard was cleared only after the
+  action returned, so if the request itself failed (offline, the server restarting) it stayed set and
+  every later press did nothing, silently. It is cleared in a `finally` now and the dialog says "Could
+  not reach the server. Try again."; the test refuses the request, then lets it through.
+- **The course `<select>` pushed the note form off a phone** (93 px at 375 px). It was as wide as its
+  widest option, "CODE — Title", inside a flex row that does not shrink it. This is older than the
+  feature: any long course name did it. It surfaced only because my phone tests left long-named
+  courses in the shared test account and an older phone test ran after them, in the first whole-suite
+  run (80 of 85). `CourseSelect` now has `w-full min-w-0` and `min-w-0 max-w-full`, with a test that
+  creates a long-named course. **`ProjectSelect` and `GoalSelect` have the identical markup and
+  were not changed or tested** (follow-up).
+- **The whole browser suite, once, on a loaded machine:** 80 passed and 5 failed. Two were mine and
+  are fixed above (the Hide test, the select overflow). Three are not: "an assistant thread is saved"
+  waits on the chat model and was **not re-run** (starting Ollama again was the thing heating the
+  laptop); "a goal rolls up" (stuck on "Saving…") and "navigation reaches every section" (a 60 s page
+  load) passed in a re-run of `workspace.spec.ts` on a quiet machine, 22 of 22, which fits the
+  load-sensitivity recorded under "Link suggestions". Treat those three as unproven until CI runs them.
+- **One existing integration test fails against a development database that has item 8's migration
+  applied** ("every migration in this release is applied": 12 applied, 11 folders on a branch cut
+  from `main`). It passes on a database migrated with only this branch's migrations, which is what
+  CI has.
+
+**Tests.** 20 unit tests (`cloze`), 12 integration tests (`cards`: the column, both card kinds, every
+refusal writing nothing, foreign/trashed/missing notes as one refusal, the deck filter, deleted
+courses, per-account counts, trash and restore, the sum of decks equalling the due count, deck
+names) and 28 browser tests (`cards.spec.ts`: by hand, selection, the tray's edges, formulas, braces,
+double submit, decks, No course, a stranger's course id, the cloze front and back, hints, siblings,
+a session that does not skip and one that can start again, an unreachable server, a long course
+name on a phone, trash and restore, the course page link, the phone in both colour schemes). Twenty-one mutations were checked: 19 are caught, and the two that survive (removing only
+one of the two double-submit guards) are covered by the other layer by design, while removing both is
+caught. The files were verified identical to their backups afterwards.
+
+**Not done:** editing a card; a card browser; deleting a card outside review; a stored `courseId`
+and cards without a note; maths rendered inside a card; fill-in-the-blank cards from the AI
+generator; moving a card between decks; image occlusion; a session that notices newly due cards
+without leaving the page. The JSON export still omits cards (ROADMAP item 11 must include
+`clozeIndex`). The selection is read on every selection change and clones the selected DOM
+(about 50 ms for a large note, not throttled). The tray has `select-none` so a tap on it is less
+likely to collapse the selection first on a phone; that is **unverified on touch hardware** (the
+phone tests use the mouse). The same select-width fix for `ProjectSelect` and `GoalSelect`.
+**Not run locally:** the `evals` job (nothing here
+touches a model, but it runs on every pull request) and the container rehearsal of the migration;
+CI runs both.
+
 ## Day planning
 
 The dashboard's "Plan my day" button (`components/plan-day.tsx`) is pure
@@ -1115,7 +1267,8 @@ as a clickable design (light, dark, phone) and approved before any code.
   drop out; the card says "Added 3 of the 6 sessions you ticked: the other 3 no longer fit".**
   That was found in the final review, not by a test: before it, the status line gave only the
   number added. Sessions are made one after another, not in a transaction.
-- **Flashcards are a count and a link.** The review queue (`/cards`) is not filtered by course.
+- **Flashcards are a count and a link.** The review queue (`/cards`) was not filtered by course
+  when this shipped; it is now (see "Cloze cards, decks and cards from selection").
 - **The export** now carries `assessmentId` on each task while assessments are still not
   exported, so the id points at nothing in the file, as `courseId` already does (see "Data
   export").
@@ -1134,8 +1287,8 @@ as a clickable design (light, dark, phone) and approved before any code.
   removing every one failed them. Both are kept, as Plan my day keeps both.
 
 **Not done:** the time of day of an exam (assessments store a date only); deleting or redoing a
-whole plan in one action (delete the sessions from Tasks, tagged `exam-prep`); a course filter on
-the flashcard queue; starting more than 21 days out; sessions on the assessment's own day; a
+whole plan in one action (delete the sessions from Tasks, tagged `exam-prep`); starting more than
+21 days out; sessions on the assessment's own day; a
 shortcut from Today. **Not run locally:** the `evals` job (it needs Ollama) and the container
 rehearsal that exercises the migration; CI runs both.
 
