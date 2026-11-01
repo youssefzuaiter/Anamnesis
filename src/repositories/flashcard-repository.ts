@@ -63,17 +63,6 @@ export async function listDue(
   });
 }
 
-export async function countCards(
-  userId: string,
-  now: Date,
-): Promise<{ total: number; due: number }> {
-  const [total, due] = await Promise.all([
-    prisma.flashcard.count({ where: liveCards(userId) }),
-    prisma.flashcard.count({ where: { AND: [liveCards(userId), { dueAt: { lte: now } }] } }),
-  ]);
-  return { total, due };
-}
-
 export async function countDue(userId: string, now: Date): Promise<number> {
   return prisma.flashcard.count({
     where: { AND: [liveCards(userId), { dueAt: { lte: now } }] },

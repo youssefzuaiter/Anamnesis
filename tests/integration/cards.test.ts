@@ -232,20 +232,18 @@ test("cards of a trashed note are neither listed nor counted, and come back when
 
   const snapshot = async () => ({
     due: await flashcardRepository.countDue(user.id, NOW),
-    cards: await flashcardRepository.countCards(user.id, NOW),
     listed: (await flashcardRepository.listDue(user.id, NOW)).length,
     forCourse: await flashcardRepository.countDueForCourse(user.id, a.id, NOW),
     decks: await flashcardRepository.deckCounts(user.id, NOW),
   });
 
   const before = await snapshot();
-  assert.deepEqual(before.cards, { total: 3, due: 2 });
+  assert.deepEqual(before.decks, [{ courseId: a.id, total: 3, due: 2 }]);
   assert.equal(before.due, 2);
 
   await prisma.note.update({ where: { id: trashed.id }, data: { deletedAt: new Date() } });
   const during = await snapshot();
   assert.equal(during.due, 1);
-  assert.deepEqual(during.cards, { total: 1, due: 1 });
   assert.equal(during.listed, 1);
   assert.equal(during.forCourse, 1);
   assert.deepEqual(during.decks, [{ courseId: a.id, total: 1, due: 1 }]);
@@ -270,10 +268,8 @@ test("the due count equals the sum of the deck due counts", async () => {
   const sum = counts.reduce((total, c) => total + c.due, 0);
   assert.equal(sum, await flashcardRepository.countDue(user.id, NOW));
   assert.equal(sum, 4);
-  assert.equal(
-    counts.reduce((total, c) => total + c.total, 0),
-    (await flashcardRepository.countCards(user.id, NOW)).total,
-  );
+  // Five live cards: the trashed notes' two are in no deck at all.
+  assert.equal(counts.reduce((total, c) => total + c.total, 0), 5);
 });
 
 test("listDecks labels decks from the caller's own courses, leaves out empty ones, and puts No course last", async () => {
