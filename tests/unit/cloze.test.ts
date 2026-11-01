@@ -6,6 +6,7 @@ import {
   answerFor,
   clozeFromSelection,
   clozeNumbers,
+  nextClozeNumber,
   parseCloze,
   renderCloze,
   spreadSiblings,
@@ -51,6 +52,14 @@ test("the first double colon splits answer from hint, later ones belong to the h
 test("clozeNumbers lists each number once, ascending", () => {
   assert.deepEqual(clozeNumbers("{{c3::a}}{{c1::b}}{{c3::c}}"), [1, 3]);
   assert.deepEqual(clozeNumbers("no blanks"), []);
+});
+
+test("nextClozeNumber is one more than the highest in use, and nothing once 99 is used", () => {
+  assert.equal(nextClozeNumber(""), 1);
+  assert.equal(nextClozeNumber("no blanks"), 1);
+  assert.equal(nextClozeNumber("{{c1::a}} {{c3::b}}"), 4);
+  assert.equal(nextClozeNumber("{{c98::a}}"), 99);
+  assert.equal(nextClozeNumber("{{c99::a}}"), null);
 });
 
 test("renderCloze hides one group and shows the others", () => {

@@ -12,8 +12,9 @@ import {
 import { createCardAction } from "@/actions/flashcards";
 import {
   MAX_CLOZE_TEXT,
+  PREFILL_LENGTH,
   clozeFromSelection,
-  clozeNumbers,
+  nextClozeNumber,
   renderCloze,
   validateCloze,
 } from "@/lib/cloze";
@@ -120,7 +121,7 @@ export function CardMaker({ noteId }: { noteId: string }) {
     setStatus("");
     setError(null);
     setKind(nextKind);
-    setText(from && nextKind === "cloze" ? (clozeFromSelection(from.context, from.text) ?? from.text.slice(0, 400)) : "");
+    setText(from && nextKind === "cloze" ? (clozeFromSelection(from.context, from.text) ?? from.text.slice(0, PREFILL_LENGTH)) : "");
     setQuestion("");
     setAnswer(from && nextKind === "basic" ? from.text.slice(0, MAX_CARD_ANSWER) : "");
     setHasSelection(false);
@@ -174,8 +175,8 @@ export function CardMaker({ noteId }: { noteId: string }) {
   function hideSelectedWords() {
     const area = textRef.current;
     if (!area || area.selectionStart === area.selectionEnd) return;
-    const next = Math.max(0, ...clozeNumbers(text)) + 1;
-    if (next > 99) return;
+    const next = nextClozeNumber(text);
+    if (next === null) return;
     const { selectionStart: from, selectionEnd: to } = area;
     // Edit the field itself, so the caret lands after the inserted text at once; React is
     // then given the value the field already holds and has nothing to move.

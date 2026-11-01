@@ -6,9 +6,10 @@
 export const MAX_CLOZE_TEXT = 2000;
 export const MAX_CLOZE_CARDS = 10;
 
-/** A sentence over this length is cut down to the selection and a little around it. */
-const LONG_SENTENCE = 400;
+/** The most a prefilled card text should be: a longer sentence is cut down to the selection and a little around it. */
+export const PREFILL_LENGTH = 400;
 const CONTEXT_EACH_SIDE = 120;
+const MAX_CLOZE_NUMBER = 99;
 
 export type ClozePart =
   | { kind: "text"; text: string }
@@ -92,6 +93,12 @@ export function clozeNumbers(text: string): number[] {
   return [...numbers].sort((a, b) => a - b);
 }
 
+/** The number for a new blank: one more than the highest in use, or null once 99 is taken. */
+export function nextClozeNumber(text: string): number | null {
+  const next = Math.max(0, ...clozeNumbers(text)) + 1;
+  return next > MAX_CLOZE_NUMBER ? null : next;
+}
+
 function pushPiece(pieces: ClozePiece[], piece: ClozePiece) {
   const last = pieces[pieces.length - 1];
   if (piece.role === "plain" && last?.role === "plain") last.text += piece.text;
@@ -162,6 +169,22 @@ const neutralise = (value: string) => value.replace(/\{(?=\{)/g, "{ ").replace(/
 const collapse = (value: string) => value.replace(/\s+/g, " ").trim();
 const isTerminal = (char: string) => char === "." || char === "!" || char === "?";
 
+/** Where a window around a selection starts: some words before it, never mid-word. */
+function windowStart(text: string, at: number): number {
+  const target = at - CONTEXT_EACH_SIDE;
+  if (target <= 0) return 0;
+  const space = text.indexOf(" ", target);
+  return space !== -1 && space < at ? space + 1 : at;
+}
+
+/** Where it ends: some words after it, never mid-word. */
+function windowEnd(text: string, end: number): number {
+  const target = end + CONTEXT_EACH_SIDE;
+  if (target >= text.length) return text.length;
+  const space = text.lastIndexOf(" ", target);
+  return space > end ? space : end;
+}
+
 /**
  * A fill-in-the-blank text from words selected in a note: the sentence around the
  * selection (`context` is the one block of text it sits in), with the selection hidden.
@@ -191,21 +214,9 @@ export function clozeFromSelection(context: string, selected: string): string | 
     }
   }
 
-  if (to - from > LONG_SENTENCE) {
-    from = at;
-    if (at - CONTEXT_EACH_SIDE > 0) {
-      const space = text.indexOf(" ", at - CONTEXT_EACH_SIDE);
-      if (space !== -1 && space < at) from = space + 1;
-    } else {
-      from = 0;
-    }
-    to = end;
-    if (end + CONTEXT_EACH_SIDE < text.length) {
-      const space = text.lastIndexOf(" ", end + CONTEXT_EACH_SIDE);
-      if (space > end) to = space;
-    } else {
-      to = text.length;
-    }
+  if (to - from > PREFILL_LENGTH) {
+    from = windowStart(text, at);
+    to = windowEnd(text, end);
   }
 
   const result = `${text.slice(from, at)}{{c1::${selection}}}${text.slice(end, to)}`;
