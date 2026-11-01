@@ -11,6 +11,7 @@ import * as noteRepository from "@/repositories/note-repository";
 import { assertProjectOwned } from "@/services/project-service";
 import { assertCourseOwned } from "@/services/course-service";
 import { parseWikiLinks } from "@/lib/wiki-links";
+import { normalizeLineBreaks } from "@/lib/note-text";
 import { embeddableTextFor } from "@/services/embeddable-text";
 import * as linkRepository from "@/repositories/link-repository";
 import type { NoteInput, NoteSummary } from "@/repositories/note-repository";
@@ -100,8 +101,14 @@ export async function updateNote(
 
   // Snapshot the outgoing text before it is overwritten. A save that changes
   // nothing is not worth a version, and the editor replaces content wholesale,
-  // so this is the only thing standing between a bad paste and lost work.
-  if (before && (before.content !== input.content || before.title !== input.title)) {
+  // so this is the only thing standing between a bad paste and lost work. Line
+  // breaks alone are not a change: notes saved before they were normalised hold
+  // CR LF, and the same text now arrives as LF.
+  if (
+    before &&
+    (normalizeLineBreaks(before.content) !== normalizeLineBreaks(input.content) ||
+      before.title !== input.title)
+  ) {
     await noteRepository.snapshot(userId, before);
   }
 

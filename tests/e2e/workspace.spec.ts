@@ -426,6 +426,44 @@ test("an empty note still shows the empty message", async ({ page }) => {
   await expect(main(page)).toContainText("This note is empty");
 });
 
+/**
+ * Puts text in the note box the way a paste does, in one input event. `fill` types it
+ * through the browser's editing machinery, which for a hundred thousand characters
+ * takes ten seconds or more on this machine and is not what these tests are about.
+ */
+async function pasteIntoNote(page: Page, text: string) {
+  await page.locator('textarea[name="content"]').evaluate((box, value) => {
+    const area = box as HTMLTextAreaElement;
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+    set.call(area, value);
+    area.dispatchEvent(new Event("input", { bubbles: true }));
+  }, text);
+}
+
+test("a note under the limit as typed saves even though the browser sends it over", async ({ page }) => {
+  // 98,000 characters with 49,000 line breaks. A browser sends each line break as CR LF,
+  // so the server receives 147,000 characters; the limit is on what was typed.
+  const title = `Many lines ${Date.now()}`;
+  await page.goto("/notes/new");
+  await page.fill('input[name="title"]', title);
+  await pasteIntoNote(page, "a\n".repeat(49_000));
+  await main(page).getByRole("button", { name: /create note/i }).click();
+
+  await page.waitForURL(/\/notes\/[0-9a-f-]{36}$/);
+  await expect(main(page).getByRole("heading", { level: 1 })).toContainText(title);
+});
+
+test("a note over the limit stays on the form and says how long a note may be", async ({ page }) => {
+  await page.goto("/notes/new");
+  await page.fill('input[name="title"]', `Too long ${Date.now()}`);
+  await pasteIntoNote(page, "x".repeat(100_001));
+  await main(page).getByRole("button", { name: /create note/i }).click();
+
+  await expect(main(page).getByRole("alert")).toContainText("100,000 characters");
+  await expect(main(page).getByRole("alert")).toContainText("line break counts as one");
+  expect(page.url()).toMatch(/\/notes\/new$/);
+});
+
 test("a note whose code nests absurdly deep falls back to plain text instead of breaking its page", async ({
   page,
 }) => {
