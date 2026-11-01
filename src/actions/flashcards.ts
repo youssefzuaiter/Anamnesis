@@ -4,8 +4,47 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireUserId } from "@/lib/session";
 import { type ApiResponse, ok, fail, toApiResponse } from "@/lib/api-response";
+import { MAX_CLOZE_TEXT } from "@/lib/cloze";
+import { MAX_CARD_ANSWER, MAX_CARD_QUESTION } from "@/lib/domain";
 import { REVIEW_GRADES } from "@/lib/spaced-repetition";
 import * as flashcardService from "@/services/flashcard-service";
+
+// The service holds the rules and their messages; these bounds only keep an oversized
+// string from reaching the parser at all.
+const createCardSchema = z.object({
+  noteId: z.uuid(),
+  input: z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("basic"),
+      question: z.string().trim().max(MAX_CARD_QUESTION),
+      answer: z.string().trim().max(MAX_CARD_ANSWER),
+    }),
+    z.object({ kind: z.literal("cloze"), text: z.string().trim().max(MAX_CLOZE_TEXT) }),
+  ]),
+});
+
+export async function createCardAction(
+  noteId: string,
+  input: unknown,
+): Promise<ApiResponse<{ created: number }>> {
+  try {
+    const userId = await requireUserId();
+    const parsed = createCardSchema.safeParse({ noteId, input });
+    if (!parsed.success) return fail("VALIDATION_ERROR", "That card is not valid. Check its lengths.");
+
+    const result = await flashcardService.createCardsForNote(
+      userId,
+      parsed.data.noteId,
+      parsed.data.input,
+    );
+    revalidatePath("/cards");
+    revalidatePath(`/notes/${parsed.data.noteId}`);
+    revalidatePath("/");
+    return ok(result);
+  } catch (error) {
+    return toApiResponse(error);
+  }
+}
 
 export async function generateCardsAction(
   noteId: string,

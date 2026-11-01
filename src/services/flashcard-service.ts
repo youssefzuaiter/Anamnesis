@@ -2,7 +2,10 @@ import "server-only";
 import { z } from "zod";
 import { completeJson, type ChatMessage } from "@/lib/ollama";
 import { AppError } from "@/lib/api-response";
+import { MAX_CARD_ANSWER, MAX_CARD_QUESTION } from "@/lib/domain";
+import { answerFor, validateCloze } from "@/lib/cloze";
 import { scheduleReview, type ReviewGrade } from "@/lib/spaced-repetition";
+import * as courseRepository from "@/repositories/course-repository";
 import * as flashcardRepository from "@/repositories/flashcard-repository";
 import * as noteRepository from "@/repositories/note-repository";
 import type { FlashcardModel as Flashcard } from "@/generated/prisma/models";
@@ -113,9 +116,94 @@ export async function generateCardsForNote(
 
   const created = await flashcardRepository.createCards(
     userId,
-    cards.map((card) => ({ ...card, noteId: note.id })),
+    cards.map((card) => ({ ...card, noteId: note.id, clozeIndex: null })),
   );
   return { created };
+}
+
+export type NewCard =
+  | { kind: "basic"; question: string; answer: string }
+  | { kind: "cloze"; text: string };
+
+/**
+ * Makes the cards a person wrote by hand or from words selected in a note. The text is
+ * checked before the note is looked up, so a note id that is not theirs and input that is
+ * bad say only that the input is bad. Nothing is written unless all of it is valid, and
+ * the note must be the caller's own and not in the trash.
+ */
+export async function createCardsForNote(
+  userId: string,
+  noteId: string,
+  input: NewCard,
+): Promise<{ created: number }> {
+  let rows: { question: string; answer: string; clozeIndex: number | null }[];
+
+  if (input.kind === "basic") {
+    const question = input.question.trim();
+    const answer = input.answer.trim();
+    if (question === "" || question.length > MAX_CARD_QUESTION) {
+      throw new AppError("VALIDATION_ERROR", `A question is 1 to ${MAX_CARD_QUESTION} characters.`);
+    }
+    if (answer === "" || answer.length > MAX_CARD_ANSWER) {
+      throw new AppError("VALIDATION_ERROR", `An answer is 1 to ${MAX_CARD_ANSWER} characters.`);
+    }
+    rows = [{ question, answer, clozeIndex: null }];
+  } else {
+    const check = validateCloze(input.text);
+    if (!check.ok) throw new AppError("VALIDATION_ERROR", check.message);
+    rows = check.numbers.map((n) => ({
+      question: check.text,
+      answer: answerFor(check.text, n),
+      clozeIndex: n,
+    }));
+  }
+
+  const note = await noteRepository.getNote(userId, noteId);
+  if (!note) throw new AppError("RESOURCE_NOT_FOUND", "That note no longer exists.");
+
+  const created = await flashcardRepository.createCards(
+    userId,
+    rows.map((row) => ({ ...row, noteId: note.id })),
+  );
+  return { created };
+}
+
+export type DeckSummary = {
+  /** The course id, or null for cards in no course. */
+  id: string | null;
+  label: string;
+  title: string | null;
+  total: number;
+  due: number;
+};
+
+/**
+ * The caller's decks: each of their courses that has cards, then "No course". The names
+ * come from their own courses only; a count for a course that is not among them (it has
+ * been deleted) is folded into "No course".
+ */
+export async function listDecks(userId: string, now: Date): Promise<DeckSummary[]> {
+  const [counts, courses] = await Promise.all([
+    flashcardRepository.deckCounts(userId, now),
+    courseRepository.listCourseOptions(userId),
+  ]);
+  const byId = new Map(courses.map((course) => [course.id, course]));
+
+  const decks: DeckSummary[] = [];
+  const loose = { total: 0, due: 0 };
+  for (const count of counts) {
+    const course = count.courseId === null ? undefined : byId.get(count.courseId);
+    if (course) {
+      decks.push({ id: course.id, label: course.code, title: course.title, total: count.total, due: count.due });
+    } else {
+      loose.total += count.total;
+      loose.due += count.due;
+    }
+  }
+
+  decks.sort((a, b) => b.due - a.due || a.label.localeCompare(b.label));
+  if (loose.total > 0) decks.push({ id: null, label: "No course", title: null, ...loose });
+  return decks;
 }
 
 export async function reviewCard(

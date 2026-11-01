@@ -5,7 +5,7 @@ import {
   listCourseContents,
   listCourses,
 } from "@/repositories/course-repository";
-import { countDueForCourse } from "@/repositories/flashcard-repository";
+import { listDecks } from "@/services/flashcard-service";
 import { summarise, nextUngraded, daysUntilLabel } from "@/lib/grades";
 import { GradePanel } from "@/components/grade-panel";
 import { ExamPrep } from "@/components/exam-prep";
@@ -44,11 +44,12 @@ export default async function CoursePage({
   if (!course) notFound();
 
   const now = new Date();
-  const [contents, dueCards, overview] = await Promise.all([
+  const [contents, decks, overview] = await Promise.all([
     listCourseContents(userId, course.id),
-    countDueForCourse(userId, course.id, now),
+    listDecks(userId, now),
     getGpaOverview(userId, courses),
   ]);
+  const deck = decks.find((candidate) => candidate.id === course.id);
   // Every other counted course, so the card can say what this one does to the CGPA.
   const others = summariseGpa(
     overview.courses.filter((other) => other.id !== course.id),
@@ -107,10 +108,15 @@ export default async function CoursePage({
         <span>
           best possible <strong className="text-text">{Math.round(grade.bestPossible)}%</strong>
         </span>
-        {dueCards > 0 && (
-          <Link href="/cards" className="text-accent hover:underline">
-            {dueCards} flashcard{dueCards === 1 ? "" : "s"} due
-          </Link>
+        {deck && (
+          <>
+            <span>
+              {deck.due} of {deck.total} flashcard{deck.total === 1 ? "" : "s"} due
+            </span>
+            <Link href={`/cards?course=${course.id}`} className="text-accent hover:underline">
+              Review this deck
+            </Link>
+          </>
         )}
       </section>
 

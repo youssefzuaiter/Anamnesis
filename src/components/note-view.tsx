@@ -65,7 +65,10 @@ export function NoteView({
         </button>
       </div>
 
-      {body}
+      {/* Marks what a selection may make a card from: the note's own text, not the title or the rail. */}
+      <div data-note-body className="min-w-0">
+        {body}
+      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { reviewCardAction, deleteCardAction } from "@/actions/flashcards";
+import { renderCloze, type ClozePiece } from "@/lib/cloze";
 import { REVIEW_GRADES, type ReviewGrade } from "@/lib/spaced-repetition";
 
 export type ReviewCard = {
@@ -10,6 +11,8 @@ export type ReviewCard = {
   question: string;
   answer: string;
   noteId: string | null;
+  /** The blank this card hides, or null for a basic card. */
+  clozeIndex: number | null;
 };
 
 const GRADE_LABEL: Record<ReviewGrade, string> = {
@@ -19,13 +22,29 @@ const GRADE_LABEL: Record<ReviewGrade, string> = {
   easy: "Easy",
 };
 
-export function CardReview({ queue }: { queue: ReviewCard[] }) {
+/** A blank is bracketed and a revealed answer is bold and underlined, so neither relies on colour. */
+function Piece({ piece }: { piece: ClozePiece }) {
+  if (piece.role === "blank") {
+    return <span className="rounded bg-surface-subtle px-1 font-semibold">[{piece.text}]</span>;
+  }
+  if (piece.role === "answer") {
+    return <strong className="font-bold text-accent-ink underline decoration-2 underline-offset-4">{piece.text}</strong>;
+  }
+  return <>{piece.text}</>;
+}
+
+export function CardReview({ queue: cards }: { queue: ReviewCard[] }) {
+  // A session is the queue it started with. Every grade revalidates the page, and the card
+  // just graded is no longer due, so following the prop would shorten the list under the
+  // review position: the next card would be skipped and the end would read "Nothing due".
+  const [queue] = useState(cards);
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const card = queue[index];
+  const faces = card?.clozeIndex != null ? renderCloze(card.question, card.clozeIndex) : null;
 
   if (!card) {
     return (
@@ -38,6 +57,14 @@ export function CardReview({ queue }: { queue: ReviewCard[] }) {
         <p className="mt-1 text-xs text-text-muted">
           Cards you answered “Again” come back in about ten minutes.
         </p>
+        {/* A session is the queue it started with, so the next one is a fresh load. */}
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-border-subtle px-3.5 text-sm text-text transition-colors hover:bg-surface-subtle"
+        >
+          Check for more cards
+        </button>
       </div>
     );
   }
@@ -62,13 +89,22 @@ export function CardReview({ queue }: { queue: ReviewCard[] }) {
       </p>
 
       <div className="rounded-2xl border border-border-subtle bg-surface p-6">
-        <p className="text-base font-medium text-text">{card.question}</p>
+        {faces ? (
+          <p className="whitespace-pre-line text-base font-medium text-text">
+            {(revealed ? faces.back : faces.front).map((piece, position) => (
+              <Piece key={position} piece={piece} />
+            ))}
+          </p>
+        ) : (
+          <p className="text-base font-medium text-text">{card.question}</p>
+        )}
 
-        {revealed ? (
+        {revealed && !faces && (
           <p className="mt-4 border-t border-border-subtle pt-4 text-sm text-text">
             {card.answer}
           </p>
-        ) : (
+        )}
+        {!revealed && (
           <button
             type="button"
             onClick={() => setRevealed(true)}
