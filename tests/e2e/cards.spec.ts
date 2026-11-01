@@ -369,6 +369,31 @@ test("a hint replaces the dots", async ({ page }) => {
   await expect(main(page)).not.toContainText("Paris");
 });
 
+// The page's data refreshes after every grade, and the card just graded is no longer due. A
+// session has to be the queue it started with, or the refresh shortens it under the review
+// position: the next card is skipped, and the end of the session reads "Nothing due".
+test("grading a card shows the next one, and the page refreshing does not skip or end the session", async ({ page }) => {
+  const s = Date.now();
+  const code = `SEQ${s}`;
+  const id = await makeCourse(page, code);
+  const note = await makeNote(page, `Sequence ${s}`, "Note.", code);
+  for (const n of [1, 2, 3]) await addBasic(page, note, `Question number ${n} of ${s}?`, "yes");
+
+  await page.goto(`/cards?course=${id}`);
+  for (const n of [1, 2, 3]) {
+    await expect(main(page)).toContainText(`${n} of 3`);
+    await expect(main(page)).toContainText(`Question number ${n} of ${s}?`);
+    await page.waitForTimeout(1200); // let any refresh of the page's data land
+    await expect(main(page)).toContainText(`Question number ${n} of ${s}?`);
+    await main(page).getByRole("button", { name: "Show answer" }).click();
+    await main(page).getByRole("button", { name: "Good", exact: true }).click();
+  }
+  await expect(main(page)).toContainText("That's the queue cleared.");
+  await page.waitForTimeout(1200);
+  await expect(main(page)).toContainText("That's the queue cleared.");
+  await expect(main(page)).not.toContainText("Nothing due right now.");
+});
+
 test("the second card from one text waits for the next session", async ({ page }) => {
   const s = Date.now();
   const code = `SIB${s}`;

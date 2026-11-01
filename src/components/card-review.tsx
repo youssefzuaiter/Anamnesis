@@ -33,7 +33,11 @@ function Piece({ piece }: { piece: ClozePiece }) {
   return <>{piece.text}</>;
 }
 
-export function CardReview({ queue }: { queue: ReviewCard[] }) {
+export function CardReview({ queue: cards }: { queue: ReviewCard[] }) {
+  // A session is the queue it started with. Every grade revalidates the page, and the card
+  // just graded is no longer due, so following the prop would shorten the list under the
+  // review position: the next card would be skipped and the end would read "Nothing due".
+  const [queue] = useState(cards);
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [error, setError] = useState<string | null>(null);
