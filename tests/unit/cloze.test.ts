@@ -186,6 +186,21 @@ test("spreadSiblings keeps the first card of a cloze text and every basic card, 
   assert.equal(held, 1);
 });
 
+test("spreadSiblings holds back only cards of the same text, not other texts in the same note", () => {
+  const card = (id: string, question: string, clozeIndex: number) => ({ id, noteId: "n1", question, clozeIndex });
+  const { session, held } = spreadSiblings([
+    card("a1", "The {{c1::heart}} pumps {{c2::blood}}", 1),
+    card("a2", "The {{c1::heart}} pumps {{c2::blood}}", 2),
+    card("b1", "The {{c1::lung}} takes in {{c2::air}}", 1),
+    card("b2", "The {{c1::lung}} takes in {{c2::air}}", 2),
+  ]);
+  assert.deepEqual(
+    session.map((c) => c.id),
+    ["a1", "b1"],
+  );
+  assert.equal(held, 2);
+});
+
 test("hostile input of 100,000 characters parses in well under a second", () => {
   const inputs = [
     "{{c1::".repeat(16667),

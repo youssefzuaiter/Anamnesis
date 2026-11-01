@@ -139,6 +139,53 @@ test("a selection in the note's title shows no tray, while one in its text does"
   await expect(tray(page)).toBeVisible();
 });
 
+// The two ways a selection can reach out of the note: begin before it, or end after it.
+async function selectAcross(page: Page, from: string, to: string) {
+  await page.evaluate(
+    ({ from, to }) => {
+      const firstText = (root: Element) => {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+          acceptNode: (node) => ((node.textContent ?? "").trim().length > 3 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
+        });
+        return walker.nextNode()!;
+      };
+      const start = firstText(document.querySelector(from)!);
+      const end = firstText(document.querySelector(to)!);
+      const range = document.createRange();
+      range.setStart(start, 0);
+      range.setEnd(end, 3);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    },
+    { from, to },
+  );
+}
+
+test("a selection that begins in the title and runs into the text shows no tray", async ({ page }) => {
+  await makeNote(page, `Across ${Date.now()}`, "Body text of the note.");
+
+  await selectAcross(page, "main h1", "[data-note-body]");
+  expect(await page.evaluate(() => window.getSelection()?.toString().length)).toBeGreaterThan(3);
+  await page.waitForTimeout(700); // a "nothing happens" check has to give it time to happen
+  await expect(tray(page)).toHaveCount(0);
+
+  await dblclickWord(page, "Body"); // the listener is alive, and a selection in the text does show it
+  await expect(tray(page)).toBeVisible();
+});
+
+test("a selection that begins in the text and runs into the side rail shows no tray", async ({ page }) => {
+  await makeNote(page, `Rail ${Date.now()}`, "Body text of the note.");
+
+  await selectAcross(page, "[data-note-body]", '[aria-label="Note context"]');
+  expect(await page.evaluate(() => window.getSelection()?.toString().length)).toBeGreaterThan(3);
+  await page.waitForTimeout(700);
+  await expect(tray(page)).toHaveCount(0);
+
+  await dblclickWord(page, "Body");
+  await expect(tray(page)).toBeVisible();
+});
+
 test("a formula in the selection appears once, as $...$", async ({ page }) => {
   await makeNote(page, `Area ${Date.now()}`, "The area is $\\pi r^2$ for a circle.");
 
