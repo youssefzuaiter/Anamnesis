@@ -151,19 +151,25 @@ export function CardMaker({ noteId }: { noteId: string }) {
     busy.current = true;
     setError(null);
     startTransition(async () => {
-      const result = await createCardAction(
-        noteId,
-        kind === "cloze" ? { kind, text } : { kind, question, answer },
-      );
-      busy.current = false;
-      if (!result.success) {
-        setError(result.error.message);
-        return;
+      try {
+        const result = await createCardAction(
+          noteId,
+          kind === "cloze" ? { kind, text } : { kind, question, answer },
+        );
+        if (!result.success) {
+          setError(result.error.message);
+          return;
+        }
+        setStatus(`Added ${plural(result.data.created)}.`);
+        dialogRef.current?.close();
+        window.getSelection()?.removeAllRanges();
+        setSelection(null);
+      } catch {
+        // The request itself failed (offline, the server restarting): no response to read.
+        setError("Could not reach the server. Try again.");
+      } finally {
+        busy.current = false; // whatever happened, the next press must be able to submit
       }
-      setStatus(`Added ${plural(result.data.created)}.`);
-      dialogRef.current?.close();
-      window.getSelection()?.removeAllRanges();
-      setSelection(null);
     });
   }
 
@@ -178,8 +184,9 @@ export function CardMaker({ noteId }: { noteId: string }) {
     const next = nextClozeNumber(text);
     if (next === null) return;
     const { selectionStart: from, selectionEnd: to } = area;
-    // Edit the field itself, so the caret lands after the inserted text at once; React is
-    // then given the value the field already holds and has nothing to move.
+    // Edit the field itself, so the caret lands after the inserted text at once. React then
+    // renders the same value, and its write of the field's default value can put the caret
+    // back at the end of the wrap if a key arrives before that render (a person cannot).
     area.setRangeText(`{{c${next}::${text.slice(from, to)}}}`, from, to, "end");
     setText(area.value);
     setHasSelection(false);
@@ -208,7 +215,7 @@ export function CardMaker({ noteId }: { noteId: string }) {
         <div
           role="group"
           aria-label="Make a card from the selection"
-          className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-4 right-[5.5rem] z-20 flex flex-wrap items-center gap-2 rounded-xl border border-border-subtle bg-surface p-2 shadow-card sm:bottom-6 sm:left-1/2 sm:right-auto sm:-translate-x-1/2"
+          className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-4 right-[5.5rem] z-20 flex select-none flex-wrap items-center gap-2 rounded-xl border border-border-subtle bg-surface p-2 shadow-card sm:bottom-6 sm:left-1/2 sm:right-auto sm:-translate-x-1/2"
         >
           <button
             type="button"

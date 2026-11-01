@@ -84,6 +84,11 @@ test("Hide selected words wraps the selection in the next number", async ({ page
   await expect(hide).toBeEnabled();
   await hide.click();
   await expect(textBox(page)).toHaveValue("{{c1::Paris}} is the capital of France");
+  // The value changes the moment the button is pressed, before React has rendered it; when React
+  // does, it rewrites the field's default value and the caret goes back to where the wrap left
+  // it. A person cannot press a key inside that window, but a test can, so wait for what only
+  // the render shows.
+  await expect(dialog(page)).toContainText("This makes 1 card.");
 
   await textBox(page).press("End");
   for (let i = 0; i < 6; i++) await textBox(page).press("Shift+ArrowLeft");
@@ -221,6 +226,27 @@ test("braces written in a note are neutralised in the prefill and the card still
   await expect(textBox(page)).toHaveValue("Use { {c1::x} } for {{c1::blanks}}.");
   await dialog(page).getByRole("button", { name: "Add card" }).click();
   await expect(added(page)).toHaveText("Added 1 card.");
+});
+
+test("when the server cannot be reached the dialog says so, and Add works again afterwards", async ({ page }) => {
+  await makeNote(page, `Offline ${Date.now()}`, "A note.");
+  await newCard(page).click();
+  await textBox(page).fill("The {{c1::heart}} pumps blood");
+
+  // A server action is a POST to the page's own address; refuse it until told otherwise.
+  let blocked = true;
+  await page.route(/\/notes\/[0-9a-f-]{36}$/, (route) =>
+    blocked && route.request().method() === "POST" ? route.abort("failed") : route.continue(),
+  );
+  const add = dialog(page).getByRole("button", { name: "Add card" });
+  await add.click();
+  await expect(dialog(page).getByRole("alert")).toContainText("Could not reach the server");
+  await expect(add).toBeEnabled();
+
+  blocked = false;
+  await add.click();
+  await expect(added(page)).toHaveText("Added 1 card.");
+  await expect(main(page)).toContainText("1 card from this note");
 });
 
 test("a bad text is explained in the dialog, not saved", async ({ page }) => {
@@ -461,6 +487,25 @@ test("the second card from one text waits for the next session", async ({ page }
   await expect(main(page)).not.toContainText("waits for your next session");
 });
 
+test("at the end of a session, Check for more cards starts the next one", async ({ page }) => {
+  const s = Date.now();
+  const code = `NXT${s}`;
+  const id = await makeCourse(page, code);
+  const note = await makeNote(page, `Next session ${s}`, "Note.", code);
+  await addCloze(page, note, "The {{c1::heart}} pumps {{c2::blood}} around the body");
+
+  await page.goto(`/cards?course=${id}`);
+  await main(page).getByRole("button", { name: "Show answer" }).click();
+  await main(page).getByRole("button", { name: "Good", exact: true }).click();
+  await expect(main(page)).toContainText("That's the queue cleared.");
+
+  // Without leaving the page: the card that was held back is the next session.
+  await main(page).getByRole("button", { name: "Check for more cards" }).click();
+  await expect(main(page)).toContainText("1 of 1");
+  await expect(main(page)).toContainText("[…]");
+  await expect(main(page)).not.toContainText("That's the queue cleared.");
+});
+
 test("trashing the note removes its cards from the deck and the queue, and restoring brings them back", async ({ page }) => {
   const s = Date.now();
   const code = `TRS${s}`;
@@ -505,6 +550,22 @@ test("the course page links to its own deck", async ({ page }) => {
   await link.click();
   await expect(page).toHaveURL(new RegExp(`/cards\\?course=${id}$`));
   await expect(main(page)).toContainText(`On the course page ${s}?`);
+});
+
+// Found when this file's own courses (long codes) made an older phone test fail: the course
+// <select> was as wide as its widest option, "CODE — Title", and pushed the note form off a phone.
+test("a long course name does not widen the note form on a phone", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await makeCourse(page, `LONGNAME${Date.now()}`);
+
+  await page.goto("/notes/new");
+  await expect(page.getByLabel("Course", { exact: true })).toBeVisible();
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+  const box = await page.getByLabel("Course", { exact: true }).boundingBox();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(375);
 });
 
 for (const scheme of ["light", "dark"] as const) {

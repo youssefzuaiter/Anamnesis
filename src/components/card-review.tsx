@@ -57,6 +57,14 @@ export function CardReview({ queue: cards }: { queue: ReviewCard[] }) {
         <p className="mt-1 text-xs text-text-muted">
           Cards you answered “Again” come back in about ten minutes.
         </p>
+        {/* A session is the queue it started with, so the next one is a fresh load. */}
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-border-subtle px-3.5 text-sm text-text transition-colors hover:bg-surface-subtle"
+        >
+          Check for more cards
+        </button>
       </div>
     );
   }
