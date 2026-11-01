@@ -2,13 +2,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUserId } from "@/lib/session";
 import {
-  getCourse,
   listCourseContents,
+  listCourses,
 } from "@/repositories/course-repository";
 import { listDecks } from "@/services/flashcard-service";
 import { summarise, nextUngraded, daysUntilLabel } from "@/lib/grades";
 import { GradePanel } from "@/components/grade-panel";
 import { ExamPrep } from "@/components/exam-prep";
+import { CourseGrade } from "@/components/course-grade";
+import { summariseGpa } from "@/lib/gpa";
+import { getGpaOverview } from "@/services/gpa-service";
 import { dateLabel } from "@/lib/note-templates";
 import { scopeHref } from "@/lib/assistant-scope";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
@@ -35,15 +38,23 @@ export default async function CoursePage({
   const userId = await requireUserId();
   const { id } = await params;
 
-  const course = await getCourse(userId, id);
+  // One load of the account's courses serves this page and the GPA card beside it.
+  const courses = await listCourses(userId);
+  const course = courses.find((item) => item.id === id);
   if (!course) notFound();
 
   const now = new Date();
-  const [contents, decks] = await Promise.all([
+  const [contents, decks, overview] = await Promise.all([
     listCourseContents(userId, course.id),
     listDecks(userId, now),
+    getGpaOverview(userId, courses),
   ]);
   const deck = decks.find((candidate) => candidate.id === course.id);
+  // Every other counted course, so the card can say what this one does to the CGPA.
+  const others = summariseGpa(
+    overview.courses.filter((other) => other.id !== course.id),
+    overview.scale,
+  );
   const deleteThisCourse = deleteCourseAction.bind(null, course.id);
 
   const grade = summarise(course.assessments);
@@ -108,6 +119,14 @@ export default async function CoursePage({
           </>
         )}
       </section>
+
+      <CourseGrade
+        courseId={course.id}
+        credits={course.credits}
+        finalGrade={course.finalGrade}
+        scale={overview.scale}
+        base={{ credits: others.credits, qualityPoints: others.qualityPoints }}
+      />
 
       <ExamPrep
         assessments={prepTargets.map(({ id, label }) => ({ id, label }))}

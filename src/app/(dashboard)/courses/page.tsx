@@ -2,9 +2,19 @@ import Link from "next/link";
 import { requireUserId } from "@/lib/session";
 import { listCourses } from "@/repositories/course-repository";
 import { CourseForm } from "@/components/course-form";
+import { GpaCard } from "@/components/gpa-card";
+import { courseBadges } from "@/lib/gpa";
 import { summarise } from "@/lib/grades";
+import { getGpaOverview } from "@/services/gpa-service";
 
 export const metadata = { title: "Courses · Anamnesis" };
+
+const BADGE_TONE = {
+  neutral: "bg-surface-subtle text-text-muted",
+  accent: "bg-accent-soft text-accent-ink",
+  warn: "bg-warn-soft text-warn",
+  ok: "bg-ok-soft text-ok",
+} as const;
 
 /** "Fall 2026" / "Spring 2027", by the month — a sensible default, not a rule. */
 function currentTerm(now = new Date()): string {
@@ -17,6 +27,7 @@ function currentTerm(now = new Date()): string {
 export default async function CoursesPage() {
   const userId = await requireUserId();
   const courses = await listCourses(userId);
+  const overview = await getGpaOverview(userId, courses);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -29,6 +40,8 @@ export default async function CoursesPage() {
           course gathers its timetable, notes, tasks and marks in one place.
         </p>
       </header>
+
+      <GpaCard {...overview} />
 
       <CourseForm defaultTerm={currentTerm()} />
 
@@ -58,7 +71,18 @@ export default async function CoursesPage() {
                     </span>
                   </div>
 
-                  <p className="mt-2 text-sm text-text">
+                  <div className="mt-2.5 flex flex-wrap gap-1.5">
+                    {courseBadges(course, overview.scale).map((badge) => (
+                      <span
+                        key={badge.text}
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${BADGE_TONE[badge.tone]}`}
+                      >
+                        {badge.text}
+                      </span>
+                    ))}
+                  </div>
+
+                  <p className="mt-2.5 text-sm text-text">
                     {grade.currentAverage === null
                       ? "Nothing marked yet"
                       : `${grade.currentAverage.toFixed(1)}% average · ${grade.remainingWeight.toFixed(0)}% left`}
