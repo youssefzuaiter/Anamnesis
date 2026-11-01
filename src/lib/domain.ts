@@ -34,3 +34,7 @@ export const TASK_DRAG_MIME = "application/x-nexus-task-id";
  * few minutes, refetches instead of showing tasks that have since moved.
  */
 export const TASKS_CHANGED_EVENT = "anamnesis-tasks-changed";
+
+/** How long a flashcard's question and answer may be. The editor, the action and the service agree on these. */
+export const MAX_CARD_QUESTION = 1000;
+export const MAX_CARD_ANSWER = 2000;
