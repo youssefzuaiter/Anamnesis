@@ -228,6 +228,9 @@ model Flashcard {
   noteId       String?
   question     String    @db.Text
   answer       String    @db.Text
+  /// Null for a basic card. For a fill-in-the-blank card, the number of the blank this card hides;
+  /// `question` then holds the whole text with its `{{c1::...}}` markers.
+  clozeIndex   Int?
   easeFactor   Float     @default(2.5)
   intervalDays Int       @default(0)
   repetitions  Int       @default(0)
