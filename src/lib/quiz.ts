@@ -22,8 +22,12 @@ export const MAX_EXCERPT_CHARS = 1500;
 export const MIN_EXCERPT_CHARS = 200;
 
 /**
- * How much of a generated answer must be made of words from the passage it cites. A starting
- * value: the evals print the distribution and the final number is chosen from it.
+ * How much of a generated answer must be made of words from the passage it cites. 0.6 is a floor,
+ * not a measured cut: on the nine questions the evals got from llama3.2:3b every answer scored
+ * 1.00 (the model copies its answers out of the passage), so no threshold from 0.4 to 0.7 keeps or
+ * drops anything and the data cannot choose between them. Its job is to catch an invented answer,
+ * which that run never produced. It checks that the answer comes from the passage, not that it
+ * answers the question.
  */
 export const GROUNDED_MIN = 0.6;
 
