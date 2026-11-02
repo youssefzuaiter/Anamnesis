@@ -14,6 +14,7 @@ import { summariseGpa } from "@/lib/gpa";
 import { getGpaOverview } from "@/services/gpa-service";
 import { dateLabel } from "@/lib/note-templates";
 import { scopeHref } from "@/lib/assistant-scope";
+import { quizHref } from "@/lib/quiz";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { deleteCourseAction } from "@/actions/courses";
 
@@ -82,12 +83,14 @@ export default async function CoursePage({
           {course.title}
         </h1>
         <p className="mt-1 text-sm text-text-muted">{course.term}</p>
-        <Link
-          href={scopeHref({ kind: "course", id: course.id })}
-          className="mt-2 inline-block text-sm text-accent hover:underline"
-        >
-          Ask about this course
-        </Link>
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          <Link href={scopeHref({ kind: "course", id: course.id })} className="text-accent hover:underline">
+            Ask about this course
+          </Link>
+          <Link href={quizHref({ kind: "course", id: course.id })} className="text-accent hover:underline">
+            Quiz me on this course
+          </Link>
+        </div>
       </header>
 
       <section className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-xl border border-border-subtle bg-surface px-4 py-3 text-sm text-text-muted">

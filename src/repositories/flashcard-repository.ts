@@ -81,6 +81,25 @@ export async function countDueForCourse(
   });
 }
 
+/** The live cards of these notes (the notes of a quiz scope), oldest due first. */
+export async function listForNotes(
+  userId: string,
+  noteIds: string[],
+  limit: number,
+): Promise<Flashcard[]> {
+  if (noteIds.length === 0) return [];
+  return prisma.flashcard.findMany({
+    where: { AND: [liveCards(userId), { noteId: { in: noteIds } }] },
+    orderBy: { dueAt: "asc" },
+    take: limit,
+  });
+}
+
+/** One card, if it is the caller's and its note is not in the trash. */
+export async function getLiveCard(userId: string, cardId: string): Promise<Flashcard | null> {
+  return prisma.flashcard.findFirst({ where: { AND: [liveCards(userId), { id: cardId }] } });
+}
+
 /**
  * Cards and cards due, per course. `courseId` null is the "No course" deck: no note, no
  * course on the note, or a course that has been deleted. All values are bound parameters.

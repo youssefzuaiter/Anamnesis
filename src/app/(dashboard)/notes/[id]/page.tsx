@@ -7,6 +7,7 @@ import { updateNoteAction, deleteNoteAction } from "@/actions/notes";
 import { listProjectOptions } from "@/repositories/project-repository";
 import { listCourseOptions } from "@/repositories/course-repository";
 import { scopeHref } from "@/lib/assistant-scope";
+import { quizHref } from "@/lib/quiz";
 import { isTrackingEnabled } from "@/repositories/focus-repository";
 import { FocusTracker } from "@/components/focus-tracker";
 import {
@@ -96,7 +97,7 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
       <article className="min-w-0">
         <nav
           aria-label="Breadcrumb"
-          className="mb-5 flex items-center justify-between gap-3 text-[13px] text-text-faint"
+          className="mb-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[13px] text-text-faint"
         >
           <span className="min-w-0 truncate">
             <Link href="/notes" className="font-medium transition-colors hover:text-text">
@@ -105,12 +106,18 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
             {place && <span aria-hidden="true"> / </span>}
             {place && <span>{place}</span>}
           </span>
-          <span className="flex shrink-0 items-center gap-4">
+          <span className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1">
             <Link
               href={scopeHref({ kind: "note", id: note.id })}
               className="font-medium transition-colors hover:text-text"
             >
               Ask about this note
+            </Link>
+            <Link
+              href={quizHref({ kind: "note", id: note.id })}
+              className="font-medium transition-colors hover:text-text"
+            >
+              Quiz me on this note
             </Link>
             <Link
               href={`/notes/${note.id}/history`}
