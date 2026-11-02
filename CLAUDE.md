@@ -877,6 +877,20 @@ was left for one.
   (a client-only `caret-color: transparent`) appeared only for a screenshot taken straight after load
   with Playwright's default caret hiding, and not for load only, `caret: "initial"`, or a screenshot
   that waits for hydration.
+- **CI caught a regression of mine that I did not run, and it was a layout bug on a page I had
+  only edited.** The first CI run of the pull request failed `e2e` on four phone tests in other
+  specs (the cards tray, link suggestions, the wide formula), all with "Expected <= 0, Received 6":
+  a horizontal overflow on the note page. The "Quiz me on this note" link I added made three links
+  in the page's header row (`flex shrink-0 gap-4`, which can neither shrink nor wrap), and I had run
+  only `quiz.spec.ts` and looked at `/quiz`, never at the note page. The four tests passed on this
+  Mac, so they were not reproducible here; **measured** at 375px the three links took 341px of a
+  343px row (2px to spare) and squeezed the "Notes" breadcrumb to **0px**, and the page overflowed
+  by 9px at 360px and 49px at 320px; CI's wider fonts tipped 375px over. The row now wraps (`flex-wrap`,
+  `ml-auto` on the links), the breadcrumb is a full 38px again at every width, 0px overflow at 1100,
+  375, 360 and 320, and one line, as before, on a desktop. A test written first fails at 360px
+  (overflow 9) and covers 360 and 320. **Lesson for the loop: a change to a page other features
+  share (here the note and course headers) means running those pages' phone specs, not only the new
+  feature's.**
 - **`/quiz` needs `pnpm exec next typegen`** for `PageProps<"/quiz">` before `tsc` knows the route.
 
 **Accepted, not fixed:** no rate limit on either action, each can cost one model call (the same as
@@ -892,9 +906,10 @@ to that browser and recorded nowhere.
 (cards first and the generator never called when they suffice, the count clamp, a top-up from the
 caller's own notes only, an unreachable model and unusable output, nothing to ask, a scope that is
 not yours, a card id that is not yours, rules short-circuiting the judge, the judge's verdict as a
-suggestion, an invalid judge, no grade ever recorded, the repository reads on their own, a repeated question asked once, and a later start from other passages); 10
+suggestion, an invalid judge, no grade ever recorded, the repository reads on their own, a repeated question asked once, and a later start from other passages); 11
 browser tests (`quiz.spec.ts`, no model: exact and empty answers, the grade buttons, skipping, a
-double click on Check and on a grade, a stranger's id, the phone in both colour schemes) and an
+double click on Check and on a grade, a stranger's id, the phone in both colour schemes, and the note
+page's header at 360 and 320px) and an
 11-check "Quiz me" eval section that asserts structure only (every answer got a verdict or a stated
 reason, rule cases never reach the model, nothing of another account reaches a generator) and
 prints everything above. **Not run locally:** the other browser specs, the rest of `pnpm eval` and

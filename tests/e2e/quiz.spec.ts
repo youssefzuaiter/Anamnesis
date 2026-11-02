@@ -279,3 +279,24 @@ for (const scheme of ["light", "dark"] as const) {
     expect(await overflow()).toBeLessThanOrEqual(0);
   });
 }
+
+// The Quiz me link is a third link in the note page's header row, which could neither shrink nor
+// wrap: at 375px it left the breadcrumb 0px wide, at 360px the page overflowed by 9px, and CI's wider
+// fonts overflowed it at 375px too (cards, link suggestions and the wide-formula phone tests failed).
+test("the note page header keeps its breadcrumb and fits narrow phones with the Quiz me link", async ({ page }) => {
+  const url = await makeNote(page, `Header ${Date.now()}`, "Short.");
+  for (const width of [360, 320]) {
+    await page.setViewportSize({ width, height: 812 });
+    await page.goto(url);
+    await expect(page.getByRole("link", { name: "Quiz me on this note" })).toBeVisible();
+
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, `${width}px: horizontal overflow`).toBeLessThanOrEqual(0);
+
+    const cutOff = await page.evaluate(() => {
+      const crumb = document.querySelector('nav[aria-label="Breadcrumb"] > span:first-child') as HTMLElement;
+      return crumb.scrollWidth > crumb.clientWidth;
+    });
+    expect(cutOff, `${width}px: the breadcrumb is cut off`).toBe(false);
+  }
+});
