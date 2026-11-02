@@ -242,3 +242,61 @@ test("hostile input of 100,000 characters stays fast", () => {
   const elapsed = performance.now() - t;
   assert.ok(elapsed < 1000, `${elapsed.toFixed(0)} ms for 1.6 million characters`);
 });
+
+// Found in the review of this branch by running the rule judge on awkward answers: both put a wrong
+// verdict on the one path that has no model behind it.
+test("an answer that is itself a don't-know phrase is correct when the reference says so", () => {
+  assert.equal(ruleVerdict("pass", "pass"), "correct");
+  assert.equal(ruleVerdict("Unknown.", "unknown"), "correct");
+  assert.equal(ruleVerdict("Skip", "skip"), "correct");
+  // The phrase is still a non-answer to any other question, and an empty reference never matches.
+  assert.equal(ruleVerdict("pass", "continue"), "incorrect");
+  assert.equal(ruleVerdict("", ""), "incorrect");
+});
+
+test("symbols that change what an answer says are not thrown away with the punctuation", () => {
+  const different: [string, string][] = [
+    ["1", "-1"],
+    ["x > 5", "x < 5"],
+    ["a + b", "a - b"],
+    ["a + b", "b"],
+    ["C", "C++"],
+    ["C", "C#"],
+    ["50", "50%"],
+    ["a × b", "a ÷ b"],
+    ["$5", "5"],
+    ["x = 2", "x 2"],
+  ];
+  for (const [answer, reference] of different) {
+    assert.notEqual(ruleVerdict(answer, reference), "correct", `${answer} is not ${reference}`);
+    assert.notEqual(ruleVerdict(reference, answer), "correct", `${reference} is not ${answer}`);
+  }
+});
+
+test("ordinary punctuation, hyphens, ranges and the same symbol written two ways still match", () => {
+  const same: [string, string][] = [
+    ["well-known!", "well known"],
+    ["5-10", "5 – 10"],
+    ["-1", "−1"], // hyphen-minus and the true minus sign
+    ["C++", "c ++"],
+    ["x < 5", "X<5"],
+    ["50 %", "50%"],
+    ["（１＋２）", "(1+2)"], // full-width forms fold under NFKC
+    ["The mitochondria.", "mitochondria"],
+  ];
+  for (const [answer, reference] of same) {
+    assert.equal(ruleVerdict(answer, reference), "correct", `${answer} is ${reference}`);
+  }
+  assert.equal(normaliseAnswer("-1"), normaliseAnswer("−1"));
+});
+
+test("the symbol handling stays linear on hostile input", () => {
+  const shapes = ["+".repeat(100_000), "-".repeat(100_000), "-1".repeat(50_000), "−".repeat(100_000), "`".repeat(100_000), "$%#*/<>=".repeat(12_500)];
+  const start = performance.now();
+  for (const text of shapes) {
+    normaliseAnswer(text);
+    ruleVerdict(text, text);
+    groundedness(text, text);
+  }
+  assert.ok(performance.now() - start < 2000, `took ${Math.round(performance.now() - start)} ms`);
+});

@@ -753,8 +753,12 @@ stored.
   person with plenty of cards never sees a generated question.
 - **Rules judge first, the model judges the rest.** `normaliseAnswer` is NFKC, lower case,
   apostrophes removed (so *don't* is *dont*), every other mark a space, the articles a/an/the
-  dropped unless that would leave nothing (a multiple-choice "A" survives). An answer equal to the
-  reference once normalised is correct. **The "I don't know" phrases are a judgement, not a
+  dropped unless that would leave nothing (a multiple-choice "A" survives). **Symbols that change
+  what an answer says are kept as words of their own** (a minus sign before a number, `< > = + % # * /`,
+  the Unicode math and currency symbols), so `1` is not `-1`, `x > 5` is not `x < 5`, `C` is not
+  `C++`; a hyphen or a range dash is still punctuation. An answer equal to the
+  reference once normalised is correct, **and that is checked before the don't-know phrases**,
+  because the answer to a card can be `pass`. **The "I don't know" phrases are a judgement, not a
   measurement:** the empty answer, `idk`, `dunno`, `i dont know`, `i do not know`, `dont know`,
   `no idea`, `no clue`, `not sure`, `pass`, `skip`, `unknown`, `bilmiyorum`, `fikrim yok` are
   incorrect without a model. A negation or an extra word is never decided by a rule ("not the
@@ -778,8 +782,9 @@ stored.
 - **Questions come from the notes' text, not the embedding table**, so a note saved while Ollama was
   down still works. Each note is cut by `chunkText`, chunks under 200 characters are dropped (a
   heading is not something to ask about), passages are taken round-robin across the notes and
-  rotated by the day of the year, at most 30 notes are read and 8 passages offered, one model call
-  per quiz. **Cost:** a spread, not the "best" passages.
+  rotated by the second of the request (so "Quiz again" starts from other passages; the model runs at
+  temperature 0, so the same passages would give the same questions), at most 30 notes are read and 8
+  passages offered, one model call per quiz, and a question the model repeats is asked once. **Cost:** a spread, not the "best" passages.
 - **A groundedness filter** drops a generated question whose answer is not mostly made of words from
   the passage it cites. See the numbers below: it is a floor, not a calibrated cut.
 
@@ -848,6 +853,19 @@ was left for one.
   no forged role label or control token surviving, nothing of the untrusted text after the fence,
   the reminder last), never the wording: seven mutants (each field left raw, each reminder dropped)
   fail them.
+- **The code review of the whole diff (inline, at the highest effort) found five things, and four
+  came from running the code on awkward input rather than reading it.** (1) `ruleVerdict` checked the
+  don't-know phrases before the reference, so `pass` answered with `pass` was "incorrect" with 'No
+  answer was given.' (2) The normaliser threw away every non-letter, so `1` matched `-1`, `x > 5`
+  matched `x < 5`, `C` matched `C++` and `50` matched `50%`, each "correct" by rule with a suggested
+  Good and no model check: the worst place for a wrong verdict. (3) A model that repeats itself could
+  fill a quiz with one question. (4) The seed was the day of the year, so "Quiz again" gave the same
+  questions all day. (5) The one e2e test that needs a model verdict waited 45 s inside a 60 s limit
+  with no CI scaling, and in CI it is probably the first chat call of the run (a cold model load on a
+  CPU runner); it now scales as the assistant test does. All fixed test-first (4 unit and 2
+  integration tests, each seen failing first); the symbol handling was re-measured on 100,000
+  characters of `+`, `-`, `-1` and the minus sign (worst case across all shapes 32 ms). The fifth is a
+  prediction, not an observation: nothing has run in CI yet.
 - **The double-submit guard has two layers, as in the cards work:** the `busy` ref and
   `disabled={pending}`. Removing either alone survives by design; removing both is caught by "a
   double click on a grade records one review and counts the question once" (without both, the
@@ -870,11 +888,11 @@ grade anyway; a student can write a `REFERENCE ANSWER:` line inside their answer
 always did); a check for a generated question trusts the browser's reference, which is shown only
 to that browser and recorded nowhere.
 
-**Tests.** 19 unit tests (`quiz`), 4 (`prompt-safety`) and 7 (`quiz-prompts`); 15 integration tests
+**Tests.** 23 unit tests (`quiz`), 4 (`prompt-safety`) and 7 (`quiz-prompts`); 17 integration tests
 (cards first and the generator never called when they suffice, the count clamp, a top-up from the
 caller's own notes only, an unreachable model and unusable output, nothing to ask, a scope that is
 not yours, a card id that is not yours, rules short-circuiting the judge, the judge's verdict as a
-suggestion, an invalid judge, no grade ever recorded, and the repository reads on their own); 10
+suggestion, an invalid judge, no grade ever recorded, the repository reads on their own, a repeated question asked once, and a later start from other passages); 10
 browser tests (`quiz.spec.ts`, no model: exact and empty answers, the grade buttons, skipping, a
 double click on Check and on a grade, a stranger's id, the phone in both colour schemes) and an
 11-check "Quiz me" eval section that asserts structure only (every answer got a verdict or a stated
@@ -889,7 +907,16 @@ in a browser.
 grading with retrieval from the notes; scheduling generated questions; voice answers; a generator
 prompt that asks for short answers, and a check that an answer answers its question (see above);
 calibrating `GROUNDED_MIN` against an invented answer; a judge that uses "partly" (a prompt or a
-larger model); a rate limit.
+larger model); a rate limit. **Deferred from the review, all minor:** focus does not move to the
+next question after a grade (it falls to the page; moving it into the answer box would also raise
+the keyboard on a phone, so it needs a decision); the quiz asks cards that are not due yet after the
+due ones, and a grade clicked on one applies a full SM-2 step early; the Turkish capital İ lowercases
+to `i` plus a combining dot that the normaliser turns into a space (an exact answer to `İstanbul` typed
+`Istanbul` goes to the model); a course quiz loads the course's tasks and events through
+`resolveScope` and discards them (under 30 ms); `completeJson` has no timeout, and the quiz disables
+every button while a call is pending, so a stalled Ollama leaves it stuck until the tab is reloaded
+(older than this feature); `RULE_FEEDBACK` has a `partly` entry no rule can use; the quiz eval
+section adds about 36 sequential model calls to the `evals` job (20-minute budget), never timed in CI.
 
 ## Day planning
 

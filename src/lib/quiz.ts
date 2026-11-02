@@ -123,12 +123,27 @@ function tokens(text: string): string[] {
   return folded === "" ? [] : folded.split(" ");
 }
 
+// Characters that change what a short answer says: -1 is not 1, x < 5 is not x > 5, C++ is not C,
+// 50% is not 50. Each becomes a word of its own so it survives the punctuation being thrown away.
+const SYMBOL = /[\p{Sm}\p{Sc}\p{Sk}%#*\/]/gu;
+// A minus sign: before a number and not after a letter or digit, where it is a hyphen or a range.
+const MINUS_SIGN = /(?<![\p{L}\p{N}])-(?=\.?\p{N})/gu;
+
+function keepSymbols(text: string): string {
+  return text
+    .normalize("NFKC")
+    .replace(/['’`]/g, "") // as `tokens` does, and before the backtick can count as a symbol
+    .replace(MINUS_SIGN, "−")
+    .replace(SYMBOL, (symbol) => ` sym${symbol.codePointAt(0)} `);
+}
+
 /**
  * An answer reduced to what it says: case, punctuation, spacing and the articles a, an and the
- * are ignored, unless that would leave nothing (a multiple-choice "A"). Linear in the text.
+ * are ignored, unless that would leave nothing (a multiple-choice "A"). Symbols that change the
+ * meaning (a minus sign, <, >, =, +, %, #, currency) are kept. Linear in the text.
  */
 export function normaliseAnswer(text: string): string {
-  const all = tokens(text);
+  const all = tokens(keepSymbols(text));
   const kept = all.filter((token) => !ARTICLES.has(token));
   return (kept.length > 0 ? kept : all).join(" ");
 }
@@ -156,15 +171,16 @@ export function isDontKnow(normalised: string): boolean {
 }
 
 /**
- * The verdict a rule can give without a model: no answer, or "I don't know", is incorrect; an
- * answer equal to the reference once normalised is correct. Anything else, a negation or an extra
- * word included, is for the model.
+ * The verdict a rule can give without a model: an answer equal to the reference once normalised is
+ * correct; no answer, or "I don't know", is incorrect. Anything else, a negation or an extra word
+ * included, is for the model. The match comes first, because the answer to some questions is one
+ * of those phrases (Python's `pass`).
  */
 export function ruleVerdict(answer: string, reference: string): Verdict | null {
   const given = normaliseAnswer(answer);
-  if (isDontKnow(given)) return "incorrect";
   const expected = normaliseAnswer(reference);
-  return expected !== "" && given === expected ? "correct" : null;
+  if (expected !== "" && given === expected) return "correct";
+  return isDontKnow(given) ? "incorrect" : null;
 }
 
 // --- Grades and scores -------------------------------------------------------------------------

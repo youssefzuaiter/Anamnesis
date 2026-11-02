@@ -487,3 +487,44 @@ test("the reads behind a quiz hold the caller and the trash themselves, whatever
   assert.deepEqual(await flashcardRepository.listForNotes(user.id, [], 50), []);
   assert.deepEqual(await noteRepository.listNoteTexts(user.id, [], 50), []);
 });
+
+// Found in the review of this branch: nothing stopped a model that repeats itself from filling a
+// quiz with one question, and the seed was the day of the year, so "Quiz again" asked the same
+// passages (and, at temperature 0, the same questions) all day.
+test("a generated question the model repeats is asked once", async () => {
+  const user = await newUser();
+  const source = await note(user.id, { content: LONG });
+  const generator: Generator = async () => [
+    { question: "Which words come first in the passage?", reference: "alpha1 alpha2 alpha3", excerptIndex: 0 },
+    { question: "which words come FIRST in the passage", reference: "alpha1 alpha2", excerptIndex: 0 },
+    { question: "Which words come first in the passage?", reference: "alpha4 alpha5", excerptIndex: 0 },
+    { question: "What does the second passage list?", reference: "beta1 beta2 beta3", excerptIndex: 1 },
+  ];
+
+  const result = await startQuiz(user.id, { kind: "note", id: source.id }, { ...options, count: 4 }, generator);
+
+  assert.deepEqual(
+    result.questions.map((q) => q.question),
+    ["Which words come first in the passage?", "What does the second passage list?"],
+  );
+  assert.equal(result.notice, "Only 2 of the 4 questions could be made.");
+});
+
+test("a quiz started later is not offered the passages in the same order, and the same moment is", async () => {
+  const user = await newUser();
+  const source = await note(user.id, { content: LONG });
+  const first: string[] = [];
+  const generator: Generator = async (excerpts) => {
+    first.push(excerpts[0].text);
+    return [];
+  };
+  const at = (seconds: number) => new Date(NOW.getTime() + seconds * 1000);
+  const scope: QuizScope = { kind: "note", id: source.id };
+
+  await startQuiz(user.id, scope, { now: at(0), count: 3 }, generator);
+  await startQuiz(user.id, scope, { now: at(1), count: 3 }, generator);
+  await startQuiz(user.id, scope, { now: at(0), count: 3 }, generator);
+
+  assert.notEqual(first[0], first[1], "a second start does not begin with the same passage");
+  assert.equal(first[0], first[2], "the same moment gives the same passages");
+});

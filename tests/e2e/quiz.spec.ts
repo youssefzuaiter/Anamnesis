@@ -152,6 +152,8 @@ test("a card can be skipped without grading, and the person's own grade wins ove
 // on the result is a verdict, and either way the person can grade the card and finish. That
 // shows the unavailable path here and the model path in CI, with the same assertions.
 test("an answer the rules cannot decide still lets the person grade and finish, whatever the model says", async ({ page }) => {
+  // The first chat-model call of a CI run loads the model on a CPU runner: scale as the assistant test does.
+  test.setTimeout(process.env.CI ? 180_000 : 90_000);
   const s = Date.now();
   const url = await makeNote(page, `Undecided ${s}`, "Short.");
   await addBasic(page, url, `Undecided one ${s}: what organelle makes most of a cell's ATP?`, "the mitochondria");
@@ -164,7 +166,7 @@ test("an answer the rules cannot decide still lets the person grade and finish, 
 
   await expect(
     main(page).getByRole("status").filter({ hasText: /Correct|Partly right|Not quite|could not judge/ }),
-  ).toBeVisible({ timeout: 45_000 });
+  ).toBeVisible({ timeout: process.env.CI ? 170_000 : 60_000 });
   await expect(main(page)).toContainText("The answer: the mitochondria");
   await main(page).getByRole("group", { name: "Grade this question" }).getByRole("button", { name: /^Hard/ }).click();
   await expect(main(page)).toContainText(/You scored [0-9.]+ of 1/);

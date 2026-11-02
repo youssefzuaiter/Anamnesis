@@ -12,6 +12,7 @@ import {
   cardQuestion,
   cardReference,
   isGrounded,
+  normaliseAnswer,
   pickQuestionCards,
   ruleVerdict,
   sampleExcerpts,
@@ -121,11 +122,16 @@ async function topUp(
   }
 
   const questions: QuizQuestion[] = [];
+  const asked = new Set<string>();
   for (const item of Array.isArray(raw) ? raw : []) {
     const parsed = generatedItemSchema.safeParse(item);
     if (!parsed.success) continue;
     const excerpt = excerpts[parsed.data.excerptIndex];
     if (!excerpt || !isGrounded(parsed.data.reference, excerpt.text, groundedMin)) continue;
+    // A model that repeats itself must not fill the quiz with one question.
+    const key = normaliseAnswer(parsed.data.question);
+    if (asked.has(key)) continue;
+    asked.add(key);
     questions.push({
       kind: "generated",
       id: randomUUID(),
@@ -138,10 +144,6 @@ async function topUp(
     if (questions.length === need) break;
   }
   return { questions, outcome: questions.length === 0 ? "unusable" : "ok" };
-}
-
-function dayOfYear(date: Date): number {
-  return Math.floor((date.getTime() - new Date(date.getFullYear(), 0, 0).getTime()) / 86_400_000);
 }
 
 /**
@@ -178,7 +180,9 @@ export async function startQuiz(
       userId,
       noteIds,
       count - questions.length,
-      options.seed ?? dayOfYear(now),
+      // The second of the request, so "Quiz again" starts from other passages (the model runs at
+      // temperature 0: the same passages would give the same questions).
+      options.seed ?? Math.floor(now.getTime() / 1000),
       options.groundedMin ?? GROUNDED_MIN,
       generator,
     );
