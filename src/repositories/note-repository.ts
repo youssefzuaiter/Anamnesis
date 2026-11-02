@@ -94,6 +94,21 @@ export async function findNotesByIds(
   });
 }
 
+/** The whole text of these live notes, most recently edited first, for what must read them (a quiz). */
+export async function listNoteTexts(
+  userId: string,
+  ids: string[],
+  limit: number,
+): Promise<{ id: string; title: string; content: string }[]> {
+  if (ids.length === 0) return [];
+  return prisma.note.findMany({
+    where: { userId, deletedAt: null, id: { in: ids } },
+    select: { id: true, title: true, content: true },
+    orderBy: { updatedAt: "desc" },
+    take: limit,
+  });
+}
+
 /** Every live note's id and title: what a `[[link]]` can resolve to, ambiguity included. */
 export async function listNoteTitles(
   userId: string,
