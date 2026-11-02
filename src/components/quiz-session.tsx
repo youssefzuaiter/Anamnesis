@@ -252,13 +252,29 @@ export function QuizSession({ scope, label }: { scope: QuizScope; label: string 
   const suggested = result?.suggestedGrade ?? null;
   const suggestedVerdict = result?.verdict ?? null;
 
+  // How the person says it went: a card's four grades, or three outcomes for a question that is not stored.
+  const choices =
+    question.kind === "card"
+      ? REVIEW_GRADES.map((grade) => ({
+          key: grade,
+          label: GRADE_LABEL[grade],
+          suggested: grade === suggested,
+          choose: () => settle(gradeToVerdict(grade), grade),
+        }))
+      : OUTCOMES.map(({ verdict, label: outcome }) => ({
+          key: verdict,
+          label: outcome,
+          suggested: verdict === suggestedVerdict,
+          choose: () => settle(verdict, null),
+        }));
+
   return (
     <section aria-label="Quiz" className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-text-muted">
           Question {index + 1} of {questions.length}
         </p>
-        <button type="button" onClick={() => setPhase("done")} disabled={pending} className={TEXT_BUTTON}>
+        <button type="button" onClick={() => setPhase("done")} disabled={pending} className={`${TEXT_BUTTON} -mr-2`}>
           End quiz
         </button>
       </div>
@@ -324,44 +340,25 @@ export function QuizSession({ scope, label }: { scope: QuizScope; label: string 
       {phase === "checked" && result && (
         <div className="flex flex-col gap-2">
           <div role="group" aria-label="Grade this question" className="flex flex-wrap gap-2">
-            {question.kind === "card"
-              ? REVIEW_GRADES.map((grade) => {
-                  const isSuggested = grade === suggested;
-                  return (
-                    <button
-                      key={grade}
-                      type="button"
-                      disabled={pending}
-                      onClick={() => settle(gradeToVerdict(grade), grade)}
-                      className={isSuggested ? PRIMARY : BUTTON}
-                    >
-                      {GRADE_LABEL[grade]}
-                      {isSuggested ? " (suggested)" : ""}
-                    </button>
-                  );
-                })
-              : OUTCOMES.map(({ verdict, label: outcome }) => {
-                  const isSuggested = verdict === suggestedVerdict;
-                  return (
-                    <button
-                      key={verdict}
-                      type="button"
-                      disabled={pending}
-                      onClick={() => settle(verdict, null)}
-                      className={isSuggested ? PRIMARY : BUTTON}
-                    >
-                      {outcome}
-                      {isSuggested ? " (suggested)" : ""}
-                    </button>
-                  );
-                })}
+            {choices.map((choice) => (
+              <button
+                key={choice.key}
+                type="button"
+                disabled={pending}
+                onClick={choice.choose}
+                className={choice.suggested ? PRIMARY : BUTTON}
+              >
+                {choice.label}
+                {choice.suggested ? " (suggested)" : ""}
+              </button>
+            ))}
           </div>
-          {question.kind === "card" && result.verdict && (
-            <div>
+          {question.kind === "card" && suggestedVerdict && (
+            <div className="-ml-2">
               <button
                 type="button"
                 disabled={pending}
-                onClick={() => settle(result.verdict as Verdict, null)}
+                onClick={() => settle(suggestedVerdict, null)}
                 className={TEXT_BUTTON}
               >
                 Next without grading
