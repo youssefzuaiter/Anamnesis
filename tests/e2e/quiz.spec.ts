@@ -187,6 +187,32 @@ test("a double click on Check answer checks once and does not skip a question", 
   await expect(main(page).getByRole("status").filter({ hasText: "Correct" })).toHaveCount(1);
 });
 
+// The double click that does harm is on a grade: the second press would record the card again and
+// list the question twice in the results, which the score then counts.
+test("a double click on a grade records one review and counts the question once", async ({ page }) => {
+  const s = Date.now();
+  const url = await makeNote(page, `Grade twice ${s}`, "Short.");
+  await addBasic(page, url, `Grade twice one ${s}?`, "alpha");
+  await addBasic(page, url, `Grade twice two ${s}?`, "beta");
+
+  await page.goto(url);
+  await main(page).getByRole("link", { name: "Quiz me on this note" }).click();
+  await start(page).click();
+  await answerBox(page).fill("alpha");
+  await check(page).click();
+  await main(page).getByRole("button", { name: "Good (suggested)" }).dblclick();
+
+  await expect(main(page)).toContainText("Question 2 of 2");
+  await answerBox(page).fill("beta");
+  await check(page).click();
+  // A second, late settle of the first question would reset this one while it is being answered.
+  await expect(result(page, "Correct")).toBeVisible();
+  await main(page).getByRole("button", { name: "Good (suggested)" }).click();
+
+  await expect(main(page)).toContainText("You scored 2 of 2");
+  await expect(main(page).locator("ol > li")).toHaveCount(2);
+});
+
 test("a note with almost no text and no cards says there is nothing to quiz yet", async ({ page }) => {
   const url = await makeNote(page, `Empty ${Date.now()}`, "Short.");
   await page.goto(url);

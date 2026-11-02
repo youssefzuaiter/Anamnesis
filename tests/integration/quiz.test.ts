@@ -15,6 +15,8 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { AppError } from "@/lib/api-response";
 import type { Excerpt, QuizScope } from "@/lib/quiz";
+import * as flashcardRepository from "@/repositories/flashcard-repository";
+import * as noteRepository from "@/repositories/note-repository";
 import { checkAnswer, startQuiz, type Generator, type Judge } from "@/services/quiz-service";
 
 const created: string[] = [];
@@ -461,4 +463,27 @@ test("starting and checking a quiz never changes a card", async () => {
 
   assert.deepEqual(await snapshot(), before);
   assert.equal(await prisma.flashcard.count({ where: { userId: user.id } }), 2);
+});
+
+// The service only ever hands these reads ids it has already resolved to the caller's own live
+// notes, so a quiz test cannot see them fail: a read that lost its `userId` or its trash filter
+// would still return the right rows. They are checked here on their own, with ids they must refuse.
+test("the reads behind a quiz hold the caller and the trash themselves, whatever ids they are given", async () => {
+  const user = await newUser();
+  const other = await newUser();
+  const mine = await note(user.id, { content: LONG });
+  const trashed = await note(user.id, { content: LONG, deleted: true });
+  const theirs = await note(other.id, { content: LONG });
+  const kept = await card(user.id, mine.id, { question: "mine?" });
+  await card(user.id, trashed.id, { question: "in the trash?" });
+  await card(other.id, theirs.id, { question: "someone else's?" });
+
+  const ids = [mine.id, trashed.id, theirs.id];
+  const cards = await flashcardRepository.listForNotes(user.id, ids, 50);
+  assert.deepEqual(cards.map((c) => c.id), [kept.id]);
+  const texts = await noteRepository.listNoteTexts(user.id, ids, 50);
+  assert.deepEqual(texts.map((n) => n.id), [mine.id]);
+
+  assert.deepEqual(await flashcardRepository.listForNotes(user.id, [], 50), []);
+  assert.deepEqual(await noteRepository.listNoteTexts(user.id, [], 50), []);
 });
