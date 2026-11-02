@@ -7,6 +7,7 @@ import { updateNoteAction, deleteNoteAction } from "@/actions/notes";
 import { listProjectOptions } from "@/repositories/project-repository";
 import { listCourseOptions } from "@/repositories/course-repository";
 import { scopeHref } from "@/lib/assistant-scope";
+import { quizHref } from "@/lib/quiz";
 import { isTrackingEnabled } from "@/repositories/focus-repository";
 import { FocusTracker } from "@/components/focus-tracker";
 import {
@@ -111,6 +112,12 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
               className="font-medium transition-colors hover:text-text"
             >
               Ask about this note
+            </Link>
+            <Link
+              href={quizHref({ kind: "note", id: note.id })}
+              className="font-medium transition-colors hover:text-text"
+            >
+              Quiz me on this note
             </Link>
             <Link
               href={`/notes/${note.id}/history`}
