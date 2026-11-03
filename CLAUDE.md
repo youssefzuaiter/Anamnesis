@@ -553,8 +553,8 @@ to their backups afterwards. **No model is involved, so there are no evals.**
 
 **Not done:** adding or removing letters on the scale (so a plus/minus scheme needs one the preset does
 not have); a carry-in CGPA for terms before the app (add those as courses with credits and a letter); the
-assistant knowing the GPA; courses are still missing from the JSON export (the new profile columns do
-travel with the profile); a graduation-credits count; a what-if saved across visits; the GPA on Today.
+assistant knowing the GPA; courses are in the JSON export since item 11 (the GPA target and scale were not: the profile
+was read with a four-field select until then, although this section said they travelled); a graduation-credits count; a what-if saved across visits; the GPA on Today.
 Two tabs can overwrite each other's field on a course, since each save sends both credits and the letter.
 
 ## Trash and soft-delete recovery
@@ -727,8 +727,7 @@ caught. The files were verified identical to their backups afterwards.
 **Not done:** editing a card; a card browser; deleting a card outside review; a stored `courseId`
 and cards without a note; maths rendered inside a card; fill-in-the-blank cards from the AI
 generator; moving a card between decks; image occlusion; a session that notices newly due cards
-without leaving the page. The JSON export still omits cards (ROADMAP item 11 must include
-`clozeIndex`). The selection is read on every selection change and clones the selected DOM
+without leaving the page. Cards, with `clozeIndex`, are in the JSON export since item 11. The selection is read on every selection change and clones the selected DOM
 (about 50 ms for a large note, not throttled). The tray has `select-none` so a tap on it is less
 likely to collapse the selection first on a phone; that is **unverified on touch hardware** (the
 phone tests use the mouse). The same select-width fix for `ProjectSelect` and `GoalSelect`.
@@ -1631,9 +1630,8 @@ as a clickable design (light, dark, phone) and approved before any code.
   number added. Sessions are made one after another, not in a transaction.
 - **Flashcards are a count and a link.** The review queue (`/cards`) was not filtered by course
   when this shipped; it is now (see "Cloze cards, decks and cards from selection").
-- **The export** now carries `assessmentId` on each task while assessments are still not
-  exported, so the id points at nothing in the file, as `courseId` already does (see "Data
-  export").
+- **The export** carries `assessmentId` on each task, and since item 11 the assessments (and
+  courses) are exported too (see "Data export").
 - **Found by looking at it on a real course, not by any test:** at the page's real width the
   three-column controls squeezed the chips (10 h under the other two, session lengths stacked
   one above another), so the select has its own row and the two chip groups sit side by side
@@ -2063,8 +2061,8 @@ action doesn't return to the client, so — like several other click-triggered
 
 ## Data export
 
-`GET /api/export` (`services/export-service.ts`) dumps everything a user owns
-as one downloadable JSON file — a personal backup/portability feature, not a
+`GET /api/export` (`services/export-service.ts`) dumps what a user owns that can safely leave
+the machine (see the list below) as one downloadable JSON file — a personal backup/portability feature, not a
 system endpoint, so a plain sidebar `<a href="/api/export">` is enough to
 trigger a real browser download; no client component or fetch/blob dance is
 needed. `passwordHash` is excluded by selecting an explicit field list rather
@@ -2080,15 +2078,115 @@ Goals are exported (`goals`) because projects and tasks carry a `goalId`, and
 an export without the goal rows would hold ids that point at nothing. An eval
 asserts that every `goalId` in the file resolves to an exported goal.
 
-**Known gap, older than goals:** `buildFullExport` still leaves out courses,
-assessments, flashcards, note versions, conversations and messages, attachments
-and calendar subscriptions, so "everything a user owns" is not yet literally
-true. It was not widened inside the goals change because each of those needs
-its own decision — attachment bytes live on disk and not in Postgres, a private
-calendar feed URL is usually a bearer secret, and version and message history
-are large — and none of that is about goals. Tasks now export their `assessmentId` (the exam
-prep planner sets it) while assessments are still left out, so that id points at nothing in the
-file, as `courseId` already does.
+**Item 11 (2026-11-03) completed it.** The export now carries everything an account owns that can
+safely leave the machine, and the file says what it leaves out. It was not tagged *demo*, so it was
+built from the roadmap sentence and the plan (`docs/superpowers/plans/2026-11-03-complete-export.md`),
+and looked at in the browser. The two forks below were decided by a council that I ran inline, not by
+independent subagents, so it is weaker than four separate voices. No migration, no new dependency.
+
+- **What is in the file** (`formatVersion` 2; the first export had no version): the account and its
+  whole profile, projects, goals, notes, tasks, events, links, focus telemetry, the audit trail,
+  **courses, assessments, flashcards, note versions, conversations, messages, attachment records and
+  calendar subscriptions**. Every table is read oldest first, ties by id, so two exports are comparable.
+- **A calendar feed's address is not exported; only its host is.** A feed URL is a bearer secret (a
+  Google or Outlook "secret address in iCal format" lets anyone read the timetable), and an export is a
+  file meant to be copied, emailed and put in a cloud. The row carries `host` (`feedHost`: no scheme,
+  `user:password@`, port, path, query or fragment) and the events it imported are already in `events`.
+  The alternatives were the whole address, and an opt-in `?secrets=1` (a code path that gets forgotten).
+  **Cost accepted:** a restore must be given the address again; **residual risk:** a secret placed in the
+  host name itself would show.
+- **Attachment bytes are not in the JSON; the records are** (name, type, size, the generated storage key).
+  `ops/backup.sh` already archives `attachments.tar` beside the database dump, and the zip of item 12 is
+  where the files belong; base64 would be up to 10 MB x 1.37 per file in one string. **Cost accepted:** the
+  JSON alone does not restore attachments, so the file carries a top-level `notIncluded` object that says
+  so, with the other omissions (feed addresses, the search index, deleted items, the sign-in password),
+  and the settings text says it before the click.
+- **The file's promise is written down and checked against the schema** (`lib/export-shape.ts`):
+  `EXPORTED_MODELS`, `NOT_EXPORTED`, `OMITTED_COLUMNS` (each with its reason) and `NOT_INCLUDED`.
+  `tests/integration/export.test.ts` reads `prisma/schema.prisma` and fails when a model with a `userId`,
+  or a column of an exported model, is neither in the file nor on the list. That test passed on the first
+  run, by design: it fails on the next model someone adds. **The gap existed because nothing checked
+  completeness**, and it was wider than the roadmap said: the profile was read with a four-field select,
+  so `targetGpa` and `gpaScale` were never exported, while "GPA and CGPA" claimed they travelled. The
+  profile is read whole now and that claim is corrected.
+- **The trash stays out, and so does everything that belongs to it:** a trashed note's versions, cards and
+  attachments, a deleted course's assessments, a deleted conversation's messages, so no child points at a
+  missing parent. Cards use the `liveCards` rule through `listLiveForExport`. **Known:** deleting a course
+  only sets `deletedAt` and does not detach, so a note, task or event in a deleted course keeps a
+  `courseId` (and a task its `assessmentId`) that names a row not in the file; the app reads such a note
+  as being in "No course", and an importer should too. Stored ids are not rewritten: an export is the data,
+  not a reinterpretation.
+- **It streams** (`streamFullExport`, a `ReadableStream` in the route): `buildFullExport` (in memory, read
+  by the tests and the evals) and the stream are built from one list of table readers, each read a page at
+  a time by keyset (50 rows where a row can be 100,000 characters, 1,000 elsewhere), and one generator,
+  `pagesOf`, is the only place that knows when the last page has been read. The file is valid JSON, one row
+  per line. **Measured** on throwaway accounts of two shapes (57,130 rows with 20,000 note versions, and 200
+  notes of 100,000 characters with 5 versions each; both about 150 MB as UTF-8), a fresh process per mode on
+  this loaded 8 GB Mac: the first byte left after **10.8 s** and **2.3 s** when held in memory (nothing leaves
+  until everything is read) against **8 ms** and **5 ms** streamed; the single Node process was blocked for
+  **1.6 s** and **0.5 s** by the stringify against none; and **under a 192 MB heap cap the in-memory form
+  died with "JavaScript heap out of memory" on both files while the stream completed both.** That on/off
+  result is the evidence: RSS is useless here (macOS compresses pages out of it under memory pressure) and
+  `heapUsed` counts garbage V8 has not collected (553 and 489 MB held whole against 185 and 294 MB streamed).
+  Held whole, an export takes about five times its size in memory.
+- **Delivery.** `Content-Disposition: attachment`, `Cache-Control: no-store` (everything the person owns,
+  behind a session: no cache keeps a copy), chunked with no `Content-Length`. The first chunk is read before
+  the response is built, so a missing account or a down database is an ordinary JSON error and not a half
+  file; a failure after bytes are sent aborts the download, and **every prefix of the chunks is invalid
+  JSON** (tested at each boundary), so a partial file can never pass for a whole one. **It is not a
+  snapshot:** pages are read one after another across tables, so an item changed while it runs can be
+  missing or half-updated (a transaction would hold a connection for the whole download, and Prisma's
+  interactive transactions time out after 5 s by default). Signed out it is a 401 with `data: null`.
+
+**What the security review and testing turned up.**
+
+- **Scoping, by a script and not by reading:** all 17 reads in the export path (15 `findMany`, the user
+  and profile lookups) and the card read carry `userId` or the `liveCards` rule; no raw SQL; the route takes
+  no input at all (no query string, page, cursor or size). **17 mutants that drop `userId` from each read were
+  all caught by the dedicated isolation test alone**; the "empty account" test also failed on them, but only
+  because earlier tests leave other accounts' rows in the database, an ordering accident I checked by
+  re-running them with just the isolation test selected.
+- **A hardening, not a vulnerability:** in a Prisma `where`, `userId: undefined` means "no filter".
+  `buildFullExport` fired all its queries in parallel before the user lookup could reject, so a missing id
+  would have read every account's rows and then thrown (the stream failed closed only because it reads the
+  user first). Both forms now refuse a non-string or empty id before any query. Unreachable today: the
+  session always gives a string.
+- **The word `passwordHash` was in the file.** The `notIncluded` explanation was keyed by it; found by my own
+  substring check on the real download. A file that says it never holds the hash should not contain the
+  column name either, so it is `signInPassword`, and a test asserts neither the name nor a hash format
+  appears anywhere in the file.
+- **Hostile input, measured:** `feedHost` on 1,000,000-character addresses (flooded userinfo and `@`,
+  1 MB query, 100k and 1M IDNA hosts, full-width, a million dots): worst 45 ms, and the app caps a saved
+  address at 2,000 characters. 100,000-character notes, non-ASCII text, a `Json` column and `Date`s survive the
+  trip through `JSON.stringify` unchanged.
+- **57 mutants, three weak spots.** Nothing pinned that trashed **tasks, projects and goals** stay out (the
+  older evals did, and they run only in CI): three mutants survived and the "deleted parent" test now creates
+  one of each. No fixture was larger than a page, so the page boundary and the id tie-break were untested by
+  the integration tier (predicted from reading, fixed before running that mutant, so it was not run against
+  the old tests): 120 notes and versions and 1,100 tasks, each created in one statement so every row of a table
+  shares a `createdAt`. And a mutant that removed `skip: 1` made a page of one re-read its cursor row for ever,
+  which is why the integration command carries `--test-timeout`. **Equivalent or by design:** an empty table
+  printed as `[\n]` instead of `[]` (same JSON), and removing the stream's `cancel()` (it only stops needless
+  paging after a client aborts; nothing outside can see it).
+- **Environment.** The Docker daemon was down again, so the first run failed on connection errors that looked
+  like a RED. A first measurement script left two throwaway accounts (deleted by their prefix), and a second
+  silently ran nothing because zsh does not word-split an unquoted command variable.
+- **Accepted, not changed:** `/api/export` is a GET, so another site can make the owner's browser navigate to
+  it with the session cookie (Auth.js defaults to `SameSite=Lax`) and start a download; it cannot read the
+  response, it was true before this item and streaming makes it cheaper; no rate limit (none exists on any
+  route here).
+
+**Tests.** 8 unit tests (`export-shape`), 15 integration tests (`export`: the schema against the export, every
+column of every model, the version and the notice, an empty account, another account's rows in every table,
+secrets nowhere in the file, nothing under a deleted parent, a 100,000-character non-ASCII round trip, the stream
+equal to the in-memory file at five page sizes, an empty account, secrets in the stream, an early stop, nobody
+refused, a cut-off stream never valid, and more rows than a page) and 3 browser tests (`export.spec.ts`: signed
+out, the download and its headers, and what settings says). **Not run locally:** the evals (they call
+`buildFullExport`; its signature is unchanged), the other browser specs and the container rehearsal; CI runs them.
+
+**Not done:** an import from this file (restoring is from a backup; item 12 is the vault zip, with the attachment
+files); attachment bytes inside the JSON; a snapshot; a rate limit; the file is still named `nexus-export-<date>`;
+the links in the settings card are 18px text, as they were.
 
 ## Auth and route protection
 
