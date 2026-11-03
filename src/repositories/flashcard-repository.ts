@@ -95,6 +95,11 @@ export async function listForNotes(
   });
 }
 
+/** Every live card of the caller, oldest first, for the data export (the same rule as the queue). */
+export async function listLiveForExport(userId: string): Promise<Flashcard[]> {
+  return prisma.flashcard.findMany({ where: liveCards(userId), orderBy: { createdAt: "asc" } });
+}
+
 /** One card, if it is the caller's and its note is not in the trash. */
 export async function getLiveCard(userId: string, cardId: string): Promise<Flashcard | null> {
   return prisma.flashcard.findFirst({ where: { AND: [liveCards(userId), { id: cardId }] } });
