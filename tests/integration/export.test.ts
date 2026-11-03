@@ -185,6 +185,8 @@ test("a feed's address and a password hash are nowhere in the file, even as a su
 
   for (const secret of Object.values(SENTINEL)) assert.ok(!json.includes(secret), `${secret} leaked`);
   assert.ok(!json.includes("alice") && !json.includes("8443") && !json.includes("basic.ics"));
+  // Not even the word: a file that says it never holds the hash should not contain the name of the column either.
+  assert.ok(!json.includes("passwordHash") && !json.includes("scrypt"), "the column name or a hash format is in the file");
 
   const [feed] = rowsOf(payload, "calendarSubscriptions");
   assert.equal(feed.host, "cal.example.com");

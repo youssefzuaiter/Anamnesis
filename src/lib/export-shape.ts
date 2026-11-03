@@ -53,7 +53,7 @@ export const NOT_INCLUDED: Readonly<Record<string, string>> = {
     "The search index is derived from your text and is rebuilt on request (Settings, Rebuild search index).",
   deletedItems:
     "Items in the trash, and everything that belongs to them, are not exported. Restore them from the trash first if you want them in a file.",
-  passwordHash: "Your sign-in password hash is never exported.",
+  signInPassword: "Your sign-in password is never exported, and neither is the scrambled form it is stored in.",
 };
 
 /** One page of a table: `take` rows after the row whose id is `after` (null for the first page). */

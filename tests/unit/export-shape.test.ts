@@ -57,8 +57,8 @@ test("the file says what it leaves out, with a reason for each", () => {
     "attachmentFiles",
     "calendarFeedUrls",
     "deletedItems",
-    "passwordHash",
     "searchIndex",
+    "signInPassword",
   ]);
   for (const [key, reason] of Object.entries(NOT_INCLUDED)) assert.ok(reason.trim().length > 20, key);
 });

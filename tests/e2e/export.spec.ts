@@ -38,7 +38,7 @@ test("signed in, the download is a JSON attachment kept out of caches, and it ho
   const file = await response.json(); // a streamed body must still be one valid JSON document
   expect(file.formatVersion).toBe(2);
   expect(Object.keys(file.notIncluded)).toEqual(
-    expect.arrayContaining(["attachmentFiles", "calendarFeedUrls", "deletedItems", "passwordHash", "searchIndex"]),
+    expect.arrayContaining(["attachmentFiles", "calendarFeedUrls", "deletedItems", "searchIndex", "signInPassword"]),
   );
   expect(file.notes.some((note: { title: string }) => note.title === title)).toBe(true);
   expect(file.user.email).toMatch(/^e2e-/);
