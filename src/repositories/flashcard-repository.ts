@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { afterCreated, type ExportPage } from "@/lib/export-shape";
 import type {
   FlashcardModel as Flashcard,
   FlashcardWhereInput,
@@ -92,6 +93,18 @@ export async function listForNotes(
     where: { AND: [liveCards(userId), { noteId: { in: noteIds } }] },
     orderBy: { dueAt: "asc" },
     take: limit,
+  });
+}
+
+/**
+ * A page of the caller's live cards for the data export (the same rule as the queue), oldest first.
+ * Ties are broken by id: a card text's siblings are created in one statement and share a createdAt.
+ */
+export async function listLiveForExport(userId: string, page: ExportPage): Promise<Flashcard[]> {
+  return prisma.flashcard.findMany({
+    where: { AND: [liveCards(userId), afterCreated(page.after)] },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    take: page.take,
   });
 }
 

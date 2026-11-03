@@ -215,7 +215,7 @@ Merging to `main` publishes a container image. Moving it to production needs you
 ## Privacy and data
 
 - All records are stored in your local PostgreSQL database. Attachments are stored as files in `data/attachments/`, not in the database.
-- `/api/export` downloads your data as JSON. The export is not complete yet (see [Limitations](#limitations)).
+- `/api/export` downloads your data as one JSON file, written a page at a time so a large account does not have to fit in memory. The file says what it leaves out (see [Limitations](#limitations)).
 - Passwords are hashed with scrypt. Login is throttled after five failed attempts per email in a 15-minute window.
 - Calendar feeds are fetched by the server. Requests to private and loopback addresses are refused.
 - Voice input uses the browser's built-in speech recognition. In Chrome, that recognition service runs on Google's servers, so the audio you speak can leave your machine.
@@ -229,7 +229,7 @@ Merging to `main` publishes a container image. Moving it to production needs you
 - **The local chat model is the weakest part.** A 3B model handles multi-item requests and some phrasings inconsistently. Its behaviour is measured rather than guaranteed. The security boundary does not depend on it.
 - **Quiz marking is a suggestion.** The small local model that marks answers rarely gives partial credit and can be talked into a wrong verdict by an answer that tells it to, which is why it only suggests and you choose the grade. Questions it writes from your notes are filtered for wording that is not in the note, but not for whether the answer fits the question, so some will not.
 - **Reminders appear only while the dashboard is open.** There are no push notifications and no offline mode. The app can be installed as a web app, but the server must be running.
-- **Export is incomplete.** It leaves out courses and assessments, flashcards, note versions, assistant conversations, attachments and calendar subscriptions. There is no import yet.
+- **The JSON export is a copy of your data, not a full backup.** It carries your notes and their versions, tasks, projects, goals, courses and grades, flashcards, events, links, assistant conversations, attachment records and calendar feed names. It leaves out the attachment files (they are in the backup's `attachments.tar`), calendar feed addresses (they are secrets; only the host is kept), the search index, your password hash, and anything in the trash. It is not a snapshot: items changed while it runs can be missing or half-updated. There is no import yet; restoring is done from a backup (see `ops/README.md`).
 - **Calendar import is one-way.** Feeds are read-only. Repeating series are capped at 52 occurrences and cannot be edited as a series.
 - **Semantic search needs Ollama.** Without it, the notes page falls back to keyword matching, the `/search` page shows a message, and the assistant reports an error.
 

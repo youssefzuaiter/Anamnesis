@@ -48,7 +48,7 @@ services. Nothing may need a paid API key.
 
 ## C. Data you own
 
-- [ ] **11. Complete the JSON export** (M). It still omits courses, assessments, flashcards,
+- [x] **11. Complete the JSON export** (M). It still omits courses, assessments, flashcards,
   note versions, conversations and messages, attachments and calendar subscriptions
   (see "Data export" in `CLAUDE.md`). A private calendar feed URL is a secret: decide what
   to do with it before exporting it.
