@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
+import { AppError } from "@/lib/api-response";
 import { EXPORTED_MODELS, EXPORT_FORMAT_VERSION, NOT_EXPORTED, NOT_INCLUDED, OMITTED_COLUMNS } from "@/lib/export-shape";
 import { buildFullExport, streamFullExport } from "@/services/export-service";
 
@@ -321,4 +322,30 @@ test("stopping a stream early leaves nothing running", async () => {
   const first = await iterator.next();
   assert.equal(first.done, false);
   assert.deepEqual(await iterator.return?.(undefined), { value: undefined, done: true });
+});
+
+// --- Found in the security review ------------------------------------------------------------------
+
+test("asked for nobody, the export is refused before any table is read", async () => {
+  const user = await newUser();
+  await populate(user.id, "nobody");
+  // In a Prisma `where`, `undefined` means "no filter": an export for a missing id would read every
+  // account's rows. It is unreachable today (the session always gives a string), and costs nothing to refuse.
+  for (const nobody of [undefined, null, "", 42] as unknown as string[]) {
+    await assert.rejects(buildFullExport(nobody), (error) => error instanceof AppError && error.code === "VALIDATION_ERROR", `build for ${String(nobody)}`);
+    await assert.rejects(streamed(nobody), (error) => error instanceof AppError && error.code === "VALIDATION_ERROR", `stream for ${String(nobody)}`);
+  }
+  await assert.rejects(streamed("an-id-that-is-nobody"), "an unknown id finds no account");
+});
+
+test("a stream cut off at any chunk boundary is never valid JSON, so a partial file cannot pass for a whole one", async () => {
+  const user = await newUser();
+  await populate(user.id, "cut");
+  const chunks: string[] = [];
+  for await (const chunk of streamFullExport(user.id, { pageSize: 1 })) chunks.push(chunk);
+  assert.ok(chunks.length > 20, "enough chunks to cut");
+  JSON.parse(chunks.join("")); // whole: valid
+  for (let cut = 1; cut < chunks.length; cut++) {
+    assert.throws(() => JSON.parse(chunks.slice(0, cut).join("")), SyntaxError, `cut after ${cut} of ${chunks.length} chunks`);
+  }
 });

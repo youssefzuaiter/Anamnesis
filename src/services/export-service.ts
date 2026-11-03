@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { AppError } from "@/lib/api-response";
 import { EXPORT_FORMAT_VERSION, NOT_INCLUDED, feedHost, pageArgs, type ExportPage } from "@/lib/export-shape";
 import * as flashcardRepository from "@/repositories/flashcard-repository";
 
@@ -96,6 +97,15 @@ const tables = {
   }),
 };
 
+/**
+ * An export reads whole tables, and in a Prisma `where` an `undefined` means "no filter": asked for a
+ * missing id, every query would return every account's rows. The session always gives a string, so
+ * this is unreachable today; it is checked before the first query so it stays that way.
+ */
+function assertUserId(userId: unknown): asserts userId is string {
+  if (typeof userId !== "string" || userId === "") throw new AppError("VALIDATION_ERROR", "An export needs an account.");
+}
+
 const readUser = (userId: string) =>
   prisma.user.findUniqueOrThrow({
     where: { id: userId },
@@ -118,6 +128,7 @@ async function readAll<T extends { id: string }>(source: Table<T>, userId: strin
 
 /** The file held in memory. */
 export async function buildFullExport(userId: string) {
+  assertUserId(userId);
   const [
     user,
     profile,
@@ -192,6 +203,7 @@ export async function* streamFullExport(
   userId: string,
   options: { pageSize?: number } = {},
 ): AsyncGenerator<string> {
+  assertUserId(userId);
   const user = await readUser(userId);
   const profile = await readProfile(userId);
   yield [
