@@ -115,15 +115,21 @@ const readUser = (userId: string) =>
 // The whole profile: an explicit field list here once dropped the GPA target and scale.
 const readProfile = (userId: string) => prisma.userProfile.findUnique({ where: { userId } });
 
-async function readAll<T extends { id: string }>(source: Table<T>, userId: string): Promise<T[]> {
-  const rows: T[] = [];
+/** The pages of a table, one after another: the one place that knows when the last page has been read. */
+async function* pagesOf<T extends { id: string }>(source: Table<T>, userId: string, size: number): AsyncGenerator<T[]> {
   let after: string | null = null;
   for (;;) {
-    const batch: T[] = await source.read(userId, { take: source.size, after });
-    rows.push(...batch);
-    if (batch.length < source.size) return rows;
+    const batch: T[] = await source.read(userId, { take: size, after });
+    if (batch.length > 0) yield batch;
+    if (batch.length < size) return;
     after = batch[batch.length - 1].id;
   }
+}
+
+async function readAll<T extends { id: string }>(source: Table<T>, userId: string): Promise<T[]> {
+  const rows: T[] = [];
+  for await (const batch of pagesOf(source, userId, source.size)) rows.push(...batch);
+  return rows;
 }
 
 /** The file held in memory. */
@@ -220,19 +226,13 @@ export async function* streamFullExport(
     const size = override ?? source.size;
     yield `,\n${JSON.stringify(key)}: [`;
     let first = true;
-    let after: string | null = null;
-    for (;;) {
-      const batch: { id: string }[] = await source.read(userId, { take: size, after });
-      if (batch.length > 0) {
-        let text = "";
-        for (const row of batch) {
-          text += `${first ? "\n" : ",\n"}${JSON.stringify(row)}`;
-          first = false;
-        }
-        yield text;
+    for await (const batch of pagesOf(source, userId, size)) {
+      let text = "";
+      for (const row of batch) {
+        text += `${first ? "\n" : ",\n"}${JSON.stringify(row)}`;
+        first = false;
       }
-      if (batch.length < size) break;
-      after = batch[batch.length - 1].id;
+      yield text;
     }
     yield first ? "]" : "\n]";
   }

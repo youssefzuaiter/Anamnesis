@@ -209,12 +209,16 @@ test("nothing that belongs to a deleted parent is exported, so no child points a
   const goneAssessment = await prisma.assessment.create({ data: { userId: user.id, courseId: goneCourse.id, title: "Gone", weight: 10 } });
   const goneChat = await prisma.conversation.create({ data: { userId: user.id, title: "Gone", deletedAt: new Date() } });
   const goneMessage = await prisma.message.create({ data: { userId: user.id, conversationId: goneChat.id, role: "user", content: "gone" } });
+  // The older rule, for the entities that were always soft-deleted.
+  const trashedProject = await prisma.project.create({ data: { userId: user.id, title: "Gone", category: "Personal", deletedAt: new Date() } });
+  const trashedGoal = await prisma.goal.create({ data: { userId: user.id, title: "Gone", category: "Personal", deletedAt: new Date() } });
+  const trashedTask = await prisma.task.create({ data: { userId: user.id, title: "Gone", tags: [], deletedAt: new Date() } });
   // A card with no note at all stays: it belongs to nobody who can be deleted.
   const loose = await prisma.flashcard.create({ data: { userId: user.id, question: "loose?", answer: "loose" } });
 
   const payload = (await buildFullExport(user.id)) as unknown as Payload;
   const json = JSON.stringify(payload);
-  for (const id of [trashed.id, trashedVersion.id, trashedCard.id, trashedFile.id, goneCourse.id, goneAssessment.id, goneChat.id, goneMessage.id]) {
+  for (const id of [trashed.id, trashedVersion.id, trashedCard.id, trashedFile.id, goneCourse.id, goneAssessment.id, goneChat.id, goneMessage.id, trashedProject.id, trashedGoal.id, trashedTask.id]) {
     assert.ok(!json.includes(id), `${id} is in the file though its parent is deleted`);
   }
   assert.ok(rowsOf(payload, "flashcards").some((card) => card.id === loose.id), "a card with no note stays");
@@ -347,5 +351,24 @@ test("a stream cut off at any chunk boundary is never valid JSON, so a partial f
   JSON.parse(chunks.join("")); // whole: valid
   for (let cut = 1; cut < chunks.length; cut++) {
     assert.throws(() => JSON.parse(chunks.slice(0, cut).join("")), SyntaxError, `cut after ${cut} of ${chunks.length} chunks`);
+  }
+});
+
+test("more rows than a default page arrive once each in both forms, even when they share a timestamp", async () => {
+  const user = await newUser();
+  // One statement each, so every row of a table has the same createdAt: only the id can order them.
+  const notes = Array.from({ length: 120 }, (_, i) => ({ id: randomUUID(), userId: user.id, title: `Bulk ${i}`, content: `bulk ${i}`, tags: [] as string[] }));
+  await prisma.note.createMany({ data: notes }); // 120 is more than two pages of 50
+  await prisma.noteVersion.createMany({ data: notes.map((note) => ({ userId: user.id, noteId: note.id, title: "v", content: "old" })) });
+  await prisma.task.createMany({ data: Array.from({ length: 1100 }, (_, i) => ({ userId: user.id, title: `Bulk task ${i}`, tags: [] as string[] })) }); // more than a page of 1,000
+
+  const built = JSON.parse(JSON.stringify(await buildFullExport(user.id))) as Payload;
+  const streamedFile = JSON.parse(await streamed(user.id)) as Payload;
+  for (const [key, count] of [["notes", 120], ["noteVersions", 120], ["tasks", 1100]] as const) {
+    for (const [form, file] of [["built", built], ["streamed", streamedFile]] as const) {
+      const ids = rowsOf(file, key).map((row) => row.id);
+      assert.equal(ids.length, count, `${form} ${key}`);
+      assert.equal(new Set(ids).size, count, `${form} ${key}: a row twice`);
+    }
   }
 });
