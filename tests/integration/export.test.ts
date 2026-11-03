@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
 import { EXPORTED_MODELS, EXPORT_FORMAT_VERSION, NOT_EXPORTED, NOT_INCLUDED, OMITTED_COLUMNS } from "@/lib/export-shape";
-import { buildFullExport } from "@/services/export-service";
+import { buildFullExport, streamFullExport } from "@/services/export-service";
 
 const created: string[] = [];
 async function newUser(passwordHash = "x"): Promise<{ id: string; email: string }> {
@@ -254,4 +254,71 @@ test("non-ASCII text, a 100,000-character note, a JSON column and a date survive
   assert.deepEqual(rowsOf(back, "messages")[0].citations, citations);
   assert.equal(rowsOf(back, "messages")[0].content, body);
   assert.equal(rowsOf(back, "calendarSubscriptions")[0].lastSyncedAt, synced.toISOString());
+});
+
+// --- Streaming: the same file, read a page at a time ------------------------------------------------
+
+async function streamed(userId: string, pageSize?: number): Promise<string> {
+  let text = "";
+  for await (const chunk of streamFullExport(userId, { pageSize })) text += chunk;
+  return text;
+}
+
+test("the streamed file is valid JSON and the same data as the in-memory one, at any page size", async () => {
+  const user = await newUser();
+  await populate(user.id, "paged");
+  // More rows than one page in the tables that grow. Cards go in one statement, so they share a
+  // createdAt to the microsecond: the page boundary must still fall between them without a gap or a repeat.
+  for (let i = 0; i < 6; i++) {
+    const note = await prisma.note.create({ data: { userId: user.id, title: `Extra ${i}`, content: `extra ${i}`, tags: [] } });
+    await prisma.noteVersion.create({ data: { userId: user.id, noteId: note.id, title: `v${i}`, content: `old ${i}` } });
+    await prisma.task.create({ data: { userId: user.id, title: `Extra task ${i}`, tags: [] } });
+  }
+  await prisma.flashcard.createMany({ data: Array.from({ length: 7 }, (_, i) => ({ userId: user.id, question: `Same time ${i}?`, answer: "a" })) });
+
+  const withoutTime = (file: Payload) => {
+    const copy = { ...file };
+    delete copy.exportedAt;
+    return copy;
+  };
+  const expected = withoutTime(JSON.parse(JSON.stringify(await buildFullExport(user.id))) as Payload);
+  for (const pageSize of [1, 2, 3, 1000, undefined]) {
+    const file = JSON.parse(await streamed(user.id, pageSize)) as Payload; // throws if it is not valid JSON
+    assert.deepEqual(withoutTime(file), expected, `page size ${pageSize}`);
+  }
+
+  const file = JSON.parse(await streamed(user.id, 2)) as Payload;
+  for (const key of Object.values(EXPORTED_MODELS)) {
+    const rows = rowsOf(file, key);
+    assert.equal(new Set(rows.map((row) => row.id)).size, rows.length, `${key}: a row appears twice`);
+  }
+  assert.ok(rowsOf(file, "notes").length >= 7 && rowsOf(file, "flashcards").length >= 8, "more rows than a page held");
+});
+
+test("an empty account streams as valid JSON too, and the file starts with its version", async () => {
+  const user = await newUser();
+  const text = await streamed(user.id);
+  const file = JSON.parse(text) as Payload;
+  assert.equal(file.formatVersion, EXPORT_FORMAT_VERSION);
+  assert.ok(text.startsWith('{\n"formatVersion": 2,'));
+  for (const [model, key] of Object.entries(EXPORTED_MODELS)) {
+    assert.deepEqual(file[key], model === "UserProfile" ? null : [], key);
+  }
+});
+
+test("the streamed file holds the same secrets-free guarantees as the in-memory one", async () => {
+  const user = await newUser(SENTINEL.user);
+  await populate(user.id, "stream-secret");
+  const text = await streamed(user.id, 1);
+  for (const secret of Object.values(SENTINEL)) assert.ok(!text.includes(secret), `${secret} leaked into the stream`);
+  assert.equal(rowsOf(JSON.parse(text) as Payload, "calendarSubscriptions")[0].host, "cal.example.com");
+});
+
+test("stopping a stream early leaves nothing running", async () => {
+  const user = await newUser();
+  await populate(user.id, "cancel");
+  const iterator = streamFullExport(user.id, { pageSize: 1 })[Symbol.asyncIterator]();
+  const first = await iterator.next();
+  assert.equal(first.done, false);
+  assert.deepEqual(await iterator.return?.(undefined), { value: undefined, done: true });
 });

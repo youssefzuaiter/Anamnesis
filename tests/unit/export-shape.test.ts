@@ -7,6 +7,7 @@ import {
   NOT_INCLUDED,
   OMITTED_COLUMNS,
   feedHost,
+  pageArgs,
 } from "@/lib/export-shape";
 
 test("the format version is 2: the first export had none", () => {
@@ -78,4 +79,9 @@ test("every deliberate omission of a column has a stated reason", () => {
   assert.deepEqual(Object.keys(OMITTED_COLUMNS).sort(), ["CalendarSubscription", "User"]);
   assert.ok(OMITTED_COLUMNS.User.passwordHash.trim().length > 20);
   assert.ok(OMITTED_COLUMNS.CalendarSubscription.url.trim().length > 20);
+});
+
+test("a page is the first rows, or the rows after the one the last page ended on", () => {
+  assert.deepEqual(pageArgs({ take: 50, after: null }), { take: 50 });
+  assert.deepEqual(pageArgs({ take: 50, after: "abc" }), { take: 50, cursor: { id: "abc" }, skip: 1 });
 });

@@ -56,6 +56,14 @@ export const NOT_INCLUDED: Readonly<Record<string, string>> = {
   passwordHash: "Your sign-in password hash is never exported.",
 };
 
+/** One page of a table: `take` rows after the row whose id is `after` (null for the first page). */
+export type ExportPage = { take: number; after: string | null };
+
+/** The Prisma arguments for a page: keyset paging, so a row that is added or removed mid-export moves nothing. */
+export function pageArgs(page: ExportPage): { take: number; cursor?: { id: string }; skip?: number } {
+  return page.after ? { take: page.take, cursor: { id: page.after }, skip: 1 } : { take: page.take };
+}
+
 /**
  * The host of a feed address and nothing else: no scheme, no `user:password@`, no port, no path,
  * query or fragment, which is where a feed keeps its secret. Null when there is no readable host.

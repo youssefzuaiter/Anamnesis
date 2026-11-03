@@ -37,9 +37,17 @@ export default async function SettingsPage() {
         Your data
       </h2>
       <div className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-4 text-sm">
-        <a href="/api/export" className="text-accent hover:underline">
-          Download everything as JSON
-        </a>
+        <div>
+          <a href="/api/export" className="text-accent hover:underline">
+            Download my data as JSON
+          </a>
+          <p className="mt-1 text-xs text-text-muted">
+            Your notes and their versions, tasks, projects, goals, courses and grades, flashcards, events, links,
+            assistant conversations and calendar feeds. Attachment files and calendar feed addresses are not in the
+            file (the addresses are secrets, and the files are in the backup); deleted items and the search index are
+            not either.
+          </p>
+        </div>
         <Link href="/trash" className="text-accent hover:underline">
           Restore deleted notes, tasks and projects
         </Link>
