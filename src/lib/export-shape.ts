@@ -56,12 +56,26 @@ export const NOT_INCLUDED: Readonly<Record<string, string>> = {
   signInPassword: "Your sign-in password is never exported, and neither is the scrambled form it is stored in.",
 };
 
-/** One page of a table: `take` rows after the row whose id is `after` (null for the first page). */
-export type ExportPage = { take: number; after: string | null };
+/**
+ * One page of a table: `take` rows after `after`, the ordering value and id of the last row of the page
+ * before (null for the first page).
+ */
+export type ExportPage = { take: number; after: { at: Date; id: string } | null };
 
-/** The Prisma arguments for a page: keyset paging, so a row that is added or removed mid-export moves nothing. */
-export function pageArgs(page: ExportPage): { take: number; cursor?: { id: string }; skip?: number } {
-  return page.after ? { take: page.take, cursor: { id: page.after }, skip: 1 } : { take: page.take };
+/**
+ * The rows after `after` in (ordering column, id) order, as a comparison of values. This is deliberately
+ * not a Prisma `cursor`, which is the last row itself looked up again for each page: if that row is
+ * deleted while the download runs, the next page is empty, and an empty page reads as the end of the
+ * table. A value comparison needs no row to still exist. Prisma's `DateTime` is `timestamp(3)`, so a
+ * JavaScript `Date` compares exactly.
+ */
+export function afterCreated(after: ExportPage["after"]) {
+  return after ? { OR: [{ createdAt: { gt: after.at } }, { createdAt: after.at, id: { gt: after.id } }] } : {};
+}
+
+/** The same for the one table ordered by `recordedAt`. */
+export function afterRecorded(after: ExportPage["after"]) {
+  return after ? { OR: [{ recordedAt: { gt: after.at } }, { recordedAt: after.at, id: { gt: after.id } }] } : {};
 }
 
 /**

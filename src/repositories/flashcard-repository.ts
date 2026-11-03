@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { pageArgs, type ExportPage } from "@/lib/export-shape";
+import { afterCreated, type ExportPage } from "@/lib/export-shape";
 import type {
   FlashcardModel as Flashcard,
   FlashcardWhereInput,
@@ -102,9 +102,9 @@ export async function listForNotes(
  */
 export async function listLiveForExport(userId: string, page: ExportPage): Promise<Flashcard[]> {
   return prisma.flashcard.findMany({
-    where: liveCards(userId),
+    where: { AND: [liveCards(userId), afterCreated(page.after)] },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    ...pageArgs(page),
+    take: page.take,
   });
 }
 

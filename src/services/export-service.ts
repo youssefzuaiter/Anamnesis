@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { AppError } from "@/lib/api-response";
-import { EXPORT_FORMAT_VERSION, NOT_INCLUDED, feedHost, pageArgs, type ExportPage } from "@/lib/export-shape";
+import { EXPORT_FORMAT_VERSION, NOT_INCLUDED, afterCreated, afterRecorded, feedHost, type ExportPage } from "@/lib/export-shape";
 import * as flashcardRepository from "@/repositories/flashcard-repository";
 
 /**
@@ -32,67 +32,85 @@ const HEAVY_PAGE = 50;
 const LIGHT_PAGE = 1000;
 
 /** Oldest first, ties by id, so the order is stable and a page can resume after any row. */
-const oldestFirst = () => ({ orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }] });
+const oldestFirst = (page: ExportPage) => ({
+  orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+  take: page.take,
+});
 
+/**
+ * A table read a page at a time; `at` is the ordering value a page resumes from. Method syntax, so
+ * that a `Table<Note>` can stand where the loop over every table wants a `Table<{ id: string }>`.
+ */
 type Table<T extends { id: string }> = {
   size: number;
-  read: (userId: string, page: ExportPage) => Promise<T[]>;
+  at(row: T): Date;
+  read(userId: string, page: ExportPage): Promise<T[]>;
 };
-const table = <T extends { id: string }>(size: number, read: Table<T>["read"]): Table<T> => ({ size, read });
+const tableBy = <T extends { id: string }>(size: number, read: Table<T>["read"], at: Table<T>["at"]): Table<T> => ({
+  size,
+  at,
+  read,
+});
+const table = <T extends { id: string; createdAt: Date }>(size: number, read: Table<T>["read"]): Table<T> =>
+  tableBy(size, read, (row) => row.createdAt);
 
 const tables = {
   projects: table(LIGHT_PAGE, (userId, page) =>
-    prisma.project.findMany({ where: { userId, deletedAt: null }, ...oldestFirst(), ...pageArgs(page) }),
+    prisma.project.findMany({ where: { AND: [{ userId, deletedAt: null }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
   // Exported alongside projects and tasks, which carry a `goalId`: without the goal rows those ids
   // would point at nothing in the file.
   goals: table(LIGHT_PAGE, (userId, page) =>
-    prisma.goal.findMany({ where: { userId, deletedAt: null }, ...oldestFirst(), ...pageArgs(page) }),
+    prisma.goal.findMany({ where: { AND: [{ userId, deletedAt: null }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
   notes: table(HEAVY_PAGE, (userId, page) =>
-    prisma.note.findMany({ where: { userId, deletedAt: null }, ...oldestFirst(), ...pageArgs(page) }),
+    prisma.note.findMany({ where: { AND: [{ userId, deletedAt: null }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
   tasks: table(LIGHT_PAGE, (userId, page) =>
-    prisma.task.findMany({ where: { userId, deletedAt: null }, ...oldestFirst(), ...pageArgs(page) }),
+    prisma.task.findMany({ where: { AND: [{ userId, deletedAt: null }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
   events: table(LIGHT_PAGE, (userId, page) =>
-    prisma.event.findMany({ where: { userId }, ...oldestFirst(), ...pageArgs(page) }),
+    prisma.event.findMany({ where: { AND: [{ userId }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
   links: table(LIGHT_PAGE, (userId, page) =>
-    prisma.entityLink.findMany({ where: { userId }, ...oldestFirst(), ...pageArgs(page) }),
+    prisma.entityLink.findMany({ where: { AND: [{ userId }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
-  focusTelemetry: table(LIGHT_PAGE, (userId, page) =>
-    prisma.focusTelemetry.findMany({
-      where: { userId },
-      orderBy: [{ recordedAt: "asc" }, { id: "asc" }],
-      ...pageArgs(page),
-    }),
+  // The one table that is ordered by another column: it has no createdAt.
+  focusTelemetry: tableBy(
+    LIGHT_PAGE,
+    (userId, page) =>
+      prisma.focusTelemetry.findMany({
+        where: { AND: [{ userId }, afterRecorded(page.after)] },
+        orderBy: [{ recordedAt: "asc" }, { id: "asc" }],
+        take: page.take,
+      }),
+    (row) => row.recordedAt,
   ),
   auditEvents: table(LIGHT_PAGE, (userId, page) =>
-    prisma.auditEvent.findMany({ where: { userId }, ...oldestFirst(), ...pageArgs(page) }),
+    prisma.auditEvent.findMany({ where: { AND: [{ userId }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
   courses: table(LIGHT_PAGE, (userId, page) =>
-    prisma.course.findMany({ where: { userId, deletedAt: null }, ...oldestFirst(), ...pageArgs(page) }),
+    prisma.course.findMany({ where: { AND: [{ userId, deletedAt: null }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
   assessments: table(LIGHT_PAGE, (userId, page) =>
-    prisma.assessment.findMany({ where: { userId, course: { deletedAt: null } }, ...oldestFirst(), ...pageArgs(page) }),
+    prisma.assessment.findMany({ where: { AND: [{ userId, course: { deletedAt: null } }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
   flashcards: table(LIGHT_PAGE, (userId, page) => flashcardRepository.listLiveForExport(userId, page)),
   noteVersions: table(HEAVY_PAGE, (userId, page) =>
-    prisma.noteVersion.findMany({ where: { userId, note: { deletedAt: null } }, ...oldestFirst(), ...pageArgs(page) }),
+    prisma.noteVersion.findMany({ where: { AND: [{ userId, note: { deletedAt: null } }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
   conversations: table(LIGHT_PAGE, (userId, page) =>
-    prisma.conversation.findMany({ where: { userId, deletedAt: null }, ...oldestFirst(), ...pageArgs(page) }),
+    prisma.conversation.findMany({ where: { AND: [{ userId, deletedAt: null }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
   messages: table(HEAVY_PAGE, (userId, page) =>
-    prisma.message.findMany({ where: { userId, conversation: { deletedAt: null } }, ...oldestFirst(), ...pageArgs(page) }),
+    prisma.message.findMany({ where: { AND: [{ userId, conversation: { deletedAt: null } }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
   attachments: table(LIGHT_PAGE, (userId, page) =>
-    prisma.attachment.findMany({ where: { userId, note: { deletedAt: null } }, ...oldestFirst(), ...pageArgs(page) }),
+    prisma.attachment.findMany({ where: { AND: [{ userId, note: { deletedAt: null } }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
   // The address is a secret: it is read to take its host and dropped here, for both forms of the file.
   calendarSubscriptions: table(LIGHT_PAGE, async (userId, page) => {
-    const feeds = await prisma.calendarSubscription.findMany({ where: { userId }, ...oldestFirst(), ...pageArgs(page) });
+    const feeds = await prisma.calendarSubscription.findMany({ where: { AND: [{ userId }, afterCreated(page.after)] }, ...oldestFirst(page) });
     return feeds.map(({ url, ...feed }) => ({ ...feed, host: feedHost(url) }));
   }),
 };
@@ -117,12 +135,13 @@ const readProfile = (userId: string) => prisma.userProfile.findUnique({ where: {
 
 /** The pages of a table, one after another: the one place that knows when the last page has been read. */
 async function* pagesOf<T extends { id: string }>(source: Table<T>, userId: string, size: number): AsyncGenerator<T[]> {
-  let after: string | null = null;
+  let after: ExportPage["after"] = null;
   for (;;) {
     const batch: T[] = await source.read(userId, { take: size, after });
     if (batch.length > 0) yield batch;
     if (batch.length < size) return;
-    after = batch[batch.length - 1].id;
+    const last = batch[batch.length - 1];
+    after = { at: source.at(last), id: last.id };
   }
 }
 

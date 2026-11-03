@@ -6,8 +6,9 @@ import {
   NOT_EXPORTED,
   NOT_INCLUDED,
   OMITTED_COLUMNS,
+  afterCreated,
+  afterRecorded,
   feedHost,
-  pageArgs,
 } from "@/lib/export-shape";
 
 test("the format version is 2: the first export had none", () => {
@@ -81,7 +82,10 @@ test("every deliberate omission of a column has a stated reason", () => {
   assert.ok(OMITTED_COLUMNS.CalendarSubscription.url.trim().length > 20);
 });
 
-test("a page is the first rows, or the rows after the one the last page ended on", () => {
-  assert.deepEqual(pageArgs({ take: 50, after: null }), { take: 50 });
-  assert.deepEqual(pageArgs({ take: 50, after: "abc" }), { take: 50, cursor: { id: "abc" }, skip: 1 });
+test("a page resumes after the last row's ordering value and id, never after a row that may be gone", () => {
+  const at = new Date("2026-11-03T10:00:00.000Z");
+  assert.deepEqual(afterCreated(null), {});
+  assert.deepEqual(afterCreated({ at, id: "abc" }), { OR: [{ createdAt: { gt: at } }, { createdAt: at, id: { gt: "abc" } }] });
+  assert.deepEqual(afterRecorded(null), {});
+  assert.deepEqual(afterRecorded({ at, id: "abc" }), { OR: [{ recordedAt: { gt: at } }, { recordedAt: at, id: { gt: "abc" } }] });
 });

@@ -282,6 +282,8 @@ test("the streamed file is valid JSON and the same data as the in-memory one, at
     await prisma.task.create({ data: { userId: user.id, title: `Extra task ${i}`, tags: [] } });
   }
   await prisma.flashcard.createMany({ data: Array.from({ length: 7 }, (_, i) => ({ userId: user.id, question: `Same time ${i}?`, answer: "a" })) });
+  // The one table ordered by another column has the same hazard.
+  await prisma.focusTelemetry.createMany({ data: Array.from({ length: 7 }, (_, i) => ({ userId: user.id, sessionDuration: 60 + i, typingSpeedWpm: 40, cognitiveLoad: "low" })) });
 
   const withoutTime = (file: Payload) => {
     const copy = { ...file };
@@ -373,4 +375,47 @@ test("more rows than a default page arrive once each in both forms, even when th
       assert.equal(new Set(ids).size, count, `${form} ${key}: a row twice`);
     }
   }
+});
+
+// --- Found in the code review ------------------------------------------------------------------------
+
+/** Streams the file and, the moment the page that ends on `victimId` has been sent, deletes that row. */
+async function streamDeletingAfterItIsSent(userId: string, victimId: string, remove: () => Promise<unknown>): Promise<Payload> {
+  let text = "";
+  let removed = false;
+  for await (const chunk of streamFullExport(userId, { pageSize: 2 })) {
+    text += chunk;
+    if (!removed && chunk.includes(victimId)) {
+      removed = true;
+      await remove();
+    }
+  }
+  assert.ok(removed, "the page holding the row was sent");
+  return JSON.parse(text) as Payload;
+}
+
+// A Prisma cursor is the last row looked up again for the next page: if that row is deleted while the
+// download runs, the next page is empty, and an empty page reads as the end of the table. Saving a note in
+// another tab does exactly this to its links and its oldest versions.
+test("a row deleted between two pages does not end its table early", async () => {
+  const user = await newUser();
+  const base = Date.parse("2026-11-03T10:00:00.000Z");
+  const events: { id: string }[] = [];
+  const readings: { id: string }[] = [];
+  for (let i = 0; i < 6; i++) {
+    events.push(await prisma.event.create({
+      data: { userId: user.id, title: `E${i}`, startTime: new Date(base), endTime: new Date(base + 1000), createdAt: new Date(base + i * 1000) },
+    }));
+    readings.push(await prisma.focusTelemetry.create({
+      data: { userId: user.id, sessionDuration: 60 + i, typingSpeedWpm: 40, cognitiveLoad: "low", recordedAt: new Date(base + i * 1000) },
+    }));
+  }
+
+  // The second row is the last of page 1 (a page is two rows here), and it is the one that goes.
+  const withEvents = await streamDeletingAfterItIsSent(user.id, events[1].id, () => prisma.event.delete({ where: { id: events[1].id } }));
+  assert.deepEqual(rowsOf(withEvents, "events").map((row) => row.id), events.map((event) => event.id), "events: every row, in order");
+
+  // The same for a table ordered by another column (focus telemetry is ordered by recordedAt).
+  const withReadings = await streamDeletingAfterItIsSent(user.id, readings[1].id, () => prisma.focusTelemetry.delete({ where: { id: readings[1].id } }));
+  assert.deepEqual(rowsOf(withReadings, "focusTelemetry").map((row) => row.id), readings.map((reading) => reading.id), "focus telemetry: every row, in order");
 });

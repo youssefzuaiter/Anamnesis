@@ -2118,7 +2118,8 @@ independent subagents, so it is weaker than four separate voices. No migration, 
   not a reinterpretation.
 - **It streams** (`streamFullExport`, a `ReadableStream` in the route): `buildFullExport` (in memory, read
   by the tests and the evals) and the stream are built from one list of table readers, each read a page at
-  a time by keyset (50 rows where a row can be 100,000 characters, 1,000 elsewhere), and one generator,
+  a time by keyset on (createdAt, id), or (recordedAt, id) for focus telemetry, compared as values (50 rows
+  where a row can be 100,000 characters, 1,000 elsewhere), and one generator,
   `pagesOf`, is the only place that knows when the last page has been read. The file is valid JSON, one row
   per line. **Measured** on throwaway accounts of two shapes (57,130 rows with 20,000 note versions, and 200
   notes of 100,000 characters with 5 versions each; both about 150 MB as UTF-8), a fresh process per mode on
@@ -2168,6 +2169,25 @@ independent subagents, so it is weaker than four separate voices. No migration, 
   which is why the integration command carries `--test-timeout`. **Equivalent or by design:** an empty table
   printed as `[\n]` instead of `[]` (same JSON), and removing the stream's `cancel()` (it only stops needless
   paging after a client aborts; nothing outside can see it).
+- **The code review found a silent truncation, and it was my own claim that was wrong.** Pages first resumed
+  with a Prisma `cursor` on the last row's id, with a comment that a row added or removed mid-export "moves
+  nothing". A cursor is the row itself, looked up again for each page: **a hard-deleted cursor row makes the
+  next page empty, and an empty page reads as the end of the table**, so the file is valid JSON, the stream
+  closes normally, and the rest of that table is gone. Verified by running the reader's own query (6 events,
+  page 1 ends on event 2, event 2 deleted: page 2 has 0 rows, 4 remain); a trashed row is not affected, the
+  cursor lookup ignores `deletedAt`. It is reachable in ordinary use: events, cards, links, versions,
+  assessments and messages are hard-deleted or pruned, and saving a note in another tab re-derives its links
+  and prunes its oldest versions while a long export is paging. No test deleted a row between two pages, so
+  every mutation check and the whole integration tier had passed over it. The resume is now a comparison of
+  values (`afterCreated`, `afterRecorded`: ordering column greater, or equal and id greater), which needs no
+  row to still exist; Prisma's `DateTime` is `timestamp(3)`, so a JavaScript `Date` compares exactly. Test
+  first: "a row deleted between two pages does not end its table early" (events, and focus telemetry, which is
+  ordered by another column) failed, then passed. Seven mutants on the keyset (`>=`, no id tie-break on either
+  column, a wrong ordering value, a card read without the keyset) are all caught, five of them by a loop that
+  never ends, which is why the mutation runner now has a wall clock that kills the process tree. (A first
+  version killed by command-line pattern and took the runner with it; the file had already been restored,
+  checked.) A tie-break on `recordedAt` was first pinned only by a unit test of the helper's output, so tied
+  telemetry rows joined the paging fixture.
 - **Environment.** The Docker daemon was down again, so the first run failed on connection errors that looked
   like a RED. A first measurement script left two throwaway accounts (deleted by their prefix), and a second
   silently ran nothing because zsh does not word-split an unquoted command variable.
