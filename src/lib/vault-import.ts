@@ -126,8 +126,8 @@ function flowList(raw: string): string[] {
   return inner.split(",").map(scalar);
 }
 
-const KEY_LINE = /^([A-Za-z_][\w-]{0,63}):(?:[ \t]+(.*))?$/s;
-const BLOCK_ITEM = /^[ \t]*-[ \t]+(.*)$/s;
+const KEY_LINE = /^([A-Za-z_][\w-]{0,63}):(?:[ \t]+([\s\S]*))?$/;
+const BLOCK_ITEM = /^[ \t]*-[ \t]+([\s\S]*)$/;
 
 /** The top-level `key: value` pairs of a block of YAML lines; anything nested or multi-line is ignored. */
 function readFrontMatter(lines: string[]): Map<string, Value> {
