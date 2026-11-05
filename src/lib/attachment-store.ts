@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { AppError } from "@/lib/api-response";
+import { ATTACHMENT_TYPES } from "@/lib/attachment-types";
 
 /**
  * Attachment bytes live on disk, not in Postgres: a database is a poor blob
@@ -13,20 +14,12 @@ const ROOT = path.join(process.cwd(), "data", "attachments");
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 /**
- * What may be stored and, just as importantly, served back. Anything that the
- * browser could execute in this origin — HTML, SVG, scripts — is excluded, so
- * a stored file can never become script running as the signed-in user.
+ * What may be stored and, just as importantly, served back: the table in
+ * `lib/attachment-types.ts`, which the vault shares. Anything that the browser could execute in
+ * this origin — HTML, SVG, scripts — is excluded, so a stored file can never become script
+ * running as the signed-in user.
  */
-const ALLOWED: Record<string, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpg",
-  "image/gif": "gif",
-  "image/webp": "webp",
-  "application/pdf": "pdf",
-  "text/plain": "txt",
-  "text/markdown": "md",
-  "text/csv": "csv",
-};
+const ALLOWED = ATTACHMENT_TYPES;
 
 export function isAllowedType(mimeType: string): boolean {
   return mimeType in ALLOWED;
