@@ -366,3 +366,17 @@ export async function bulkSoftDelete(
   });
   return owned.map((note) => note.id);
 }
+
+/**
+ * What a vault needs to name every note before it writes any: id, title and when it was last
+ * changed, for the caller's live notes and nothing else (no text, so it stays small).
+ */
+export async function listVaultIdentities(
+  userId: string,
+): Promise<{ id: string; title: string; updatedAt: Date }[]> {
+  return prisma.note.findMany({
+    where: { userId, deletedAt: null },
+    select: { id: true, title: true, updatedAt: true },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+}

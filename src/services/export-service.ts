@@ -54,7 +54,7 @@ const tableBy = <T extends { id: string }>(size: number, read: Table<T>["read"],
 const table = <T extends { id: string; createdAt: Date }>(size: number, read: Table<T>["read"]): Table<T> =>
   tableBy(size, read, (row) => row.createdAt);
 
-const tables = {
+export const tables = {
   projects: table(LIGHT_PAGE, (userId, page) =>
     prisma.project.findMany({ where: { AND: [{ userId, deletedAt: null }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
@@ -120,7 +120,7 @@ const tables = {
  * missing id, every query would return every account's rows. The session always gives a string, so
  * this is unreachable today; it is checked before the first query so it stays that way.
  */
-function assertUserId(userId: unknown): asserts userId is string {
+export function assertUserId(userId: unknown): asserts userId is string {
   if (typeof userId !== "string" || userId === "") throw new AppError("VALIDATION_ERROR", "An export needs an account.");
 }
 
@@ -134,7 +134,7 @@ const readUser = (userId: string) =>
 const readProfile = (userId: string) => prisma.userProfile.findUnique({ where: { userId } });
 
 /** The pages of a table, one after another: the one place that knows when the last page has been read. */
-async function* pagesOf<T extends { id: string }>(source: Table<T>, userId: string, size: number): AsyncGenerator<T[]> {
+export async function* pagesOf<T extends { id: string }>(source: Table<T>, userId: string, size: number): AsyncGenerator<T[]> {
   let after: ExportPage["after"] = null;
   for (;;) {
     const batch: T[] = await source.read(userId, { take: size, after });
