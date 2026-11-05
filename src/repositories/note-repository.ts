@@ -380,3 +380,18 @@ export async function listVaultIdentities(
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
 }
+
+/**
+ * Title and a hash of the text of each of the caller's live notes, for an import to tell "already
+ * here" from "new". The hash is SHA-256 of the text with every line break an LF (notes saved
+ * earlier hold CR LF), computed in the database so the text itself never travels: it is what
+ * `contentHash` (lib/vault-import.ts) computes for the incoming side. All values are bound.
+ */
+export async function listImportIdentities(userId: string): Promise<{ title: string; hash: string }[]> {
+  return prisma.$queryRaw<{ title: string; hash: string }[]>`
+    SELECT "title",
+           encode(sha256(convert_to(replace(replace("content", chr(13) || chr(10), chr(10)), chr(13), chr(10)), 'UTF8')), 'hex') AS "hash"
+    FROM "Note"
+    WHERE "userId" = ${userId} AND "deletedAt" IS NULL
+  `;
+}

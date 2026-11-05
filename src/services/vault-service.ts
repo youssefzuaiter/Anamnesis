@@ -1,8 +1,11 @@
 import "server-only";
 import { AppError } from "@/lib/api-response";
-import { getAttachment } from "@/lib/attachment-store";
-import { ZipError, ZipWriter } from "@/lib/zip";
+import { MAX_ATTACHMENT_BYTES, deleteAttachment, getAttachment, putAttachment } from "@/lib/attachment-store";
+import { ZipError, ZipWriter, openZip, type ZipEntry } from "@/lib/zip";
 import { VAULT, allocateNames, attachmentParts, manifestJson, noteFile, safeStem, type NameInput } from "@/lib/vault";
+import { classifyEntry, parseNoteFile, planImport, sniffAttachment, type ParsedNote } from "@/lib/vault-import";
+import type { NoteInput } from "@/repositories/note-repository";
+import * as noteService from "@/services/note-service";
 import * as attachmentRepository from "@/repositories/attachment-repository";
 import * as courseRepository from "@/repositories/course-repository";
 import * as noteRepository from "@/repositories/note-repository";
@@ -13,7 +16,7 @@ import { assertUserId, pagesOf, tables } from "@/services/export-service";
  * A Markdown vault: one `.md` file per live note, named by its title so `[[Title]]` works in
  * Obsidian, with its attachments in `attachments/` and a manifest in `.anamnesis/`. What it holds
  * and what it leaves out is written in `lib/vault.ts` and in the manifest itself. Restoring from
- * one is the second half of this file.
+ * one is `runVaultImport`, below.
  *
  * - Every query carries `userId`; trashed notes and the attachments of trashed notes are left out.
  * - Nothing in the zip is an id or an owner.
@@ -131,4 +134,263 @@ export async function* streamVault(userId: string, options: { maxOffset?: number
     if (error instanceof ZipError && error.code === "too-large") throw new AppError("VALIDATION_ERROR", TOO_LARGE);
     throw error;
   }
+}
+
+// --- Restoring ----------------------------------------------------------------------------------
+//
+// The zip is hostile data (a file the person picked from anywhere). Nothing in it is an id, an
+// owner or a path that is used: notes are written through `noteService.createNote` as the caller,
+// files through `putAttachment` under a generated key, the course and project are found by name
+// among the caller's own, and everything that is "already here" is judged from the caller's own
+// notes. The preview and the apply are one function, so the preview is what apply does.
+
+const REPORT_LIST_CAP = 100;
+
+export type VaultImportReport = {
+  apply: boolean;
+  notes: {
+    /** Notes read from the zip. */
+    found: number;
+    /** Notes this run would create (a preview) or tried to (an apply). */
+    create: number;
+    created: number;
+    /** Already in the account: same title and same text. */
+    present: number;
+    /** Created under another title because the account already has a different note by that title. */
+    renamed: { from: string; to: string }[];
+    /** Beyond this run's limit: run the import again. */
+    deferred: number;
+    failed: number;
+    withoutCourse: number;
+    withoutProject: number;
+  };
+  attachments: {
+    /** Files under `attachments/`. */
+    found: number;
+    /** Stored (or, in a preview, would be). */
+    stored: number;
+    rejected: { name: string; reason: string }[];
+    rejectedTotal: number;
+    /** Files no note in the zip lists. */
+    unreferenced: number;
+  };
+  /** The first 100; `skippedTotal` is all of them. */
+  skipped: { path: string; reason: string }[];
+  skippedTotal: number;
+  /** Files that are not notes or attachments (folders are not counted). */
+  ignored: number;
+  /** Notes that had properties this app has no place for. */
+  droppedProperties: number;
+};
+
+/** A name from the zip as text for a report: no control characters, at most 200 characters. */
+const label = (name: string) => name.replace(/\p{Cc}/gu, "?").slice(0, 200);
+
+const zipRefusal = (error: unknown): unknown =>
+  error instanceof ZipError ? new AppError("VALIDATION_ERROR", `${error.message} Choose a vault zip made by Anamnesis or by Obsidian.`) : error;
+
+/** Id by lower-cased name; a name used twice maps to null, so it matches nothing rather than the wrong one. */
+function uniqueIds(items: { id: string; key: string }[]): Map<string, string | null> {
+  const map = new Map<string, string | null>();
+  for (const { id, key } of items) {
+    const name = key.trim().toLowerCase();
+    if (name !== "") map.set(name, map.has(name) ? null : id);
+  }
+  return map;
+}
+
+const baseOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+
+export async function runVaultImport(
+  userId: string,
+  bytes: Uint8Array,
+  options: { apply: boolean; limit?: number; deps?: { createNote?: (userId: string, input: NoteInput) => Promise<{ id: string }> } },
+): Promise<VaultImportReport> {
+  assertUserId(userId);
+  const createNote = options.deps?.createNote ?? noteService.createNote;
+
+  let zip: ReturnType<typeof openZip>;
+  try {
+    zip = openZip(bytes);
+  } catch (error) {
+    throw zipRefusal(error);
+  }
+
+  const report: VaultImportReport = {
+    apply: options.apply,
+    notes: { found: 0, create: 0, created: 0, present: 0, renamed: [], deferred: 0, failed: 0, withoutCourse: 0, withoutProject: 0 },
+    attachments: { found: 0, stored: 0, rejected: [], rejectedTotal: 0, unreferenced: 0 },
+    skipped: [],
+    skippedTotal: 0,
+    ignored: 0,
+    droppedProperties: 0,
+  };
+  const skip = (path: string, reason: string) => {
+    report.skippedTotal += 1;
+    if (report.skipped.length < REPORT_LIST_CAP) report.skipped.push({ path: label(path), reason });
+  };
+  const reject = (name: string, reason: string) => {
+    report.attachments.rejectedTotal += 1;
+    if (report.attachments.rejected.length < REPORT_LIST_CAP) report.attachments.rejected.push({ name: label(name), reason });
+  };
+
+  // What each entry is. Names are judged and counted here; none is ever used to reach a file.
+  const seen = new Set<string>();
+  const noteEntries: ZipEntry[] = [];
+  const pool = new Map<string, ZipEntry>();
+  const poolLower = new Map<string, ZipEntry>();
+  const poolEntries: ZipEntry[] = [];
+  for (const entry of zip.entries) {
+    const kind = classifyEntry(entry.name);
+    if (kind.kind === "unsafe") {
+      skip(entry.name, "Its path is not one a vault uses.");
+      continue;
+    }
+    if (entry.directory) continue;
+    if (kind.kind === "ignored") {
+      report.ignored += 1;
+      continue;
+    }
+    if (seen.has(entry.name)) {
+      skip(entry.name, "Its name is used twice in the zip; the first one is used.");
+      continue;
+    }
+    seen.add(entry.name);
+    if (entry.symlink) {
+      skip(entry.name, "It is a link, not a file.");
+      continue;
+    }
+    if (kind.kind === "attachment") {
+      poolEntries.push(entry);
+      const base = baseOf(entry.name);
+      if (!pool.has(base)) pool.set(base, entry);
+      if (!poolLower.has(base.toLowerCase())) poolLower.set(base.toLowerCase(), entry);
+    } else if (entry.unsupported !== null) {
+      skip(entry.name, entry.unsupported);
+    } else if (entry.size > VAULT.maxMdBytes) {
+      skip(entry.name, `It is too large for a note (over ${VAULT.maxMdBytes / 1024} KB).`);
+    } else {
+      noteEntries.push(entry);
+    }
+  }
+  report.attachments.found = poolEntries.length;
+
+  const notes: ParsedNote[] = [];
+  for (const entry of noteEntries) {
+    let text: string;
+    try {
+      text = (await zip.read(entry)).toString("utf8");
+    } catch (error) {
+      if (error instanceof ZipError) {
+        skip(entry.name, "It could not be read from the zip.");
+        continue;
+      }
+      throw error;
+    }
+    const parsed = parseNoteFile(entry.name, text);
+    if ("skip" in parsed) skip(entry.name, parsed.skip);
+    else notes.push(parsed);
+  }
+  report.notes.found = notes.length;
+  report.droppedProperties = notes.filter((note) => note.droppedProperties.length > 0).length;
+
+  const [existing, courses, projects] = await Promise.all([
+    noteRepository.listImportIdentities(userId),
+    courseRepository.listCourseOptions(userId),
+    projectRepository.listProjectOptions(userId),
+  ]);
+  const courseIds = uniqueIds(courses.map((course) => ({ id: course.id, key: course.code })));
+  const projectIds = uniqueIds(projects.map((project) => ({ id: project.id, key: project.title })));
+
+  const plan = planImport(existing, notes, options.limit ?? VAULT.maxImportNotes);
+  report.notes.create = plan.create.length;
+  report.notes.present = plan.present.length;
+  report.notes.deferred = plan.deferred.length;
+  report.notes.renamed = plan.create.filter((note) => note.renamed).map((note) => ({ from: label(note.title), to: label(note.finalTitle) }));
+
+  const lookup = (name: string) => pool.get(name) ?? poolLower.get(name.toLowerCase());
+  const referenced = new Set<ZipEntry>();
+  for (const note of notes) for (const name of note.attachments) {
+    const entry = lookup(name);
+    if (entry) referenced.add(entry);
+  }
+  report.attachments.unreferenced = poolEntries.length - referenced.size;
+
+  for (const note of plan.create) {
+    const courseId = note.course === null ? null : (courseIds.get(note.course.trim().toLowerCase()) ?? null);
+    const projectId = note.project === null ? null : (projectIds.get(note.project.trim().toLowerCase()) ?? null);
+    if (note.course !== null && courseId === null) report.notes.withoutCourse += 1;
+    if (note.project !== null && projectId === null) report.notes.withoutProject += 1;
+
+    let noteId: string | null = null;
+    if (options.apply) {
+      try {
+        const created = await createNote(userId, {
+          title: note.finalTitle,
+          content: note.content,
+          // Notes from another tool say where they came from; notes this app wrote are restored as they were.
+          tags: [...new Set([...(note.ours ? [] : ["imported"]), ...note.tags])].slice(0, 12),
+          isFavorite: note.favorite,
+          projectId,
+          courseId,
+        });
+        noteId = created.id;
+        report.notes.created += 1;
+      } catch (error) {
+        console.error("[WARN] vault import: a note could not be saved:", error);
+        report.notes.failed += 1;
+        skip(note.path, "It could not be saved.");
+        continue;
+      }
+    }
+
+    for (const name of note.attachments) {
+      const entry = lookup(name);
+      if (!entry) {
+        reject(name, "It is not in the zip.");
+        continue;
+      }
+      if (entry.unsupported !== null) {
+        reject(name, entry.unsupported);
+        continue;
+      }
+      let data: Buffer;
+      try {
+        data = await zip.read(entry);
+      } catch (error) {
+        if (error instanceof ZipError) {
+          reject(name, "It could not be read from the zip.");
+          continue;
+        }
+        throw error;
+      }
+      const fileName = baseOf(entry.name);
+      const mime = data.length <= MAX_ATTACHMENT_BYTES ? sniffAttachment(fileName, data) : null;
+      if (mime === null) {
+        reject(name, data.length > MAX_ATTACHMENT_BYTES ? "It is too large to attach." : "Its content is not what its name says.");
+        continue;
+      }
+      if (!options.apply || noteId === null) {
+        report.attachments.stored += 1;
+        continue;
+      }
+      // The stored name is generated; the file's own name is kept only as the label it is shown under.
+      const key = await putAttachment(data, mime);
+      try {
+        await attachmentRepository.createAttachment(userId, {
+          noteId,
+          filename: fileName.replace(/\p{Cc}/gu, " ").slice(0, 200),
+          mimeType: mime,
+          byteSize: data.length,
+          storageKey: key,
+        });
+        report.attachments.stored += 1;
+      } catch (error) {
+        console.error("[WARN] vault import: an attachment could not be recorded:", error);
+        await deleteAttachment(key);
+        reject(name, "It could not be saved.");
+      }
+    }
+  }
+  return report;
 }
