@@ -222,8 +222,9 @@ export async function listPrepSessions(
 
 /**
  * The caller's open, not deleted tasks for the calendar feed: those whose planned block starts inside
- * the window, and those with no block and a due date inside it. Planned blocks come first, then by
- * date, so a cap keeps the nearest. Only the columns the feed shows are read.
+ * the window, and those with a due date inside it (the feed decides which of the two a task shows by).
+ * Planned blocks come first, then by date, so a cap keeps the nearest. Only the columns the feed shows
+ * are read.
  */
 export async function listFeedTasks(userId: string, from: Date, to: Date, take: number) {
   return prisma.task.findMany({
@@ -231,7 +232,7 @@ export async function listFeedTasks(userId: string, from: Date, to: Date, take: 
       userId,
       deletedAt: null,
       status: { not: "done" },
-      OR: [{ scheduledStart: { gte: from, lt: to } }, { scheduledStart: null, dueDate: { gte: from, lt: to } }],
+      OR: [{ scheduledStart: { gte: from, lt: to } }, { dueDate: { gte: from, lt: to } }],
     },
     orderBy: [{ scheduledStart: { sort: "asc", nulls: "last" } }, { dueDate: { sort: "asc", nulls: "last" } }, { id: "asc" }],
     take,

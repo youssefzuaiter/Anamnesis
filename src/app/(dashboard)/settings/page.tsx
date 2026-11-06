@@ -79,7 +79,10 @@ export default async function SettingsPage() {
       <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
         Calendar feed
       </h2>
-      <CalendarFeedCard active={feed.active} createdAt={feed.createdAt?.toISOString() ?? null} />
+      <CalendarFeedCard
+        active={feed.active}
+        createdLabel={feed.createdAt ? new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(feed.createdAt) : null}
+      />
 
       <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
         Search index

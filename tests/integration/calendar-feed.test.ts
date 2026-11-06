@@ -59,16 +59,17 @@ test("a link shows that account's events and open dated tasks, and nothing else"
   await addTask(alice.id, "Alice old block", { scheduledStart: at(-40), scheduledEnd: at(-40, 10) });
   await addTask(alice.id, "Alice far block", { scheduledStart: at(400), scheduledEnd: at(400, 10) });
   await addTask(alice.id, "Alice overdue last week", { dueDate: at(-7) });
+  await addTask(alice.id, "Alice stale block due soon", { scheduledStart: at(-40), scheduledEnd: at(-40, 10), dueDate: at(8) });
   await addEvent(bob.id, "Bob secret meeting", 3);
   await addTask(bob.id, "Bob secret task", { dueDate: at(6) });
 
   const ics = await feedOf(alice.id);
-  assert.deepEqual(summaries(ics).sort(), ["Alice lecture", "Due: Alice due", "Due: Alice overdue last week", "Task: Alice block"].sort());
+  assert.deepEqual(summaries(ics).sort(), ["Alice lecture", "Due: Alice due", "Due: Alice overdue last week", "Due: Alice stale block due soon", "Task: Alice block"].sort());
   for (const secret of ["Bob secret", "PRIVATE-DESCRIPTION", "Alice done", "Alice trashed", "Alice undated", "Alice long ago", "Alice far away", "Imported class", "overdue long ago", "due next year", "Alice old block", "Alice far block"]) {
     assert.ok(!ics.includes(secret), `the feed holds "${secret}"`);
   }
   assert.ok(lines(ics).includes("LOCATION:Hall C"), "an event's place is shown");
-  assert.equal(parseIcs(ics).length, 4, "the feed parses back");
+  assert.equal(parseIcs(ics).length, 5, "the feed parses back");
 });
 
 test("the token is nowhere in the database: only its hash is kept", async () => {

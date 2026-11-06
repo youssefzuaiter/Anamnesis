@@ -15,6 +15,8 @@ import {
 } from "@/lib/calendar-feed";
 
 const updated = new Date("2026-11-05T10:00:00Z");
+/** A window wide enough that it does not matter, for the tests that are not about the window. */
+const WIDE = { from: new Date(2000, 0, 1), to: new Date(2100, 0, 1) };
 
 const event = (over: Partial<FeedEvent> = {}): FeedEvent => ({
   id: "e1",
@@ -105,7 +107,7 @@ test("the window is 30 days back and 365 ahead, with at most 2,000 of each kind"
 // --- events and tasks as calendar items ---------------------------------------------------------
 
 test("an event is an opaque timed item with its place", () => {
-  const [item] = feedItems([event()], []);
+  const [item] = feedItems([event()], [], WIDE);
   assert.deepEqual(item, {
     uid: "event-e1@anamnesis",
     summary: "Lecture",
@@ -117,21 +119,21 @@ test("an event is an opaque timed item with its place", () => {
 });
 
 test("a task with a planned block is a timed free-time item, and the estimate ends a block with no end", () => {
-  const [withEnd] = feedItems([], [task({ scheduledStart: new Date("2026-11-10T13:00:00Z"), scheduledEnd: new Date("2026-11-10T14:30:00Z") })]);
+  const [withEnd] = feedItems([], [task({ scheduledStart: new Date("2026-11-10T13:00:00Z"), scheduledEnd: new Date("2026-11-10T14:30:00Z") })], WIDE);
   assert.equal(withEnd.summary, "Task: Hand in report");
   assert.equal(withEnd.transparent, true);
   assert.equal(withEnd.category, "Task");
   assert.equal(withEnd.uid, "task-t1@anamnesis");
   assert.equal(withEnd.allDay, undefined);
   assert.equal(withEnd.end.toISOString(), "2026-11-10T14:30:00.000Z");
-  const [noEnd] = feedItems([], [task({ scheduledStart: new Date("2026-11-10T13:00:00Z"), estimatedMinutes: 45 })]);
+  const [noEnd] = feedItems([], [task({ scheduledStart: new Date("2026-11-10T13:00:00Z"), estimatedMinutes: 45 })], WIDE);
   assert.equal(noEnd.end.toISOString(), "2026-11-10T13:45:00.000Z");
 });
 
 test("a task with only a due date is an all-day item on that local day, ending the next", () => {
   inZone("Europe/Istanbul", () => {
     for (const due of [new Date(2026, 10, 12, 23, 59, 59, 999), new Date(2026, 10, 12, 0, 0, 0, 0), new Date(2026, 10, 12, 9, 0)]) {
-      const [item] = feedItems([], [task({ dueDate: due })]);
+      const [item] = feedItems([], [task({ dueDate: due })], WIDE);
       assert.equal(item.summary, "Due: Hand in report");
       assert.equal(item.allDay, true);
       assert.deepEqual([item.start.getFullYear(), item.start.getMonth(), item.start.getDate()], [2026, 10, 12], due.toString());
@@ -143,7 +145,7 @@ test("a task with only a due date is an all-day item on that local day, ending t
 test("an all-day date holds across a daylight-saving change and at the end of a month and a year", () => {
   inZone("America/New_York", () => {
     // The clocks went back on 1 November 2026: that day has 25 hours.
-    const ics = renderFeed([], [task({ dueDate: new Date(2026, 10, 1, 23, 59, 59, 999) }), task({ id: "t2", dueDate: new Date(2026, 2, 8, 23, 59, 0) }), task({ id: "t3", dueDate: new Date(2026, 11, 31, 23, 59, 0) }), task({ id: "t4", dueDate: new Date(2026, 0, 31, 12, 0) })]);
+    const ics = renderFeed([], [task({ dueDate: new Date(2026, 10, 1, 23, 59, 59, 999) }), task({ id: "t2", dueDate: new Date(2026, 2, 8, 23, 59, 0) }), task({ id: "t3", dueDate: new Date(2026, 11, 31, 23, 59, 0) }), task({ id: "t4", dueDate: new Date(2026, 0, 31, 12, 0) })], WIDE);
     const l = lines(ics);
     const pair = (uid: string) => {
       const at = l.indexOf(`UID:${uid}@anamnesis`);
@@ -157,14 +159,27 @@ test("an all-day date holds across a daylight-saving change and at the end of a 
 });
 
 test("a task with a block and a due date is the block alone, a task with neither is nothing", () => {
-  const both = feedItems([], [task({ dueDate: new Date(2026, 10, 12), scheduledStart: new Date("2026-11-10T13:00:00Z"), scheduledEnd: new Date("2026-11-10T14:00:00Z") })]);
+  const both = feedItems([], [task({ dueDate: new Date(2026, 10, 12), scheduledStart: new Date("2026-11-10T13:00:00Z"), scheduledEnd: new Date("2026-11-10T14:00:00Z") })], WIDE);
   assert.equal(both.length, 1);
   assert.equal(both[0].allDay, undefined);
-  assert.deepEqual(feedItems([], [task()]), []);
+  assert.deepEqual(feedItems([], [task()], WIDE), []);
+});
+
+test("a block that is outside the window is not shown: the task shows by its due date, or not at all", () => {
+  const window = { from: new Date("2026-10-07T12:00:00Z"), to: new Date("2027-11-06T12:00:00Z") };
+  const old = { scheduledStart: new Date("2026-09-20T09:00:00Z"), scheduledEnd: new Date("2026-09-20T10:00:00Z") };
+  const [byDue] = feedItems([], [task({ ...old, dueDate: new Date(2026, 10, 12) })], window);
+  assert.equal(byDue.summary, "Due: Hand in report");
+  assert.equal(byDue.allDay, true);
+  assert.deepEqual(feedItems([], [task(old)], window), []);
+  assert.deepEqual(feedItems([], [task({ dueDate: new Date(2026, 8, 1) })], window), [], "a due date outside the window is not shown either");
+  const inside = feedItems([], [task({ scheduledStart: new Date("2026-11-10T13:00:00Z"), dueDate: new Date(2026, 10, 12) })], window);
+  assert.equal(inside.length, 1);
+  assert.equal(inside[0].summary, "Task: Hand in report", "a block inside the window still wins over the due date");
 });
 
 test("an event and a task with one id are two different calendar entries, and a block over midnight is one", () => {
-  const items = feedItems([event({ id: "same" })], [task({ id: "same", scheduledStart: new Date("2026-11-10T22:00:00Z"), scheduledEnd: new Date("2026-11-11T01:00:00Z") })]);
+  const items = feedItems([event({ id: "same" })], [task({ id: "same", scheduledStart: new Date("2026-11-10T22:00:00Z"), scheduledEnd: new Date("2026-11-11T01:00:00Z") })], WIDE);
   assert.equal(new Set(items.map((i) => i.uid)).size, 2);
   assert.equal(items.length, 2);
   assert.equal(items[1].start.toISOString(), "2026-11-10T22:00:00.000Z");
@@ -172,13 +187,13 @@ test("an event and a task with one id are two different calendar entries, and a 
 });
 
 test("the stamp is when the row last changed, so two fetches of an unchanged account give the same calendar", () => {
-  const first = renderFeed([event()], [task({ dueDate: new Date(2026, 10, 12) })]);
-  const second = renderFeed([event()], [task({ dueDate: new Date(2026, 10, 12) })]);
+  const first = renderFeed([event()], [task({ dueDate: new Date(2026, 10, 12) })], WIDE);
+  const second = renderFeed([event()], [task({ dueDate: new Date(2026, 10, 12) })], WIDE);
   assert.equal(first, second);
 });
 
 test("a rendered feed reads back with our own reader", () => {
-  const back = parseIcs(renderFeed([event({ title: "Calculus, week 3; B\\C" }), event({ id: "e2", startTime: new Date("2026-12-01T07:30:00Z"), endTime: new Date("2026-12-01T09:00:00Z"), location: null })], [task({ scheduledStart: new Date("2026-11-11T08:00:00Z"), scheduledEnd: new Date("2026-11-11T09:00:00Z") })]));
+  const back = parseIcs(renderFeed([event({ title: "Calculus, week 3; B\\C" }), event({ id: "e2", startTime: new Date("2026-12-01T07:30:00Z"), endTime: new Date("2026-12-01T09:00:00Z"), location: null })], [task({ scheduledStart: new Date("2026-11-11T08:00:00Z"), scheduledEnd: new Date("2026-11-11T09:00:00Z") })], WIDE));
   assert.equal(back.length, 3);
   assert.equal(back[0].title, "Calculus, week 3; B\\C");
   assert.equal(back[0].location, "Hall C");
@@ -189,7 +204,7 @@ test("three thousand hostile titles render in well under a second, and none adds
   const evil = "Evil\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nSUMMARY:x";
   const events = Array.from({ length: 3000 }, (_, i) => event({ id: `e${i}`, title: `${evil}${"ğ".repeat(500)}`, location: evil }));
   const start = performance.now();
-  const ics = renderFeed(events, []);
+  const ics = renderFeed(events, [], WIDE);
   assert.ok(performance.now() - start < 600, `took ${(performance.now() - start).toFixed(0)} ms`);
   assert.equal(lines(ics).filter((l) => l === "BEGIN:VEVENT").length, 3000);
 });

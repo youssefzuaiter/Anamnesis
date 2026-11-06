@@ -9,12 +9,15 @@ const button =
 const primary = `${button} bg-accent text-on-accent hover:bg-accent-hover`;
 const quiet = `${button} border border-control text-text hover:bg-surface-subtle`;
 
-const dateLabel = (iso: string) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date(iso));
-
 /** Whether an address only works on this computer: a phone cannot reach it. */
 const isLocal = (host: string) => /^(localhost|127\.|\[::1\]|0\.0\.0\.0)/.test(host) || host.endsWith(".localhost");
 
-export function CalendarFeedCard({ active, createdAt }: { active: boolean; createdAt: string | null }) {
+/**
+ * `createdLabel` is the date the link was made, formatted by the server: the app's days are the
+ * server's, and a date formatted here from a time zone of its own could differ from the server-rendered
+ * text and hydrate with a mismatch.
+ */
+export function CalendarFeedCard({ active, createdLabel }: { active: boolean; createdLabel: string | null }) {
   const router = useRouter();
   // The address exists only here, from the moment it is made until the person leaves the page: the
   // server keeps nothing it could show again.
@@ -83,7 +86,6 @@ export function CalendarFeedCard({ active, createdAt }: { active: boolean; creat
   }
 
   const url = address ? new URL(address) : null;
-  const webcal = url ? `webcal://${url.host}${url.pathname}` : null;
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4 text-sm">
@@ -106,16 +108,16 @@ export function CalendarFeedCard({ active, createdAt }: { active: boolean; creat
               className="w-full min-w-0 rounded-lg border border-control bg-surface-subtle px-3 py-2 font-mono text-xs text-text"
             />
           </label>
-          <div className="flex flex-wrap gap-2">
+          <div>
             <button type="button" onClick={copy} className={primary}>
               Copy address
             </button>
-            {webcal && (
-              <a href={webcal} className={quiet}>
-                Open in a calendar app
-              </a>
-            )}
           </div>
+          <p className="text-xs text-text-muted">
+            Paste it where your calendar asks for a URL: Google Calendar (Other calendars, From URL) or an iPhone (Settings, Calendar, Accounts, Add
+            Subscribed Calendar). Use this address as it is, not a webcal:// one: calendar apps fetch those over plain http first, which would send
+            the link unprotected.
+          </p>
           <p className="text-xs text-text-muted">
             This is the only time the address is shown: only a scrambled form of it is kept. If you lose it, make a new link.
           </p>
@@ -129,7 +131,7 @@ export function CalendarFeedCard({ active, createdAt }: { active: boolean; creat
       ) : active ? (
         <p className="text-text">
           The calendar feed is <strong className="font-medium">on</strong>
-          {createdAt ? `, made on ${dateLabel(createdAt)}` : ""}. The address is not shown again.
+          {createdLabel ? `, made on ${createdLabel}` : ""}. The address is not shown again.
         </p>
       ) : (
         <p className="text-text-muted">The calendar feed is off.</p>

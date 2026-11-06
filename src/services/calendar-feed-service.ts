@@ -54,5 +54,5 @@ export async function buildFeedForToken(token: string, now: Date = new Date()): 
     eventRepository.listFeedEvents(userId, from, to, FEED_WINDOW.maxItems),
     taskRepository.listFeedTasks(userId, from, to, FEED_WINDOW.maxItems),
   ]);
-  return renderFeed(events, tasks);
+  return renderFeed(events, tasks, { from, to });
 }

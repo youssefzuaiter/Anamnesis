@@ -62,11 +62,14 @@ export type FeedTask = {
  * Events are events. A task becomes an event too, because a phone calendar shows events (Google
  * Calendar ignores a to-do and Apple files it in Reminders): its planned block as a timed entry, or
  * with only a due date an all-day entry on that local day. Both are free time, so a task never makes
- * the person look busy, and are titled so they are not mistaken for an appointment. A task with a
- * block and a due date is the block alone; a task with neither is nothing. The stamp is when the row
- * last changed, so a fetch of an unchanged account is byte for byte the same.
+ * the person look busy, and are titled so they are not mistaken for an appointment. A block counts
+ * only if it starts inside the window; a task planned long ago and never done shows by its due date
+ * (if that is inside the window) or not at all. A task with a current block and a due date is the block
+ * alone. The stamp is when the row last changed, so a fetch of an unchanged account is byte for byte
+ * the same.
  */
-export function feedItems(events: FeedEvent[], tasks: FeedTask[]): IcsItem[] {
+export function feedItems(events: FeedEvent[], tasks: FeedTask[], window: { from: Date; to: Date }): IcsItem[] {
+  const inside = (date: Date) => date >= window.from && date < window.to;
   const items: IcsItem[] = events.map((e) => ({
     uid: `event-${e.id}@anamnesis`,
     summary: e.title,
@@ -77,7 +80,7 @@ export function feedItems(events: FeedEvent[], tasks: FeedTask[]): IcsItem[] {
   }));
 
   for (const t of tasks) {
-    if (t.scheduledStart) {
+    if (t.scheduledStart && inside(t.scheduledStart)) {
       items.push({
         uid: `task-${t.id}@anamnesis`,
         summary: `Task: ${t.title}`,
@@ -87,7 +90,7 @@ export function feedItems(events: FeedEvent[], tasks: FeedTask[]): IcsItem[] {
         transparent: true,
         category: "Task",
       });
-    } else if (t.dueDate) {
+    } else if (t.dueDate && inside(t.dueDate)) {
       items.push({
         uid: `task-${t.id}@anamnesis`,
         summary: `Due: ${t.title}`,
@@ -103,6 +106,6 @@ export function feedItems(events: FeedEvent[], tasks: FeedTask[]): IcsItem[] {
   return items;
 }
 
-export function renderFeed(events: FeedEvent[], tasks: FeedTask[]): string {
-  return buildIcs(feedItems(events, tasks), { name: "Anamnesis" });
+export function renderFeed(events: FeedEvent[], tasks: FeedTask[], window: { from: Date; to: Date }): string {
+  return buildIcs(feedItems(events, tasks, window), { name: "Anamnesis" });
 }

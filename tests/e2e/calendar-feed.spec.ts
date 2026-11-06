@@ -65,6 +65,9 @@ test("an address is shown once, works with no session, and is not shown again af
   await expect(main(page).getByLabel("Calendar feed address"), "focus is taken to the address").toBeFocused();
   await expect(main(page)).toContainText("This is the only time the address is shown");
   await expect(main(page).getByRole("note")).toContainText("only works on this computer");
+  await expect(main(page).locator('a[href^="webcal"]'), "webcal:// would send the token over plain http first").toHaveCount(0);
+  await expect(main(page)).toContainText("Add Subscribed Calendar");
+  await expect(main(page)).toContainText("From URL");
   await main(page).getByRole("button", { name: "Copy address" }).click();
   await expect(main(page).getByRole("status")).toContainText("Address copied.");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(address);
@@ -88,6 +91,8 @@ test("an address is shown once, works with no session, and is not shown again af
   await page.reload();
   await expect(main(page).getByLabel("Calendar feed address")).toHaveCount(0);
   await expect(main(page)).toContainText("The calendar feed is on");
+  const today = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date());
+  await expect(main(page)).toContainText(`made on ${today}`);
   expect(await main(page).innerText()).not.toContain(address.slice(address.lastIndexOf("/") + 1, -4));
 });
 
