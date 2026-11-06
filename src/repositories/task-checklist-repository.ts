@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { afterCreated, type ExportPage } from "@/lib/export-shape";
-import type { Positioned } from "@/lib/checklist";
+import { nextPosition, type Positioned } from "@/lib/checklist";
 import type { TaskChecklistItemModel as ChecklistItem } from "@/generated/prisma/models";
 
 /**
@@ -13,7 +13,8 @@ const live = (userId: string) => ({ userId, task: { deletedAt: null } });
 export async function listForTask(userId: string, taskId: string): Promise<ChecklistItem[]> {
   return prisma.taskChecklistItem.findMany({
     where: { ...live(userId), taskId },
-    orderBy: [{ position: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+    // The order a move works in (`moveItem` in lib/checklist.ts): position, then id for steps that share one.
+    orderBy: [{ position: "asc" }, { id: "asc" }],
   });
 }
 
@@ -21,26 +22,44 @@ export async function countForTask(userId: string, taskId: string): Promise<numb
   return prisma.taskChecklistItem.count({ where: { ...live(userId), taskId } });
 }
 
-/** Done and total for each of these tasks that has any steps, in one grouped read. */
+/** Most ids one query is given: Postgres refuses more than 32,767 parameters, and 5,000 take about 14 ms. */
+const ID_CHUNK = 5000;
+
+/** Done and total for each of these tasks that has any steps, a grouped read for each 5,000 ids. */
 export async function countsForTasks(userId: string, taskIds: string[]): Promise<Map<string, { done: number; total: number }>> {
   const counts = new Map<string, { done: number; total: number }>();
-  if (taskIds.length === 0) return counts;
-  const rows = await prisma.taskChecklistItem.groupBy({
-    by: ["taskId", "done"],
-    where: { ...live(userId), taskId: { in: taskIds } },
-    _count: { _all: true },
-  });
-  for (const row of rows) {
-    const entry = counts.get(row.taskId) ?? { done: 0, total: 0 };
-    entry.total += row._count._all;
-    if (row.done) entry.done += row._count._all;
-    counts.set(row.taskId, entry);
+  const ids = [...new Set(taskIds)];
+  for (let from = 0; from < ids.length; from += ID_CHUNK) {
+    const rows = await prisma.taskChecklistItem.groupBy({
+      by: ["taskId", "done"],
+      where: { ...live(userId), taskId: { in: ids.slice(from, from + ID_CHUNK) } },
+      _count: { _all: true },
+    });
+    for (const row of rows) {
+      const entry = counts.get(row.taskId) ?? { done: 0, total: 0 };
+      entry.total += row._count._all;
+      if (row.done) entry.done += row._count._all;
+      counts.set(row.taskId, entry);
+    }
   }
   return counts;
 }
 
-export async function create(userId: string, taskId: string, title: string, position: number): Promise<ChecklistItem> {
-  return prisma.taskChecklistItem.create({ data: { userId, taskId, title, position } });
+export type AddResult = { kind: "created"; item: ChecklistItem } | { kind: "full" } | { kind: "missing" };
+
+/**
+ * Adds a step at the end of a live task of the caller's, unless it already holds `limit`. The task's row is
+ * locked until the transaction ends, so adds to one task take turns: without it the count was read and the row
+ * written in two steps, and 60 adds at once on a list of 49 stored 109.
+ */
+export async function createIfRoom(userId: string, taskId: string, title: string, limit: number): Promise<AddResult> {
+  return prisma.$transaction(async (tx): Promise<AddResult> => {
+    const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Task" WHERE "id" = ${taskId} AND "userId" = ${userId} AND "deletedAt" IS NULL FOR UPDATE`;
+    if (locked.length === 0) return { kind: "missing" };
+    const existing = await tx.taskChecklistItem.findMany({ where: { taskId, userId }, select: { position: true } });
+    if (existing.length >= limit) return { kind: "full" };
+    return { kind: "created", item: await tx.taskChecklistItem.create({ data: { userId, taskId, title, position: nextPosition(existing) } }) };
+  });
 }
 
 export async function getItem(userId: string, itemId: string): Promise<ChecklistItem | null> {

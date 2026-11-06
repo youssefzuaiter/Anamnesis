@@ -289,3 +289,72 @@ test("a missing or empty account id is refused before any query, by every functi
     }
   }
 });
+
+// --- found by the security review, by measuring ---------------------------------------------------
+
+test("concurrent adds cannot pass the limit, and each one gets a place of its own", async () => {
+  // Measured before the fix: 60 adds at once on a list of 49 stored 109 steps, because the count was read
+  // and the row written in two steps. The limit is a bound on what a page reads, so it has to hold.
+  const user = await newUser();
+  const nearlyFull = await makeTask(user.id);
+  await prisma.taskChecklistItem.createMany({ data: Array.from({ length: MAX_CHECKLIST_ITEMS - 1 }, (_, i) => ({ userId: user.id, taskId: nearlyFull.id, title: `seed ${i}`, position: i })) });
+  const racers = await Promise.allSettled(Array.from({ length: 20 }, (_, i) => service.addItem(user.id, nearlyFull.id, `racer ${i}`)));
+  assert.equal(racers.filter((r) => r.status === "fulfilled").length, 1, "exactly one fits");
+  for (const r of racers) {
+    if (r.status === "rejected") assert.ok(r.reason instanceof AppError && r.reason.code === "VALIDATION_ERROR" && /at most 50/i.test(r.reason.message));
+  }
+  assert.equal(await prisma.taskChecklistItem.count({ where: { taskId: nearlyFull.id } }), MAX_CHECKLIST_ITEMS);
+
+  // Under the limit every add is kept, and none of them shares a position with another.
+  const roomy = await makeTask(user.id);
+  const adds = await Promise.allSettled(Array.from({ length: 30 }, (_, i) => service.addItem(user.id, roomy.id, `add ${i}`)));
+  assert.equal(adds.filter((r) => r.status === "fulfilled").length, 30);
+  const positions = (await prisma.taskChecklistItem.findMany({ where: { taskId: roomy.id } })).map((r) => r.position).sort((a, b) => a - b);
+  assert.deepEqual(positions, Array.from({ length: 30 }, (_, i) => i));
+});
+
+test("the list of tasks can ask for the counts of tens of thousands of tasks", async () => {
+  // Measured before the fix: above 32,767 ids Postgres refuses the query, which would have turned the whole
+  // /tasks page into an error for an account with that many open tasks.
+  const user = await newUser();
+  const a = await makeTask(user.id);
+  const b = await makeTask(user.id);
+  await service.addItem(user.id, a.id, "one");
+  const second = await service.addItem(user.id, a.id, "two");
+  await service.setItemDone(user.id, second.id, true);
+  await service.addItem(user.id, b.id, "other");
+  const strangers = Array.from({ length: 40_000 }, () => randomUUID());
+  const counts = await service.checklistCounts(user.id, [...strangers.slice(0, 20_000), a.id, ...strangers.slice(20_000), b.id, a.id]); // a twice, in different chunks
+  assert.deepEqual([...counts.entries()].sort(), [[a.id, { done: 1, total: 2 }], [b.id, { done: 0, total: 1 }]].sort());
+});
+
+test("steps that share a position are shown in the order a move works in", async () => {
+  // Two steps can end up with one position (two tabs moving at once). The page shows them in one order, and
+  // a click on Up or Down has to act on that order, not on another.
+  const user = await newUser();
+  const task = await makeTask(user.id);
+  const first = await prisma.taskChecklistItem.create({ data: { id: "00000000-0000-4000-8000-000000000001", userId: user.id, taskId: task.id, title: "head", position: 0 } });
+  // P was made before Q but has the larger id, so ordering by creation time and by id disagree.
+  const p = await prisma.taskChecklistItem.create({ data: { id: "00000000-0000-4000-8000-0000000000ff", userId: user.id, taskId: task.id, title: "P", position: 3, createdAt: new Date("2026-01-01T00:00:00Z") } });
+  const q = await prisma.taskChecklistItem.create({ data: { id: "00000000-0000-4000-8000-000000000002", userId: user.id, taskId: task.id, title: "Q", position: 3, createdAt: new Date("2026-01-02T00:00:00Z") } });
+  assert.deepEqual(await titles(user.id, task.id), ["head", "Q", "P"], "tied steps are shown in id order, the order a move uses");
+  await service.moveItem(user.id, p.id, "up");
+  assert.deepEqual(await titles(user.id, task.id), ["head", "P", "Q"], "Up on the step shown last of the two moves it above the other");
+  assert.equal(first.position, 0);
+  assert.equal(q.position, 3);
+});
+
+test("the repository adds a step only to a live task of the given user, whatever ids it is handed", async () => {
+  // The service checks ownership first, so this holds the repository to its own scope (the lock and the write).
+  const alice = await newUser();
+  const bob = await newUser();
+  const task = await makeTask(alice.id);
+  const trashed = await makeTask(alice.id, { deletedAt: new Date() });
+  assert.deepEqual(await checklistRepository.createIfRoom(bob.id, task.id, "from bob", MAX_CHECKLIST_ITEMS), { kind: "missing" });
+  assert.deepEqual(await checklistRepository.createIfRoom(alice.id, trashed.id, "into the trash", MAX_CHECKLIST_ITEMS), { kind: "missing" });
+  assert.deepEqual(await checklistRepository.createIfRoom(alice.id, randomUUID(), "nowhere", MAX_CHECKLIST_ITEMS), { kind: "missing" });
+  assert.equal(await prisma.taskChecklistItem.count({ where: { taskId: { in: [task.id, trashed.id] } } }), 0);
+  const added = await checklistRepository.createIfRoom(alice.id, task.id, "from alice", MAX_CHECKLIST_ITEMS);
+  assert.equal(added.kind, "created");
+  assert.deepEqual(await checklistRepository.createIfRoom(alice.id, task.id, "over", 1), { kind: "full" });
+});

@@ -1,6 +1,6 @@
 import "server-only";
 import { AppError } from "@/lib/api-response";
-import { MAX_CHECKLIST_ITEMS, checklistProgress, cleanItemTitle, moveItem as planMove, nextPosition, type ChecklistProgress } from "@/lib/checklist";
+import { MAX_CHECKLIST_ITEMS, checklistProgress, cleanItemTitle, moveItem as planMove, type ChecklistProgress } from "@/lib/checklist";
 import * as checklistRepository from "@/repositories/task-checklist-repository";
 import * as taskRepository from "@/repositories/task-repository";
 
@@ -44,19 +44,15 @@ export async function getChecklist(userId: string, taskId: string): Promise<{ it
   return { items, progress: checklistProgress(items) };
 }
 
-/**
- * Adds a step at the end. The limit of 50 is checked first: two adds at one instant can pass it by one, which
- * is fine for a limit on size.
- */
+/** Adds a step at the end, unless the task already holds 50: the repository counts and writes under a lock on the task. */
 export async function addItem(userId: string, taskId: string, rawTitle: string): Promise<ChecklistItem> {
   assertAccount(userId);
   await assertTaskOwned(userId, taskId);
   const title = titleOrRefuse(rawTitle);
-  const items = await checklistRepository.listForTask(userId, taskId);
-  if (items.length >= MAX_CHECKLIST_ITEMS) {
-    throw new AppError("VALIDATION_ERROR", `A checklist holds at most ${MAX_CHECKLIST_ITEMS} items.`);
-  }
-  return asItem(await checklistRepository.create(userId, taskId, title, nextPosition(items)));
+  const added = await checklistRepository.createIfRoom(userId, taskId, title, MAX_CHECKLIST_ITEMS);
+  if (added.kind === "missing") throw new AppError("RESOURCE_NOT_FOUND", "That task no longer exists.");
+  if (added.kind === "full") throw new AppError("VALIDATION_ERROR", `A checklist holds at most ${MAX_CHECKLIST_ITEMS} items.`);
+  return asItem(added.item);
 }
 
 export async function setItemDone(userId: string, itemId: string, done: boolean): Promise<void> {
