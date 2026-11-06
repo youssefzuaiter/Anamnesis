@@ -26,18 +26,7 @@ function isoDay(offset = 0): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** Runs one statement against the database the app uses, for what a second tab or a bulk seed would do. */
-async function sql(statement: string, params: unknown[] = []) {
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
-  await client.connect();
-  try {
-    await client.query(statement, params);
-  } finally {
-    await client.end();
-  }
-}
-
-/** Reads rows from the database the app uses. */
+/** Runs one statement against the database the app uses and returns its rows: for what a second tab or a bulk seed would do. */
 async function rows<T = Record<string, string>>(statement: string, params: unknown[] = []): Promise<T[]> {
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
@@ -47,6 +36,7 @@ async function rows<T = Record<string, string>>(statement: string, params: unkno
     await client.end();
   }
 }
+const sql = rows;
 
 /** Makes a project through the form and returns the address of its page. */
 async function makeProject(page: Page, title: string): Promise<string> {
@@ -167,6 +157,10 @@ test("dragging a card to another column moves it, and dropping it where it is do
   await card(page, "To do", title).dragTo(column(page, "In progress"));
   await expect(card(page, "In progress", title)).toBeVisible();
   await expect(card(page, "To do", title)).toHaveCount(0);
+  // The browser never tells a card that was removed during a drag that the drag ended, so a drop has to clear
+  // its own state: the card that arrives is drawn normally and no column is left highlighted.
+  await expect(card(page, "In progress", title)).toHaveCSS("opacity", "1");
+  await expect(column(page, "In progress")).not.toHaveClass(/outline-dashed/);
   await expect(board(page).getByRole("status")).toHaveText(`Moved “${title}” to In progress.`);
   const afterMove = posts.length;
   expect(afterMove).toBeGreaterThan(0);
@@ -458,6 +452,9 @@ for (const scheme of ["light", "dark"] as const) {
 
     await moveButton(page, "To do", a, "In progress").click();
     await expect(card(page, "To do", a)).toHaveCount(0);
+    // The card has gone to a column that is not showing, so focus cannot follow it: it stays with the buttons that
+    // say which column is showing, not on the page's first element.
+    await expect(show.getByRole("button", { name: /^To do/ })).toBeFocused();
     await show.getByRole("button", { name: /^In progress/ }).click();
     await expect(column(page, "In progress")).toBeVisible();
     await expect(column(page, "To do")).toBeHidden();

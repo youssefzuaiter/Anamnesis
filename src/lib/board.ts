@@ -50,7 +50,8 @@ const COLUMN_RANK: Record<TaskStatus, number> = { todo: 0, in_progress: 1, done:
 const PRIORITY_RANK: Record<TaskPriority, number> = { high: 0, medium: 1, low: 2 };
 
 const isStatus = (value: string): value is TaskStatus => (TASK_STATUSES as readonly string[]).includes(value);
-const isPriority = (value: string): value is TaskPriority => value in PRIORITY_RANK;
+// Own keys only: `value in object` is also true for "constructor", "toString" and the rest of Object.prototype.
+const isPriority = (value: string): value is TaskPriority => Object.prototype.hasOwnProperty.call(PRIORITY_RANK, value);
 
 const byId = (a: BoardCard, b: BoardCard) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 

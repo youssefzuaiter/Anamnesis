@@ -11,6 +11,12 @@ import { BOARD_DRAG_MIME, type TaskStatus } from "@/lib/domain";
 
 const STATUS_ICON: Record<TaskStatus, IconName> = { todo: "statusTodo", in_progress: "statusDoing", done: "statusDone" };
 
+const EMPTY: Record<TaskStatus, string> = {
+  todo: "Nothing waiting. New tasks land here.",
+  in_progress: "Nothing in progress. Drag a task here, or use the buttons on a card.",
+  done: "Nothing done yet.",
+};
+
 // "Unavailable" is aria-disabled, not `disabled`: a focused button that becomes disabled loses the keyboard's place,
 // and every control is unavailable for the length of a move. Clicks are ignored in the handlers.
 const chip =
@@ -134,12 +140,16 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
   const dragged = dragging ? optimistic.find((card) => card.id === dragging) : undefined;
 
   // A card that changes column is a different element, so focus would fall back to the top of the page: put it
-  // back on the card's title once the list has changed (and again if the move is taken back).
+  // back on the card's title once the list has changed (and again if the move is taken back). Below lg the card may
+  // have gone to a column that is not showing, which cannot take focus: then it stays with the buttons that say which
+  // column is.
   useEffect(() => {
     const id = refocus.current;
-    if (!id) return;
+    if (!id || !root.current) return;
     refocus.current = null;
-    root.current?.querySelector<HTMLElement>(`[data-focus-key="card:${id}"]`)?.focus();
+    const title = root.current.querySelector<HTMLElement>(`[data-focus-key="card:${id}"]`);
+    const showing = title && title.getClientRects().length > 0 ? title : root.current.querySelector<HTMLElement>('[aria-pressed="true"]');
+    showing?.focus();
   }, [optimistic]);
 
   function move(card: BoardCard, to: TaskStatus) {
@@ -200,8 +210,8 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         {columns.map((column) => {
-          const hidden = column.status === "done" && !showAllDone ? column.cards.length - DONE_SHOWN : 0;
-          const visible = hidden > 0 ? column.cards.slice(0, DONE_SHOWN) : column.cards;
+          const capped = column.status === "done" && !showAllDone && column.cards.length > DONE_SHOWN;
+          const visible = capped ? column.cards.slice(0, DONE_SHOWN) : column.cards;
           return (
             <section
               key={column.status}
@@ -220,7 +230,9 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
               }}
               onDrop={(event) => {
                 event.preventDefault();
+                // The drag is over here: the browser does not send dragend to a card that is removed by the move.
                 setOver(null);
+                setDragging(null);
                 const id = event.dataTransfer.getData(BOARD_DRAG_MIME);
                 const card = optimistic.find((c) => c.id === id);
                 if (card) move(card, column.status);
@@ -241,9 +253,7 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
 
               {column.cards.length === 0 && (
                 <p className="rounded-xl border border-dashed border-border-strong px-3 py-5 text-center text-[13px] leading-5 text-text-muted">
-                  {column.status === "todo" && "Nothing waiting. New tasks land here."}
-                  {column.status === "in_progress" && "Nothing in progress. Drag a task here, or use the buttons on a card."}
-                  {column.status === "done" && "Nothing done yet."}
+                  {EMPTY[column.status]}
                 </p>
               )}
 

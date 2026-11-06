@@ -111,6 +111,16 @@ test("a status or priority the app never writes is read as the safe one", () => 
   assert.equal(card.priority, "medium");
 });
 
+test("a priority that is only a property every object has is not a priority", () => {
+  // `"constructor" in { high: 0 }` is true: the check has to be about the three priorities, not about the object.
+  for (const odd of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+    const [card] = toBoardCards([task({ priority: odd })], NOW, none);
+    assert.equal(card.priority, "medium", odd);
+  }
+  const cards = toBoardCards([task({ priority: "constructor", dueDate: day(10) }), task({ priority: "high", dueDate: day(10) }), task({ priority: "low", dueDate: day(10) })], NOW, none);
+  assert.deepEqual(cards.map((c) => c.priority), ["high", "medium", "low"], "the order is still an order");
+});
+
 test("moving a card changes its column and its finished time, and nothing else", () => {
   const t = task({ dueDate: day(10), priority: "high" });
   const cards = toBoardCards([t, task()], NOW, none);
