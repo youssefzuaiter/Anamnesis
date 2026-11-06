@@ -3,13 +3,15 @@ import { auth } from "@/auth";
 import { requireUserId } from "@/lib/session";
 import { getProfile } from "@/repositories/profile-repository";
 import { ProfileForm } from "@/components/profile-form";
+import { CalendarFeedCard } from "@/components/calendar-feed-card";
 import { ReindexButton } from "@/components/reindex-button";
+import { getFeedLinkStatus } from "@/services/calendar-feed-service";
 
 export const metadata = { title: "Settings · Anamnesis" };
 
 export default async function SettingsPage() {
   const userId = await requireUserId();
-  const [profile, session] = await Promise.all([getProfile(userId), auth()]);
+  const [profile, session, feed] = await Promise.all([getProfile(userId), auth(), getFeedLinkStatus(userId)]);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -73,6 +75,11 @@ export default async function SettingsPage() {
           Review what the assistant proposed and what you approved
         </Link>
       </div>
+
+      <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
+        Calendar feed
+      </h2>
+      <CalendarFeedCard active={feed.active} createdAt={feed.createdAt?.toISOString() ?? null} />
 
       <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
         Search index
