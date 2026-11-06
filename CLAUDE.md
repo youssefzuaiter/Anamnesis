@@ -2330,6 +2330,93 @@ a note from a changed vault (an import never overwrites); a vault with more than
 (the preflight refuses it and says to use the JSON export or the backup); progress while a large import runs; a rate limit
 (none exists on any route; registration must be closed before this is exposed, as already recorded); a snapshot.
 
+## Calendar feed
+
+Settings has a **Calendar feed** card (ROADMAP item 13, "S to M, security"): a read-only `.ics` address with an
+unguessable token that a phone calendar can subscribe to. It was not tagged *demo*, so it was built from the plan
+(`docs/superpowers/plans/2026-11-06-calendar-feed.md`) and looked at in the browser. One additive, nullable migration, no
+new dependency. The decisions came out of a council that I ran inline, not with independent subagents, so it is weaker than
+four separate voices.
+
+- **The address is a bearer secret, and the route is the one that is not behind the session.** `GET /api/calendar/<token>.ics`
+  has no cookie to check (a phone cannot sign in); the token resolves to a user and everything after is scoped by that user.
+  The token is 32 random bytes as base64url (256 bits, 43 characters), shown **once** when the link is made, and **only
+  its SHA-256 is stored** (`UserProfile.calendarFeedHash`, unique, with `calendarFeedCreatedAt`). A token has the entropy of a
+  key, so a fast hash is enough; a copy of the database or a backup cannot rebuild an address. The JSON export carries when the
+  link was made and never the hash (`OMITTED_COLUMNS`, checked against the schema by the item-11 test).
+- **One link per account; making another replaces it and the old address dies at once** (a replaced hash, no cache);
+  "Turn off" clears it. A lost address is not recoverable (only the hash is kept): make a new one. **Cost accepted:** no link
+  per device, so revoking one phone means renewing for all.
+- **Every wrong address is the same answer, byte for byte:** malformed, no `.ics`, another case, unknown, turned off: a 404
+  `Not found` with the same headers. A malformed token never reaches the database (shape check first). Every response says
+  `Cache-Control: private, no-store`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow`, `nosniff`, and sets no
+  cookie. The 500 path logs only the error's type: a database error's message can carry the query's values, and one of them
+  is the stored hash.
+- **Tasks are `VEVENT`s, not `VTODO`s.** A phone calendar shows events (Google Calendar ignores a to-do, Apple files it in
+  Reminders). A task with a planned block is a timed entry titled `Task: …`; an open task with only a due date is an all-day
+  entry `Due: …` on that date in the server's local calendar (the app's rule for days). Both are `TRANSP:TRANSPARENT`, so a
+  task never makes the person look busy. A block counts only if it starts inside the window; a task planned long ago and
+  never done shows by its due date, or not at all. **Cost accepted:** the phone cannot tick a task off.
+- **Minimal content.** Titles, times and an event's place. No descriptions, notes or project names (the repository selects only
+  those columns), and no events imported from a subscription (they are already on the phone from their source). Window: 30 days
+  back to 365 ahead, at most 2,000 events and 2,000 tasks (the nearest are kept). Done and trashed tasks and undated ones are out.
+  The stamp of an entry is when its row last changed, so two fetches of an unchanged account are identical.
+- **The writer is ours** (`lib/ics-write.ts`, about 100 lines: escaping, 75-octet folding that never splits a character, UTC and
+  date forms, CR LF). `ical-generator` 11.1.3 is MIT with no dependencies; the rule is no new dependency, and the existing reader
+  (`lib/ics.ts`) reads our output back in the tests. **Cost if wrong:** a formatting rule a real calendar rejects.
+- **A title cannot add a line.** Backslash, semicolon and comma are escaped; CR LF, CR, LF, U+2028, U+2029 and U+0085 become
+  `\n`; other controls are dropped and a lone surrogate is replaced; the title and place are cut at 200 characters. Tested with
+  `END:VEVENT` / `ATTENDEE` injection and 100,000-character values (9.8 ms).
+- **The card** shows the address once in a read-only field (focus goes to it) with Copy, says that anyone who has it reads
+  the titles and times, warns when the address is `localhost`, and asks before making a new link or turning it off. After a
+  reload it says "on, made on <date>" and nothing more. **There is deliberately no `webcal://` link:** calendar apps fetch
+  those over plain http first, which would send the token unprotected; the card tells people to paste the https address
+  (Google Calendar, From URL; iPhone, Add Subscribed Calendar). Found by the code review.
+- **Residual risks, stated and accepted:** an access log records the address (`next dev` printed it 312 times in one run; a
+  reverse proxy's log will too: `ops/README.md` says so), an `http://` address sends the token in the clear, there is no rate
+  limit on the route (256 bits cannot be guessed, and an invalid address costs at most one indexed lookup), the UID of an entry is
+  the row's UUID, and two tabs making a link at once leave the earlier address dead.
+
+**Measured, on this machine** (150 requests each, an anonymous client, `next dev`): a valid token 6.0 ms median (p95 14.2), an
+unknown well-shaped one 4.3 ms, a short one 3.0 ms, no suffix 2.9 ms. Validity is distinguishable by time (a valid token reads
+two more tables), but the lookup is by hash equality, so a guess gives no prefix signal: the difference only confirms a token
+its asker already holds. The token is not in the Settings HTML or the RSC payload (fetched with `RSC: 1`) after creating the
+link or after a reload, and is not in the database (a `row_to_json` search of `UserProfile`). An account with 2,500 events and
+2,500 tasks gets a 2,000 + 2,000 feed in under 5 s.
+
+**What testing and the reviews turned up.**
+
+- **A test caught my own escaping bug:** the semicolon was not escaped. A shell heredoc had turned `"\\;"` into `"\;"` in the
+  file; write backslash-heavy code with the Write tool or Python, not a heredoc.
+- **The security review found one thing to change and measured the rest:** the 500 path's log line (above). It also measured
+  the timing and leak points listed above.
+- **Mutation checks:** 15 on the pure rules (14 killed, 1 equivalent: the length shortcut before an anchored `{43}` regex), 14 on
+  the repositories, service and export change (2 survived: tasks outside the window were not tested out of it, both now are), 10 on
+  the route and card through the browser spec (9 killed; removing `focus()` before `select()` is equivalent in Chrome, kept for
+  browsers that do not focus on `select()`), and 4 more on the review fixes.
+- **The code review (inline, at the highest effort) found seven things, four fixed:** the `webcal://` link (above); the "made on"
+  date formatted in the browser's time zone in a server-rendered component (the server formats it now); no mention of a public
+  route in `ops/README.md`, which `CLAUDE.md` requires for anything that changes how the app runs (a section was added); and a
+  task with an old block and a near due date dropped from the feed (the window now decides which of the two a task shows by).
+  Left, with reasons: no audit record of link changes, two tabs racing, and a second query on the profile table in Settings.
+- **Found by looking:** a screenshot taken straight after switching to dark mode showed faint button text; it was a colour
+  transition caught mid-way (computed colour correct, a second screenshot fine), not a bug.
+
+**Not verified:** the feed with an **independent iCalendar parser** or a **real phone calendar** (no parser is installed here
+and installing one is a download I did not ask about; the checks are our own reader, strict line-format tests and the injection
+test), the container rehearsal (`ops/rehearse.sh`; CI runs it), the other browser specs, the evals, and a second `pnpm build` after
+the review fixes (one was run before them; `tsc` and `pnpm lint` after).
+
+**Tests.** 13 unit tests (`ics-write`), 15 (`calendar-feed`), 10 integration tests (only the account's own events and open dated
+tasks, nothing of another account's, no done, trashed, undated, imported or out-of-window item, the token nowhere in the
+database, renewing and turning off at once, the status and a missing profile row, malformed addresses, two accounts, hostile
+titles, a bounded feed, the export without the hash, a missing account id) and 8 browser tests (`calendar-feed.spec.ts`: the
+card, an address shown once and working with no session, six wrong addresses byte for byte the same and `POST` refused, a new link
+and turning off, declining each, not in the JSON export, and the phone in light and dark).
+
+**Not done:** an audit record of link changes; one link per device; showing the address again (only a hash is kept); a rate
+limit; `VTODO`s or alarms; the events imported from a subscription; descriptions; a "last fetched" time; an independent parser check.
+
 ## Auth and route protection
 
 `requireUserId()` in `lib/session.ts` is the **only** sanctioned source of a userId.

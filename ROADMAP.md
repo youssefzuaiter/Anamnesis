@@ -55,7 +55,7 @@ services. Nothing may need a paid API key.
 - [x] **12. Markdown vault export and import** (M, depends on 11). A zip of `.md` files with
   `[[links]]` and attachments that Obsidian opens, and a way to restore from it (see "Markdown vault"
   in `CLAUDE.md`).
-- [ ] **13. Calendar feed export** (S to M, security). A read-only `.ics` URL with an
+- [x] **13. Calendar feed export** (S to M, security). A read-only `.ics` URL with an
   unguessable token so a phone calendar shows tasks and events. Store only a hash of the
   token, allow rotating it, and treat the URL as a bearer secret.
 
