@@ -1,6 +1,7 @@
 import { requireUserId } from "@/lib/session";
 import { groupTasks } from "@/services/task-service";
 import { checklistCounts } from "@/services/task-checklist-service";
+import type { ChecklistCount } from "@/lib/checklist";
 import { TaskForm } from "@/components/task-form";
 import { TaskRow } from "@/components/task-row";
 import { createTaskAction } from "@/actions/tasks";
@@ -23,7 +24,7 @@ function Section({
   title: string;
   tasks: Task[];
   overdue?: boolean;
-  counts: Map<string, { done: number; total: number }>;
+  counts: Map<string, ChecklistCount>;
 }) {
   if (tasks.length === 0) return null;
 
@@ -56,7 +57,8 @@ export default async function TasksPage({
     listGoalOptions(userId),
   ]);
 
-  const shown = [...grouped.overdue, ...grouped.today, ...grouped.upcoming, ...grouped.someday, ...grouped.done.slice(0, 20)];
+  const doneShown = grouped.done.slice(0, 20);
+  const shown = [...grouped.overdue, ...grouped.today, ...grouped.upcoming, ...grouped.someday, ...doneShown];
   const counts = await checklistCounts(userId, shown.map((task) => task.id));
 
   const openCount =
@@ -123,7 +125,7 @@ export default async function TasksPage({
       <Section title="Today" tasks={grouped.today} counts={counts} />
       <Section title="Upcoming" tasks={grouped.upcoming} counts={counts} />
       <Section title="Someday" tasks={grouped.someday} counts={counts} />
-      <Section title="Done" tasks={grouped.done.slice(0, 20)} counts={counts} />
+      <Section title="Done" tasks={doneShown} counts={counts} />
     </div>
   );
 }

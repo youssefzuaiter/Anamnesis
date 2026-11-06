@@ -15,8 +15,17 @@ import { Icon } from "@/components/icons";
 
 type Item = { id: string; title: string; done: boolean };
 
-const small =
+const smallButton =
   "inline-flex min-h-11 items-center justify-center rounded-lg border border-border-subtle px-3 text-xs font-medium text-text transition-colors hover:bg-surface-subtle disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-8";
+
+/** A quiet button on an item's row, named for the item it acts on so a screen reader hears which one. */
+function RowButton({ label, name, disabled, onClick }: { label: string; name: string; disabled: boolean; onClick: () => void }) {
+  return (
+    <button type="button" disabled={disabled} onClick={onClick} aria-label={name} className={smallButton}>
+      {label}
+    </button>
+  );
+}
 
 /**
  * A task's checklist: tick, rename, reorder (Up and Down, so it works on a phone, with a keyboard and with a
@@ -118,10 +127,10 @@ export function TaskChecklist({ taskId, items, taskDone }: { taskId: string; ite
                       onKeyDown={(event) => event.key === "Escape" && setEditing(null)}
                       className="min-h-11 min-w-0 flex-1 rounded-lg border border-control bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
                     />
-                    <button type="submit" disabled={busy} className={small}>
+                    <button type="submit" disabled={busy} className={smallButton}>
                       Save
                     </button>
-                    <button type="button" onClick={() => setEditing(null)} className={small}>
+                    <button type="button" onClick={() => setEditing(null)} className={smallButton}>
                       Cancel
                     </button>
                   </form>
@@ -132,30 +141,15 @@ export function TaskChecklist({ taskId, items, taskDone }: { taskId: string; ite
 
               {editing?.id !== item.id && (
                 <div className="flex flex-wrap gap-1.5 pl-8">
-                  <button type="button" disabled={busy} onClick={() => setEditing({ id: item.id, text: item.title })} aria-label={`Edit "${item.title}"`} className={small}>
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy || index === 0}
-                    onClick={() => run(() => moveChecklistItemAction(item.id, "up"))}
-                    aria-label={`Move "${item.title}" up`}
-                    className={small}
-                  >
-                    Up
-                  </button>
-                  <button
-                    type="button"
+                  <RowButton label="Edit" name={`Edit "${item.title}"`} disabled={busy} onClick={() => setEditing({ id: item.id, text: item.title })} />
+                  <RowButton label="Up" name={`Move "${item.title}" up`} disabled={busy || index === 0} onClick={() => run(() => moveChecklistItemAction(item.id, "up"))} />
+                  <RowButton
+                    label="Down"
+                    name={`Move "${item.title}" down`}
                     disabled={busy || index === items.length - 1}
                     onClick={() => run(() => moveChecklistItemAction(item.id, "down"))}
-                    aria-label={`Move "${item.title}" down`}
-                    className={small}
-                  >
-                    Down
-                  </button>
-                  <button type="button" disabled={busy} onClick={() => run(() => removeChecklistItemAction(item.id))} aria-label={`Remove "${item.title}"`} className={small}>
-                    Remove
-                  </button>
+                  />
+                  <RowButton label="Remove" name={`Remove "${item.title}"`} disabled={busy} onClick={() => run(() => removeChecklistItemAction(item.id))} />
                 </div>
               )}
             </li>

@@ -1,6 +1,6 @@
 import "server-only";
 import { AppError } from "@/lib/api-response";
-import { MAX_CHECKLIST_ITEMS, checklistProgress, cleanItemTitle, moveItem as planMove, type ChecklistProgress } from "@/lib/checklist";
+import { MAX_CHECKLIST_ITEMS, checklistProgress, cleanItemTitle, moveItem as planMove, type ChecklistCount, type ChecklistProgress } from "@/lib/checklist";
 import * as checklistRepository from "@/repositories/task-checklist-repository";
 import * as taskRepository from "@/repositories/task-repository";
 
@@ -44,10 +44,12 @@ export async function getChecklist(userId: string, taskId: string): Promise<{ it
   return { items, progress: checklistProgress(items) };
 }
 
-/** Adds a step at the end, unless the task already holds 50: the repository counts and writes under a lock on the task. */
+/**
+ * Adds a step at the end, unless the task already holds 50. The repository checks that the task is the caller's and
+ * live, counts and writes under one lock on it; a title is judged first, which says nothing about whose task it is.
+ */
 export async function addItem(userId: string, taskId: string, rawTitle: string): Promise<ChecklistItem> {
   assertAccount(userId);
-  await assertTaskOwned(userId, taskId);
   const title = titleOrRefuse(rawTitle);
   const added = await checklistRepository.createIfRoom(userId, taskId, title, MAX_CHECKLIST_ITEMS);
   if (added.kind === "missing") throw new AppError("RESOURCE_NOT_FOUND", "That task no longer exists.");
@@ -82,7 +84,7 @@ export async function moveItem(userId: string, itemId: string, direction: "up" |
 }
 
 /** Done and total for each of these tasks that has steps; the task list shows them as a badge. */
-export async function checklistCounts(userId: string, taskIds: string[]): Promise<Map<string, { done: number; total: number }>> {
+export async function checklistCounts(userId: string, taskIds: string[]): Promise<Map<string, ChecklistCount>> {
   assertAccount(userId);
   return checklistRepository.countsForTasks(userId, taskIds);
 }

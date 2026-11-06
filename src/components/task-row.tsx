@@ -2,6 +2,7 @@ import Link from "next/link";
 import { setTaskStatusAction } from "@/actions/tasks";
 import { Icon } from "@/components/icons";
 import type { TaskModel as Task } from "@/generated/prisma/models";
+import type { ChecklistCount } from "@/lib/checklist";
 
 // Amber means "needs attention", so it marks high priority and overdue; red is
 // kept for destructive actions and errors.
@@ -27,7 +28,7 @@ export function TaskRow({
   task: Task;
   overdue?: boolean;
   /** Done and total of the task's checklist, when it has one: shown as a small `2/5`. */
-  checklist?: { done: number; total: number };
+  checklist?: ChecklistCount;
   /** `row` drops the card chrome, for lists that already sit inside a card. */
   variant?: "card" | "row";
 }) {

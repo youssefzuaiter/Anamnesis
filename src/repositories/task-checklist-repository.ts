@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { afterCreated, type ExportPage } from "@/lib/export-shape";
-import { nextPosition, type Positioned } from "@/lib/checklist";
+import { nextPosition, type ChecklistCount, type Positioned } from "@/lib/checklist";
 import type { TaskChecklistItemModel as ChecklistItem } from "@/generated/prisma/models";
 
 /**
@@ -18,16 +18,12 @@ export async function listForTask(userId: string, taskId: string): Promise<Check
   });
 }
 
-export async function countForTask(userId: string, taskId: string): Promise<number> {
-  return prisma.taskChecklistItem.count({ where: { ...live(userId), taskId } });
-}
-
 /** Most ids one query is given: Postgres refuses more than 32,767 parameters, and 5,000 take about 14 ms. */
 const ID_CHUNK = 5000;
 
 /** Done and total for each of these tasks that has any steps, a grouped read for each 5,000 ids. */
-export async function countsForTasks(userId: string, taskIds: string[]): Promise<Map<string, { done: number; total: number }>> {
-  const counts = new Map<string, { done: number; total: number }>();
+export async function countsForTasks(userId: string, taskIds: string[]): Promise<Map<string, ChecklistCount>> {
+  const counts = new Map<string, ChecklistCount>();
   const ids = [...new Set(taskIds)];
   for (let from = 0; from < ids.length; from += ID_CHUNK) {
     const rows = await prisma.taskChecklistItem.groupBy({

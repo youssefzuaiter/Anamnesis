@@ -35,7 +35,8 @@ export function cleanItemTitle(raw: string): string {
   return out.join("");
 }
 
-export type ChecklistProgress = { done: number; total: number; complete: boolean };
+export type ChecklistCount = { done: number; total: number };
+export type ChecklistProgress = ChecklistCount & { complete: boolean };
 
 /** `complete` only when there is something to do and all of it is done: an empty list is not a finished one. */
 export function checklistProgress(items: readonly { done: boolean }[]): ChecklistProgress {
