@@ -2087,7 +2087,7 @@ independent subagents, so it is weaker than four separate voices. No migration, 
 - **What is in the file** (`formatVersion` 2; the first export had no version): the account and its
   whole profile, projects, goals, notes, tasks, events, links, focus telemetry, the audit trail,
   **courses, assessments, flashcards, note versions, conversations, messages, attachment records and
-  calendar subscriptions**. Every table is read oldest first, ties by id, so two exports are comparable.
+  calendar subscriptions**, and (item 14) **the checklist steps of live tasks** (`checklistItems`). Every table is read oldest first, ties by id, so two exports are comparable.
 - **A calendar feed's address is not exported; only its host is.** A feed URL is a bearer secret (a
   Google or Outlook "secret address in iCal format" lets anyone read the timetable), and an export is a
   file meant to be copied, emailed and put in a cloud. The row carries `host` (`feedHost`: no scheme,
@@ -2416,6 +2416,109 @@ and turning off, declining each, not in the JSON export, and the phone in light 
 
 **Not done:** an audit record of link changes; one link per device; showing the address again (only a hash is kept); a rate
 limit; `VTODO`s or alarms; the events imported from a subscription; descriptions; a "last fetched" time; an independent parser check.
+
+## Task checklists
+
+A task page has a **Checklist** (ROADMAP item 14): steps a person adds, ticks, renames, reorders with Up and Down, and
+removes, with "2 of 5 done" beside the heading and a `2/5` badge on the task in `/tasks`. The entry is tagged *M,
+migration*, not *demo*, so it was built from the plan (`docs/superpowers/plans/2026-11-06-task-checklists.md`) and looked at
+in the browser (desktop 1280, a 375px phone, light and dark), not shown as a mock first. The decisions came out of a council
+that I ran inline, not with independent subagents, so it is weaker than four separate voices. No new dependency.
+
+- **A step is a row of its own, not a child task.** Progress is a raw count of tasks (see "Goals"); a child task would either
+  double-count the work (the parent and its steps) or need a leaf-or-parent rule that changes every number the person already
+  sees, and every list, the calendar, Today, reminders and the assistant treat a task as a unit of work. **Cost accepted:** a step
+  has no date, tag, priority or time block, and shows nowhere but its task page and the `/tasks` badge.
+- **Checklist progress is the task's own and feeds nothing.** Ticking every step does not complete the task: the page says
+  "Every item is done. Mark the task complete above." and Mark complete stays the one way to finish it. A test pins that a
+  project's progress and a goal's totals are unchanged by adding or ticking steps, and the task's status stays `todo`. An empty
+  list is not a finished one.
+- **One order, `(position, id)`, in the page and in a move.** Up and Down swap with a neighbour (no drag, so it works on a
+  phone, with a keyboard and with a screen reader); a move renumbers the task's steps 0..n-1 and writes only the rows that
+  changed, so gaps (from deletes) and ties heal. The repository first ordered ties by creation time while a move planned by id, so
+  Up on a tied step could visibly do nothing; found by the security review, one order now.
+- **Steps follow their task.** Every read and write requires `task.deletedAt = null` as well as the `userId` (`live(userId)` in
+  `repositories/task-checklist-repository.ts`), so a trashed task's steps are hidden and come back on restore; purging the task
+  or deleting the account removes them (cascade). **A recurring series does not copy a checklist**: occurrences are made at
+  creation, before anyone has written one.
+- **At most 50 steps, held exactly.** `createIfRoom` counts and writes in one transaction under a `SELECT ... FOR UPDATE` on the
+  caller's own live task row, so adds to one task take turns. The plan first said two adds at the same instant could pass the
+  limit by one; **measured, 60 concurrent adds on a list of 49 stored 109**, and after the lock one is accepted and 50 are
+  stored. The limit matters because a task page reads every step.
+- **A title is text, cleaned once on the server** (`cleanItemTitle`, `lib/checklist.ts`): control characters and every kind of line
+  break become a space, runs of whitespace collapse, the ends are trimmed, a lone surrogate is replaced, it is cut at 200 UTF-16
+  units (what the field's `maxLength` counts) without splitting a pair, and **a title with no letter, number, punctuation or
+  symbol in it is empty** (zero-width characters, a joiner, a lone accent: the code review found `U+200B` alone made a blank row
+  with buttons named `Edit ""`). Markup is kept as typed and shown as text; there is no HTML sink. The action bounds the raw
+  value at 2,000 characters before anything runs.
+- **The JSON export carries the steps of live tasks** as `checklistItems` (`lib/export-shape.ts` and the `tables` registry in
+  `services/export-service.ts`; the existing export test checks the model list against `schema.prisma`). They are not in the
+  vault zip, the search index, the assistant's context or the calendar feed.
+- **Data, additive, so the previous release keeps working:** one table, `TaskChecklistItem` (`id`, `userId`, `taskId`, `title`,
+  `done`, `position`, timestamps; both foreign keys cascade). The SQL is written by hand and was proved against the schema by
+  replaying every migration into throwaway databases and diffing: empty with the migration, exactly its `CreateTable`, two
+  `CreateIndex` and two `AddForeignKey` without it. That the previous release keeps working is reasoned (a new table nothing else
+  reads), and CI's `container` job rehearses it; it was not run here.
+- **Ownership.** Every query carries the session's `userId` (each action parses its input, ids with `z.uuid()`, then calls
+  `requireUserId()` and the service, the order `scheduleTaskAction` already has), and a step, a task id for an add, a position write are all checked **in the query that uses them**: a foreign
+  step, a missing one and one of a trashed task give the same refusal per operation ("That checklist item no longer exists.",
+  "That task no longer exists."). The title of an add is judged before the task, which says nothing about whose task it is;
+  `writePositions` filters by id, task and user; and `createIfRoom` and `writePositions` are tested **directly** as well as
+  through the service, because the service's own ownership read masked a dropped `userId` in the lock until a mutation showed it.
+
+**What the security review measured** (all fixed test-first): the limit above (60 racers: 109 stored, now 50); the `/tasks`
+counts threw "query parameter limit exceeded" above 32,767 task ids (it would have made the page an error for an account with that
+many open tasks), so `countsForTasks` asks for 5,000 at a time and de-duplicates (40,000 ids 77 ms, 100,000 ids 205 ms); and the
+order mismatch above. A 5,000-step task (200 characters each, only possible by writing the rows directly) costs 36 ms to read and 75 ms to move in. **Accepted, not fixed:** two tabs moving steps at
+once can leave a gap or a tie (12 racing moves left positions `0,1,3,4,4,5`): the order is still one deterministic order and the
+next move renumbers; no rate limit on the five actions (none has one in this app; registration must be closed before the app is
+exposed); the add's row lock makes a concurrent save of the same task wait a few milliseconds, not measured under load.
+
+**The interaction, and what looking and review turned up.**
+
+- **Everything is unavailable from the click until the refreshed list has arrived** (`useTransition` around `router.refresh()`).
+  Before, the guard was released when the action returned, so a click on a row that had just been removed ran against a row that was
+  gone and showed "no longer exists". The refresh happens after a success and when the step is gone (removed in another tab); **not
+  after a refusal of the input**, which changes nothing and made the next Enter wait: a regression of my own that the existing
+  "Edit... a blank name is refused" test caught.
+- **Buttons are `aria-disabled`, not `disabled`.** A focused button that becomes disabled loses the keyboard's place (measured: after
+  Enter on Down, `Received: inactive`), so every tick, Up, Down and Remove sent a keyboard user back to the top of the page. Clicks are
+  ignored in the handlers, and focus is put back by key (`data-focus-key`) where a row moved, closed its editor (Save, Cancel,
+  Escape) or was removed (the next row's Edit, else the previous, else the field). **Chromium keeps focus on a row that React
+  reorders, so the refocus after a move could not be shown necessary and survived a mutation; it is kept for engines that do not,
+  unverified there.**
+- **Text typed while an add is being saved is kept.** The success of the first add cleared the field, wiping the next item typed in
+  the meantime (found by looking; a test slows the save to widen the window). It clears only what was sent.
+- **The tick box is drawn 20px wide with a 44px hit area**, measured with `elementFromPoint`: the first version was 41px
+  (`-inset-3` is sized from the padding box) and my phone test could not see it. `TaskRow`'s own checkbox has the identical classes, so it should be
+  41px too (not measured); not changed. The tick keeps its changing name (`Mark "x" done` / `not done`) and has no `aria-pressed` on top of it.
+- **Seen once, not an app bug:** a stale element reference in my browser session let 174 typed characters reach the page, and the
+  `g`-then-letter shortcuts navigated to Notes. Nothing was created.
+
+**Mutation checks** (a test failed for each unless said): 12 on the rules, 19 on the repository, service and export, 22 on the
+component and page (19 killed, 2 survive by design because the busy ref and the disabled attribute each cover the other and
+removing both is killed, 1 equivalent: a badge for a task with no steps cannot happen, since the count query returns only tasks with
+steps), 10 on the concurrency, id-list and order fixes, and 9 on the review fixes (7 killed, 1 killed after its test was extended,
+1 not testable here, above). **Tasks 1 and 2 were written with their tests before a first run**, so their first run was red only
+because the module was missing; the mutation checks are what show those tests can fail. For Task 3 the implementation was stashed and
+the spec seen failing on the missing heading, after it was written, not before.
+
+**Tests.** 15 unit tests (`checklist`), 18 integration tests (`task-checklist`: order and progress, cleaning, the limit, a foreign,
+missing, trashed or deleted-task id for every operation with the other account's rows byte for byte unchanged, moves and healing,
+direct repository scope, counts, rollups unchanged, trash and restore and purge, account deletion, the export, markup as text, a missing
+account id, concurrent adds, 40,000 ids, tie order) and 16 browser tests (`task-checklist.spec.ts`: adding by Enter and the button,
+ticking and the `/tasks` badge, reordering, editing, removing, finishing, markup and a 500-character title, a double click,
+typing during a save, keyboard focus after each action, focus after the editor closes, a step removed elsewhere, nothing acting
+before the list refreshes, another task's list and the 50-step stop, and the phone in light and dark with a hit test of the tick).
+**Not run locally:** the other browser specs beyond the task, goal, project, daily, exam-prep and navigation ones, the `evals`
+job (nothing here touches a model) and the container rehearsal; CI runs them. One `pnpm build` was run before the review fixes
+and none after (they touch a client component and a pure module; `tsc` and `pnpm lint` ran).
+
+**Not done:** subtasks as tasks (dates, tags, a step in the calendar); steps in search, the assistant, the vault or the feed; a
+checklist copied into a recurring series or a template; drag to reorder; showing the `2/5` badge on the dashboard, project and goal
+pages (their `TaskRow`s are untouched); a bulk "tick all" and "clear done"; names that tell two steps with the same title apart (a
+screen reader hears `Move "Read" up` twice); a rate limit. **Not verified:** a real phone (touch), a screen reader (only the
+accessible names and the hidden text were read), Firefox and Safari.
 
 ## Auth and route protection
 

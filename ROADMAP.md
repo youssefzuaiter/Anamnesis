@@ -61,8 +61,9 @@ services. Nothing may need a paid API key.
 
 ## D. Planning depth
 
-- [ ] **14. Subtasks and checklists** (M, migration). Progress rollups must keep counting each
-  task once (see "Goals").
+- [x] **14. Subtasks and checklists** (M, migration). Progress rollups must keep counting each
+  task once (see "Goals"). Built as a checklist of steps that belong to a task, not as child
+  tasks, so no rollup changes (see "Task checklists" in `CLAUDE.md`).
 - [ ] **15. Kanban view for projects** (M, demo).
 - [ ] **16. Hourly week and day grid** (L, demo). Drag to move, drag the edge to resize a time
   block. The redesign left this out; dropping a task still lands at 09:00 today.
