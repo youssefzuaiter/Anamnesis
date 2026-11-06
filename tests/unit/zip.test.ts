@@ -439,3 +439,32 @@ test("the writer refuses the 65,536th entry and a name over 65,535 bytes", async
   assert.equal(await rejectsWith(() => w.add({ name: "one-too-many", data: new Uint8Array(0), modified: at })), "too-large");
   assert.equal(await rejectsWith(() => new ZipWriter().add({ name: "x".repeat(65_536), data: new Uint8Array(0), modified: at })), "too-large");
 });
+
+// --- what only a mutation check asked for -------------------------------------------------------
+
+test("the inflate stops at the declared size: a 400 MiB lie is refused at once, not unpacked first", async () => {
+  const huge = Buffer.alloc(400 * 1024 * 1024);
+  const packed = deflateRawSync(huge);
+  huge.fill(0, 0, 0); // keep the buffer alive until here; the archive only needs `packed`
+  const zip = openZip(craft([{ name: "lie", data: packed, method: 8, size: 10, crc: 0 }]));
+  const code = await within(150, () => rejectsWith(() => zip.read(zip.entries[0])));
+  assert.equal(code, "corrupt");
+});
+
+test("an entry cannot read into the central directory, even when the bytes there happen to add up", async () => {
+  // Data "AB" with a declared size of 10: the other 8 bytes would be the start of the directory.
+  const layout = (crc: number) => craft([{ name: "a", data: enc.encode("AB"), size: 10, compressedSize: 10, crc }]);
+  const probe = layout(0);
+  const overlapped = probe.subarray(31, 41); // where the entry's data would be read from
+  const zip = openZip(layout(crc32(overlapped)));
+  assert.equal(await rejectsWith(() => zip.read(zip.entries[0])), "corrupt");
+});
+
+test("every name the writer makes is flagged as UTF-8, in the local header and in the directory", async () => {
+  const bytes = await build([{ name: "Şükrü ğ.md", data: enc.encode("x") }, { name: "plain.md", data: enc.encode("y") }]);
+  assert.equal(bytes.readUInt16LE(6) & 0x0800, 0x0800, "local header");
+  const at = bytes.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+  assert.equal(bytes.readUInt16LE(at + 8) & 0x0800, 0x0800, "directory record");
+  const second = bytes.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]), at + 4);
+  assert.equal(bytes.readUInt16LE(second + 8) & 0x0800, 0x0800, "second directory record");
+});

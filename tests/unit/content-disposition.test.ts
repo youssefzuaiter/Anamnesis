@@ -20,6 +20,13 @@ test("letters beyond Latin-1 (Turkish, CJK) make a legal header: an ASCII fallba
   assert.equal(decodeURIComponent(contentDisposition("Şükrü ğ.png").split("filename*=UTF-8''")[1]), "Şükrü ğ.png");
 });
 
+test("characters RFC 5987 does not allow in the encoded name are percent-escaped, even those encodeURIComponent leaves alone", () => {
+  const header = contentDisposition("it's (v2) *final*.png");
+  const encoded = header.split("filename*=UTF-8''")[1];
+  assert.equal(encoded, "it%27s%20%28v2%29%20%2Afinal%2A.png");
+  assert.equal(decodeURIComponent(encoded), "it's (v2) *final*.png");
+});
+
 test("quotes, backslashes, line breaks and other controls cannot break out of the header", () => {
   const header = contentDisposition('a"b\\c\r\nSet-Cookie: x=1\u0000.png');
   assert.ok(legal(header));

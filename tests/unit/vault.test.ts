@@ -46,6 +46,13 @@ test("Windows device names are made safe, with or without an extension", () => {
   assert.equal(safeStem("Conclusion"), "Conclusion");
 });
 
+test("a name cut at the byte limit does not end in a dot or a space, and a device name followed by a dot is still a device name", () => {
+  assert.equal(safeStem(`${"a".repeat(179)}. tail`), "a".repeat(179), "the cut lands after the dot");
+  assert.equal(safeStem(`${"a".repeat(178)}  tail`), "a".repeat(178), "the cut lands after the spaces");
+  assert.equal(safeStem("con ."), "con_", "trailing dots and spaces go before the device check");
+  assert.equal(safeStem("nul  "), "nul_");
+});
+
 test("leading dots, trailing dots and spaces are removed", () => {
   assert.equal(safeStem(".hidden"), "hidden");
   assert.equal(safeStem("name. "), "name");
@@ -142,6 +149,13 @@ test("a name and its numbered form stay within 200 bytes", () => {
   const names = allocateNames([note("a", stem, "2026-01-02"), note("b", stem, "2026-01-01"), note("c", stem, "2025-12-31")]);
   for (const name of names.values()) assert.ok(bytes(name) <= 200, name);
   assert.equal(new Set(names.values()).size, 3);
+});
+
+test("a numbered name is cut to stay within 200 bytes even when its stem was already long", () => {
+  const stem = "a".repeat(198); // not from safeStem: with ".md" the plain name is 201 bytes, and a number would add more
+  const names = allocateNames([note("x", stem, "2026-01-03"), note("y", stem, "2026-01-02"), note("z", stem, "2026-01-01")]);
+  for (const id of ["y", "z"]) assert.ok(bytes(names.get(id) as string) <= 200, `${id}: ${bytes(names.get(id) as string)} bytes`);
+  assert.equal(new Set([...names.values()].map((n) => n.toLowerCase())).size, 3);
 });
 
 test("a composed and a decomposed spelling of one name are the same name", () => {

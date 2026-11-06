@@ -33,6 +33,8 @@ test("notes, attachments and what is ignored", () => {
   assert.deepEqual(classifyEntry("attachments/x.png"), { kind: "attachment", mime: "image/png" });
   assert.deepEqual(classifyEntry("attachments/deep/dir/x.JPEG"), { kind: "attachment", mime: "image/jpeg" });
   assert.deepEqual(classifyEntry("attachments/x.md"), { kind: "attachment", mime: "text/markdown" }, "under attachments/ a .md is a file, not a note");
+  assert.deepEqual(classifyEntry("Attachments/x.png"), { kind: "attachment", mime: "image/png" }, "a Mac or Windows disk does not mind the case of the folder");
+  assert.deepEqual(classifyEntry("ATTACHMENTS/x.png"), { kind: "attachment", mime: "image/png" });
   for (const name of ["x.png", "readme.txt", "notes.markdown", "attachments/x.html", "attachments/x.svg", "attachments/noext"]) {
     assert.equal(classifyEntry(name).kind, "ignored", name);
   }
