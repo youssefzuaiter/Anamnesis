@@ -114,6 +114,22 @@ ops/restore.sh ~/anamnesis-backups/anamnesis-<timestamp> --confirm-overwrite
 | Port 3200 is taken | Set `ANAMNESIS_PORT` in `.env.production` and run `ops/update.sh --force`. |
 | launchd jobs do nothing | Check the `.log` files in `ops/state/`. The jobs run while you are logged in. |
 
+## The calendar feed is deliberately public
+
+`GET /api/calendar/<token>.ics` is the one route that is **not** behind the session: a phone calendar cannot sign in, so the
+token in the address is the credential (ROADMAP item 13). Three things follow for whoever runs this:
+
+- **Do not put an authentication proxy, a path allow-list or a firewall rule in front of `/api/calendar/`** unless every
+  subscribed calendar should stop working. An unknown, malformed or turned-off address is a plain 404 and nothing else is learned.
+- **The address is a secret, and an access log records it.** `next dev` prints every request path, and a reverse proxy's access log
+  will too. Do not ship those logs somewhere that people who must not read a person's timetable can read them; the cure after a
+  leak is Settings, Calendar feed, Make a new link (the old address stops at once).
+- **Serve it over https.** An `http://` address sends the token in the clear. The Settings card says so, and warns when the address
+  is `localhost`, which a phone cannot reach.
+
+Only a SHA-256 of the token is in the database (and so in a backup), so a stolen dump cannot rebuild an address. The migration
+that added the two columns is additive and nullable, so the rule under "The migration rule" holds.
+
 ## Before exposing it to the internet
 
 It is bound to localhost on purpose. Before it is reachable from anywhere else:

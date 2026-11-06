@@ -56,6 +56,7 @@ test("an address with no readable host gives null, and nothing throws or hangs",
 test("the file says what it leaves out, with a reason for each", () => {
   assert.deepEqual(Object.keys(NOT_INCLUDED).sort(), [
     "attachmentFiles",
+    "calendarFeedLink",
     "calendarFeedUrls",
     "deletedItems",
     "searchIndex",
@@ -77,7 +78,8 @@ test("the table of exported models is one key each and never collides with a top
 });
 
 test("every deliberate omission of a column has a stated reason", () => {
-  assert.deepEqual(Object.keys(OMITTED_COLUMNS).sort(), ["CalendarSubscription", "User"]);
+  assert.deepEqual(Object.keys(OMITTED_COLUMNS).sort(), ["CalendarSubscription", "User", "UserProfile"]);
+  assert.ok(OMITTED_COLUMNS.UserProfile.calendarFeedHash.trim().length > 20);
   assert.ok(OMITTED_COLUMNS.User.passwordHash.trim().length > 20);
   assert.ok(OMITTED_COLUMNS.CalendarSubscription.url.trim().length > 20);
 });

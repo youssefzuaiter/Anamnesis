@@ -41,6 +41,10 @@ export const OMITTED_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   CalendarSubscription: {
     url: "A feed address is a bearer secret (anyone holding it can read the timetable); only its host is exported, as `host`.",
   },
+  UserProfile: {
+    calendarFeedHash:
+      "The stored form of the secret in the account's own calendar feed address; a file that holds it would let anyone who reads the file look the feed up. When the link was made is exported, as `calendarFeedCreatedAt`.",
+  },
 };
 
 /** The same omissions in plain words, carried inside the file as `notIncluded` so it explains itself. */
@@ -49,6 +53,8 @@ export const NOT_INCLUDED: Readonly<Record<string, string>> = {
     "The files attached to notes are not in this file, only their records (name, type, size). The files themselves are in the backup's attachments archive.",
   calendarFeedUrls:
     "A calendar feed's address is a secret that lets anyone read your timetable, so only its host name is exported. The events it imported are in `events`.",
+  calendarFeedLink:
+    "The address of your own calendar feed is a secret and only a hash of it is kept, so it is not in this file and cannot be shown again. Make a new link in Settings.",
   searchIndex:
     "The search index is derived from your text and is rebuilt on request (Settings, Rebuild search index).",
   deletedItems:
