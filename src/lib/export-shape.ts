@@ -13,6 +13,7 @@ export const EXPORTED_MODELS: Readonly<Record<string, string>> = {
   Goal: "goals",
   Note: "notes",
   Task: "tasks",
+  TaskChecklistItem: "checklistItems",
   Event: "events",
   EntityLink: "links",
   FocusTelemetry: "focusTelemetry",

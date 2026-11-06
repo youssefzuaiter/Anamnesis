@@ -34,6 +34,7 @@ model User {
   conversations Conversation[]
   messages     Message[]
   attachments  Attachment[]
+  taskChecklistItems TaskChecklistItem[]
   goals        Goal[]
 }
 
@@ -173,12 +174,32 @@ model Task {
   note    Note?    @relation(fields: [noteId], references: [id], onDelete: SetNull)
   goal    Goal?    @relation(fields: [goalId], references: [id], onDelete: SetNull)
   assessment Assessment? @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
+  checklistItems TaskChecklistItem[]
 
   @@index([userId])
   @@index([dueDate])
   @@index([recurrenceId])
   @@index([goalId])
   @@index([assessmentId])
+}
+
+/// A step inside a task's checklist. Not a task: no rollup, calendar, reminder or search ever sees one, so a
+/// project's and a goal's progress keep counting each task once. Lives and dies with its task.
+model TaskChecklistItem {
+  id        String   @id @default(uuid())
+  userId    String
+  taskId    String
+  title     String
+  done      Boolean  @default(false)
+  position  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, position])
+  @@index([userId])
 }
 
 model Event {
