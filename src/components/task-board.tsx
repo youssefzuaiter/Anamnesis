@@ -229,7 +229,8 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
                 over === column.status ? "bg-accent-soft outline-2 -outline-offset-2 outline-accent outline-dashed" : "bg-surface-subtle"
               }`}
             >
-              <header className="flex items-center gap-2 px-1 pt-0.5">
+              {/* Below lg the buttons above the columns already say which column and how many. */}
+              <header className="flex items-center gap-2 px-1 pt-0.5 max-lg:hidden">
                 <Icon name={STATUS_ICON[column.status]} className={`size-4 ${column.status === "done" ? "text-accent" : "text-text-faint"}`} />
                 <h2 className="text-xs font-semibold text-text-muted">{column.label}</h2>
                 <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border-subtle bg-surface px-1.5 text-xs font-semibold tabular-nums text-text-muted">

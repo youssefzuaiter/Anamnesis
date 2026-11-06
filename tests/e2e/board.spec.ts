@@ -446,6 +446,8 @@ for (const scheme of ["light", "dark"] as const) {
 
     // One column at a time: To do is showing, the others are not.
     await expect(column(page, "To do")).toBeVisible();
+    // The tab already says which column and how many, so the column does not say it again under it.
+    await expect(column(page, "To do").getByText(/^\d+ tasks?$/)).toBeHidden();
     await expect(column(page, "In progress")).toBeHidden();
     await expect(column(page, "Done")).toBeHidden();
     await expect(show.getByRole("button", { name: /^To do/ })).toHaveAttribute("aria-pressed", "true");
