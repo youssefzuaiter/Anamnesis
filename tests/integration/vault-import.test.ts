@@ -9,7 +9,6 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { crc32, deflateRawSync } from "node:zlib";
 import { prisma } from "@/lib/prisma";
@@ -126,14 +125,14 @@ async function exportOf(userId: string): Promise<Buffer> {
 
 test("a preview writes nothing, and apply does what it said", async () => {
   const user = await newUser();
-  const zip = await makeZip([md("A", "one"), md("B", "two", { tags: ["x"] })]);
-  const before = await attachmentFiles();
+  const zip = await makeZip([md("A", "one", { attachments: ["a.png"] }), md("B", "two", { tags: ["x"] }), { name: "attachments/a.png", data: PNG }]);
   const seen = await preview(user.id, zip);
   assert.equal(seen.apply, false);
   assert.equal(seen.notes.create, 2);
   assert.equal(seen.notes.created, 0);
+  assert.equal(seen.attachments.stored, 1, "a preview says what it would store");
   assert.equal(await count(user.id), 0, "a preview creates no note");
-  assert.deepEqual(await attachmentFiles(), before, "and no file");
+  assert.equal(await prisma.attachment.count({ where: { userId: user.id } }), 0, "and no attachment");
 
   const done = await apply(user.id, zip);
   assert.equal(done.apply, true);
@@ -142,7 +141,9 @@ test("a preview writes nothing, and apply does what it said", async () => {
   assert.equal(done.notes.present, seen.notes.present);
   assert.deepEqual(done.notes.renamed, seen.notes.renamed);
   assert.deepEqual(done.skipped, seen.skipped);
+  assert.equal(done.attachments.stored, seen.attachments.stored);
   assert.equal(await count(user.id), 2);
+  assert.equal(await prisma.attachment.count({ where: { userId: user.id } }), 1);
 });
 
 test("importing the same zip twice creates nothing the second time", async () => {
@@ -346,9 +347,9 @@ test("attachments are checked, stored under generated names, and nothing lands o
     { name: "../../evil.png", data: PNG },
     { name: "attachments/enc.png", data: PNG, flags: 0x0801 },
   ];
-  const watched = [process.cwd(), path.join(process.cwd(), "data"), tmpdir()];
+  // Only places nothing else writes to: other test files add attachment files at the same time.
+  const watched = [process.cwd(), path.join(process.cwd(), "data")];
   const before = await Promise.all(watched.map((dir) => readdir(dir).then((x) => x.sort())));
-  const filesBefore = await attachmentFiles();
 
   const report = await apply(user.id, rawZip(entries));
   assert.equal(report.notes.created, 1);
@@ -361,9 +362,12 @@ test("attachments are checked, stored under generated names, and nothing lands o
   assert.match(rejected["missing.png"], /not in the zip/i);
   assert.match(rejected["evil.png"], /not in the zip/i, "an entry with a climbing path is never used");
 
-  const added = (await attachmentFiles()).filter((f) => !filesBefore.includes(f));
-  assert.equal(added.length, 1);
-  assert.match(added[0], /^[0-9a-f-]{36}\.png$/);
+  const stored = await prisma.attachment.findMany({ where: { userId: user.id } });
+  assert.equal(stored.length, 1);
+  assert.match(stored[0].storageKey, /^[0-9a-f-]{36}\.png$/, "a generated name");
+  assert.equal(existsSync(path.join(process.cwd(), "data", "attachments", stored[0].storageKey)), true);
+  // Nothing in the store has a name that came from a file: every name is the generated shape.
+  for (const file of await attachmentFiles()) assert.match(file, /^[0-9a-f-]{36}\.[a-z]{2,4}$/, file);
   const after = await Promise.all(watched.map((dir) => readdir(dir).then((x) => x.sort())));
   assert.deepEqual(after[0], before[0], "nothing new in the working directory");
   assert.deepEqual(after[1], before[1], "nothing new in data/");
@@ -387,12 +391,11 @@ test("an attachment is not stored a second time for a note that is already there
   const user = await newUser();
   const zip = await makeZip([md("With file", "x", { attachments: ["a.png"] }), { name: "attachments/a.png", data: PNG }]);
   assert.equal((await apply(user.id, zip)).attachments.stored, 1);
-  const filesAfterFirst = await attachmentFiles();
+  const keysAfterFirst = (await prisma.attachment.findMany({ where: { userId: user.id } })).map((r) => r.storageKey);
   const second = await apply(user.id, zip);
   assert.equal(second.notes.present, 1);
   assert.equal(second.attachments.stored, 0);
-  assert.equal(await prisma.attachment.count({ where: { userId: user.id } }), 1);
-  assert.deepEqual(await attachmentFiles(), filesAfterFirst);
+  assert.deepEqual((await prisma.attachment.findMany({ where: { userId: user.id } })).map((r) => r.storageKey), keysAfterFirst, "the same one file, no second");
 });
 
 // --- somebody else's vault ----------------------------------------------------------------------
