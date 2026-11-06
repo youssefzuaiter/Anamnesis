@@ -62,7 +62,9 @@ test("an address is shown once, works with no session, and is not shown again af
   await expect(main(page)).toContainText(`Feed task ${stamp}`);
 
   const address = await makeLink(page);
+  await expect(main(page).getByLabel("Calendar feed address"), "focus is taken to the address").toBeFocused();
   await expect(main(page)).toContainText("This is the only time the address is shown");
+  await expect(main(page).getByRole("note")).toContainText("only works on this computer");
   await main(page).getByRole("button", { name: "Copy address" }).click();
   await expect(main(page).getByRole("status")).toContainText("Address copied.");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(address);
@@ -135,6 +137,9 @@ test("declining the question changes nothing", async ({ page, playwright, baseUR
   page.once("dialog", (dialog) => void dialog.dismiss());
   await main(page).getByRole("button", { name: "Make a new link" }).click();
   await expect(main(page).getByLabel("Calendar feed address")).toHaveCount(0);
+  page.once("dialog", (dialog) => void dialog.dismiss());
+  await main(page).getByRole("button", { name: "Turn off" }).click();
+  await expect(main(page)).toContainText("The calendar feed is on");
   const phone = await anonymous(playwright, baseURL);
   expect((await phone.get(new URL(address).pathname)).status(), "the link still works").toBe(200);
   await phone.dispose();

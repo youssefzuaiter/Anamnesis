@@ -52,7 +52,10 @@ export function CalendarFeedCard({ active, createdAt }: { active: boolean; creat
       setStatus("");
       router.refresh();
       // Once it is on screen, the person is taken to it: it is the one thing to copy.
-      requestAnimationFrame(() => field.current?.select());
+      requestAnimationFrame(() => {
+        field.current?.focus();
+        field.current?.select();
+      });
     });
 
   const turnOff = () =>
