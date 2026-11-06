@@ -374,6 +374,15 @@ test("attachments are checked, stored under generated names, and nothing lands o
   assert.equal(row.byteSize, PNG.length);
 });
 
+test("a zip written with backslash paths (an old Windows tool) still finds the attachments its notes list", async () => {
+  const user = await newUser();
+  const note = md("From Windows", "x", { attachments: ["a.png"] });
+  const report = await apply(user.id, rawZip([{ name: "From Windows.md", data: Buffer.from(note.data) }, { name: "attachments\\a.png", data: PNG }]));
+  assert.equal(report.attachments.found, 1);
+  assert.equal(report.attachments.stored, 1);
+  assert.deepEqual(report.attachments.rejected, []);
+});
+
 test("an attachment is not stored a second time for a note that is already there", async () => {
   const user = await newUser();
   const zip = await makeZip([md("With file", "x", { attachments: ["a.png"] }), { name: "attachments/a.png", data: PNG }]);

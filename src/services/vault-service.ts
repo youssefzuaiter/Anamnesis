@@ -1,9 +1,10 @@
 import "server-only";
 import { AppError } from "@/lib/api-response";
-import { MAX_ATTACHMENT_BYTES, deleteAttachment, getAttachment, putAttachment } from "@/lib/attachment-store";
+import { MAX_ATTACHMENT_BYTES } from "@/lib/attachment-types";
+import { deleteAttachment, getAttachment, putAttachment } from "@/lib/attachment-store";
 import { ZIP_LIMITS, ZipError, ZipWriter, openZip, type ZipEntry } from "@/lib/zip";
 import { VAULT, allocateNames, attachmentParts, manifestJson, noteFile, safeStem, type NameInput } from "@/lib/vault";
-import { classifyEntry, parseNoteFile, planImport, sniffAttachment, type ParsedNote } from "@/lib/vault-import";
+import { baseName, classifyEntry, parseNoteFile, planImport, sniffAttachment, type ParsedNote } from "@/lib/vault-import";
 import type { NoteInput } from "@/repositories/note-repository";
 import * as noteService from "@/services/note-service";
 import * as attachmentRepository from "@/repositories/attachment-repository";
@@ -44,6 +45,13 @@ export async function vaultPreflight(userId: string, limits: { maxEntries: numbe
   }
 }
 
+/** Adds to the list a key holds, making it first: no copy of the whole list for each addition. */
+function append<K, V>(map: Map<K, V[]>, key: K, value: V): void {
+  const list = map.get(key);
+  if (list) list.push(value);
+  else map.set(key, [value]);
+}
+
 /** Already-compressed types are stored; text is deflated. */
 const isText = (mime: string) => mime.startsWith("text/");
 
@@ -67,13 +75,11 @@ async function* writeVault(userId: string, options: { maxOffset?: number }): Asy
     const parts = attachmentParts(row.filename, row.mimeType);
     if (!parts) {
       // A type that may no longer be attached (an old row): left out, and said so.
-      const list = unsupported.get(row.noteId) ?? [];
-      list.push({ note: titleOf.get(row.noteId) ?? "", name: row.filename });
-      unsupported.set(row.noteId, list);
+      append(unsupported, row.noteId, { note: titleOf.get(row.noteId) ?? "", name: row.filename });
       continue;
     }
     items.push({ id: `a:${row.id}`, stem: parts.stem, ext: parts.ext, rank: row.createdAt });
-    byNote.set(row.noteId, [...(byNote.get(row.noteId) ?? []), row]);
+    append(byNote, row.noteId, row);
   }
   const names = allocateNames(items);
   const courseCode = new Map(courses.map((course) => [course.id, course.code]));
@@ -199,7 +205,27 @@ function uniqueIds(items: { id: string; key: string }[]): Map<string, string | n
   return map;
 }
 
-const baseOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+/**
+ * One attachment out of the zip, or why it cannot be used: unsupported (too large, encrypted),
+ * unreadable (a lying size or checksum), or bytes that are not what the file name says.
+ */
+async function readAttachment(
+  zip: ReturnType<typeof openZip>,
+  entry: ZipEntry,
+): Promise<{ ok: true; data: Buffer; mime: string; fileName: string } | { ok: false; reason: string }> {
+  if (entry.unsupported !== null) return { ok: false, reason: entry.unsupported };
+  let data: Buffer;
+  try {
+    data = await zip.read(entry);
+  } catch (error) {
+    if (error instanceof ZipError) return { ok: false, reason: "It could not be read from the zip." };
+    throw error;
+  }
+  const fileName = baseName(entry.name);
+  if (data.length > MAX_ATTACHMENT_BYTES) return { ok: false, reason: "It is too large to attach." };
+  const mime = sniffAttachment(fileName, data);
+  return mime === null ? { ok: false, reason: "Its content is not what its name says." } : { ok: true, data, mime, fileName };
+}
 
 export async function runVaultImport(
   userId: string,
@@ -262,7 +288,7 @@ export async function runVaultImport(
     }
     if (kind.kind === "attachment") {
       poolEntries.push(entry);
-      const base = baseOf(entry.name);
+      const base = baseName(entry.name);
       if (!pool.has(base)) pool.set(base, entry);
       if (!poolLower.has(base.toLowerCase())) poolLower.set(base.toLowerCase(), entry);
     } else if (entry.unsupported !== null) {
@@ -371,26 +397,12 @@ export async function runVaultImport(
         reject(name, "It is not in the zip.");
         continue;
       }
-      if (entry.unsupported !== null) {
-        reject(name, entry.unsupported);
+      const checked = await readAttachment(zip, entry);
+      if (!checked.ok) {
+        reject(name, checked.reason);
         continue;
       }
-      let data: Buffer;
-      try {
-        data = await zip.read(entry);
-      } catch (error) {
-        if (error instanceof ZipError) {
-          reject(name, "It could not be read from the zip.");
-          continue;
-        }
-        throw error;
-      }
-      const fileName = baseOf(entry.name);
-      const mime = data.length <= MAX_ATTACHMENT_BYTES ? sniffAttachment(fileName, data) : null;
-      if (mime === null) {
-        reject(name, data.length > MAX_ATTACHMENT_BYTES ? "It is too large to attach." : "Its content is not what its name says.");
-        continue;
-      }
+      const { data, mime, fileName } = checked;
       if (!options.apply || noteId === null) {
         report.attachments.stored += 1;
         continue;

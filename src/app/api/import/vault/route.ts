@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache";
 import { AppError, fail, ok, toApiResponse } from "@/lib/api-response";
 import { requireUserId } from "@/lib/session";
 import { ZIP_LIMITS } from "@/lib/zip";
-import { checkUpload, readBody } from "@/lib/vault-upload";
+import { checkUpload, readBody, tooLargeMessage } from "@/lib/vault-upload";
 import { runVaultImport } from "@/services/vault-service";
 
 /**
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   if (!body.ok) {
     return body.reason === "empty"
       ? Response.json(fail("VALIDATION_ERROR", "Choose a vault zip to import."), { status: 400 })
-      : Response.json(fail("VALIDATION_ERROR", `That file is over ${Math.round(ZIP_LIMITS.maxZipBytes / 1_048_576)} MB, the most a vault upload takes.`), { status: 413 });
+      : Response.json(fail("VALIDATION_ERROR", tooLargeMessage(ZIP_LIMITS.maxZipBytes)), { status: 413 });
   }
 
   try {

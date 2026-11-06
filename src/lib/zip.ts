@@ -7,6 +7,7 @@
 
 import { promisify } from "node:util";
 import { crc32, deflateRaw, inflateRaw } from "node:zlib";
+import { MAX_ATTACHMENT_BYTES } from "@/lib/attachment-types";
 
 const deflateRawAsync = promisify(deflateRaw);
 const inflateRawAsync = promisify(inflateRaw);
@@ -17,7 +18,7 @@ export const ZIP_LIMITS = {
   maxZipBytes: 104_857_600,
   maxEntries: 20_000,
   /** One entry, uncompressed: the attachment limit, 10 MiB. */
-  maxEntryBytes: 10_485_760,
+  maxEntryBytes: MAX_ATTACHMENT_BYTES,
   /** All readable entries together, as declared: 400 MiB. */
   maxTotalBytes: 419_430_400,
 };

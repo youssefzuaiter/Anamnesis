@@ -1,6 +1,9 @@
 // The checks a vault upload gets before any of it is read, and the bounded read of its body. Pure:
 // Web APIs only (Headers, ReadableStream), so they are tested without a server.
 
+/** What a refusal for size says. */
+export const tooLargeMessage = (maxBytes: number) => `That file is over ${Math.round(maxBytes / 1_048_576)} MB, the most a vault upload takes.`;
+
 export type UploadCheck = { ok: true; mode: "preview" | "apply" } | { ok: false; status: 400 | 403 | 413; message: string };
 
 /**
@@ -37,7 +40,7 @@ export function checkUpload(request: { url: string; headers: Headers }, maxBytes
 
   const declared = Number(request.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > maxBytes) {
-    return refuse(413, `That file is over ${Math.round(maxBytes / 1_048_576)} MB, the most a vault upload takes.`);
+    return refuse(413, tooLargeMessage(maxBytes));
   }
   return { ok: true, mode: modes[0] };
 }

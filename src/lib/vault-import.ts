@@ -96,7 +96,8 @@ function cleanTitle(raw: string): string {
   return cutUnits(raw.normalize("NFC").replace(/\p{Cc}/gu, " ").trim(), MAX_TITLE).trimEnd();
 }
 
-const baseName = (path: string) => path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
+/** The last part of a path, whichever way its separators lean (old Windows tools write backslashes). */
+export const baseName = (path: string) => path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
 
 function scalar(raw: string): string {
   const text = raw.trim();

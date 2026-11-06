@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { AppError } from "@/lib/api-response";
-import { ATTACHMENT_TYPES } from "@/lib/attachment-types";
+import { ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES } from "@/lib/attachment-types";
 
 /**
  * Attachment bytes live on disk, not in Postgres: a database is a poor blob
@@ -11,7 +11,7 @@ import { ATTACHMENT_TYPES } from "@/lib/attachment-types";
  */
 const ROOT = path.join(process.cwd(), "data", "attachments");
 
-export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export { MAX_ATTACHMENT_BYTES };
 
 /**
  * What may be stored and, just as importantly, served back: the table in

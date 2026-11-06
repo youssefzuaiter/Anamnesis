@@ -38,15 +38,6 @@ function trimTrailing(text: string): string {
   return text.slice(0, end);
 }
 
-function utf8Length(text: string): number {
-  let bytes = 0;
-  for (const ch of text) {
-    const code = ch.codePointAt(0) as number;
-    bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
-  }
-  return bytes;
-}
-
 /** At most `maxBytes` UTF-8 bytes, never splitting a character. */
 function cutBytes(text: string, maxBytes: number): string {
   let bytes = 0;
@@ -113,7 +104,7 @@ export function allocateNames(items: NameInput[]): Map<string, string> {
     let n = next.get(key) ?? 2;
     for (;; n++) {
       const suffix = ` (${n})`;
-      const name = cutBytes(item.stem, NAME_MAX_BYTES - utf8Length(item.ext) - utf8Length(suffix)) + suffix + item.ext;
+      const name = cutBytes(item.stem, NAME_MAX_BYTES - Buffer.byteLength(item.ext) - Buffer.byteLength(suffix)) + suffix + item.ext;
       const folded = fold(name);
       if (taken.has(folded)) continue;
       taken.add(folded);

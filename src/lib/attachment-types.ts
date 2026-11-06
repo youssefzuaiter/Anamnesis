@@ -1,6 +1,9 @@
 // What may be attached, as one table that the upload, the download and the vault share. Pure: no
 // Prisma, no filesystem, no `server-only`, so client code and unit tests can read it.
 
+/** The most one attachment may be: also what one zip entry may unpack to. */
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
 /**
  * Mime type to the extension a stored file gets. Anything the browser could execute in this
  * origin (HTML, SVG, scripts) is deliberately absent, so a stored file can never become script
