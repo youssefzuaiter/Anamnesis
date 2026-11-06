@@ -219,3 +219,23 @@ export async function listPrepSessions(
     select: { id: true, estimatedMinutes: true },
   });
 }
+
+/**
+ * The caller's open, not deleted tasks for the calendar feed: those whose planned block starts inside
+ * the window, and those with no block and a due date inside it. Planned blocks come first, then by
+ * date, so a cap keeps the nearest. Only the columns the feed shows are read.
+ */
+export async function listFeedTasks(userId: string, from: Date, to: Date, take: number) {
+  return prisma.task.findMany({
+    where: {
+      userId,
+      deletedAt: null,
+      status: { not: "done" },
+      OR: [{ scheduledStart: { gte: from, lt: to } }, { scheduledStart: null, dueDate: { gte: from, lt: to } }],
+    },
+    orderBy: [{ scheduledStart: { sort: "asc", nulls: "last" } }, { dueDate: { sort: "asc", nulls: "last" } }, { id: "asc" }],
+    take,
+    select: { id: true, title: true, dueDate: true, scheduledStart: true, scheduledEnd: true, estimatedMinutes: true, updatedAt: true },
+  });
+}
+

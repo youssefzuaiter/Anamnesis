@@ -59,3 +59,32 @@ export async function setGpaScale(userId: string, scale: GradeScale | null): Pro
     update: { gpaScale: value },
   });
 }
+
+/**
+ * Stores (or, with null, clears) the hash of the calendar feed token and when it was made. An upsert,
+ * so an account with no profile row yet can make a link. A second call replaces the first: the old
+ * address stops working at once.
+ */
+export async function setFeedHash(userId: string, hash: string | null, now: Date): Promise<void> {
+  const data = { calendarFeedHash: hash, calendarFeedCreatedAt: hash === null ? null : now };
+  await prisma.userProfile.upsert({ where: { userId }, create: { userId, ...data }, update: data });
+}
+
+/** Whether the account has a feed link and when it was made. Reads only: it never creates a profile row. */
+export async function getFeedStatus(userId: string): Promise<{ active: boolean; createdAt: Date | null }> {
+  const row = await prisma.userProfile.findUnique({
+    where: { userId },
+    select: { calendarFeedHash: true, calendarFeedCreatedAt: true },
+  });
+  return { active: row?.calendarFeedHash != null, createdAt: row?.calendarFeedCreatedAt ?? null };
+}
+
+/**
+ * The account a feed token belongs to, by the hash of the token. The one read keyed by something other
+ * than a user: everything after it is scoped by the user it returns.
+ */
+export async function findUserIdByFeedHash(hash: string): Promise<string | null> {
+  const row = await prisma.userProfile.findUnique({ where: { calendarFeedHash: hash }, select: { userId: true } });
+  return row?.userId ?? null;
+}
+

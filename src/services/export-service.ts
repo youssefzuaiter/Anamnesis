@@ -131,7 +131,14 @@ const readUser = (userId: string) =>
   });
 
 // The whole profile: an explicit field list here once dropped the GPA target and scale.
-const readProfile = (userId: string) => prisma.userProfile.findUnique({ where: { userId } });
+const readProfile = async (userId: string) => {
+  const profile = await prisma.userProfile.findUnique({ where: { userId } });
+  if (!profile) return null;
+  // The stored form of the calendar feed secret stays in the database; see OMITTED_COLUMNS.
+  const { calendarFeedHash, ...rest } = profile;
+  void calendarFeedHash;
+  return rest;
+};
 
 /** The pages of a table, one after another: the one place that knows when the last page has been read. */
 export async function* pagesOf<T extends { id: string }>(source: Table<T>, userId: string, size: number): AsyncGenerator<T[]> {

@@ -88,3 +88,18 @@ export async function listSeriesEventIds(
   });
   return rows.map((row) => row.id);
 }
+
+/**
+ * The caller's own events that overlap the window, for the calendar feed. Events imported from a
+ * subscription are left out (they are already in the phone, from their source), and only the columns
+ * the feed shows are read: a description never leaves the database for it.
+ */
+export async function listFeedEvents(userId: string, from: Date, to: Date, take: number) {
+  return prisma.event.findMany({
+    where: { userId, subscriptionId: null, startTime: { lt: to }, endTime: { gt: from } },
+    orderBy: [{ startTime: "asc" }, { id: "asc" }],
+    take,
+    select: { id: true, title: true, location: true, startTime: true, endTime: true, updatedAt: true },
+  });
+}
+

@@ -58,6 +58,12 @@ model UserProfile {
   targetGpa Float?
   gpaScale  Json?
 
+  // The calendar feed (a read-only .ics address with an unguessable token). Only the SHA-256 of
+  // the token is stored, so a copy of the database cannot rebuild the address; null means no feed.
+  // Optional so an older release, which does not know them, keeps working.
+  calendarFeedHash      String?   @unique
+  calendarFeedCreatedAt DateTime?
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
