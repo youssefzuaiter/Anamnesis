@@ -30,8 +30,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ fil
   try {
     feed = await buildFeedForToken(token);
   } catch (error) {
-    // Say what failed, never which address was asked for.
-    console.error("[ERROR] calendar feed:", error instanceof Error ? error.message : "unknown error");
+    // Say what kind of failure, never which address was asked for: a database error's message can
+    // carry the query's values, and one of them is the stored form of the token.
+    console.error("[ERROR] calendar feed failed:", error instanceof Error ? error.name : "unknown error");
     return new Response("Something went wrong.", { status: 500, headers: { ...PRIVATE, "Content-Type": "text/plain; charset=utf-8" } });
   }
   if (feed === null) return notFound();
