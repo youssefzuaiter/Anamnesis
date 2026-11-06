@@ -23,5 +23,5 @@ export async function GET() {
   }
 
   const filename = `anamnesis-vault-${new Date().toISOString().slice(0, 10)}.zip`;
-  return downloadResponse(streamVault(userId), { filename, contentType: "application/zip" });
+  return downloadResponse(streamVault(userId), { filename, contentType: "application/zip" }, { statusOf: errorStatus });
 }

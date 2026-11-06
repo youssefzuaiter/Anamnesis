@@ -62,6 +62,34 @@ export function classifyEntry(name: string): EntryKind {
   return { kind: "ignored", reason: "not a Markdown note" };
 }
 
+/**
+ * The folder every file of a zip sits in, when the zip is a vault zipped as a folder (what Finder's
+ * Compress and most tools make: `MyVault/Note.md`, `MyVault/attachments/x.png`), else "". Without
+ * it `attachments/` would not be the first part of any path and every attachment would be missed.
+ * Folders and the metadata a Mac writes beside the folder (`__MACOSX/`, `._x`, `.DS_Store`) do not
+ * count; a file at the top level, two different top-level folders, a hidden folder, `attachments/`
+ * itself or a climbing path mean there is no wrapper. One level only. The prefix is returned as
+ * written, with the separator the zip used.
+ */
+export function vaultRoot(names: string[]): string {
+  let root: string | null = null;
+  let prefix = "";
+  for (const name of names) {
+    const path = name.replaceAll("\\", "/");
+    if (path.endsWith("/")) continue;
+    const segments = path.split("/");
+    const file = segments[segments.length - 1];
+    if (segments[0] === "__MACOSX" || file.startsWith("._") || METADATA_FILES.has(file.toLowerCase())) continue;
+    const first = segments[0];
+    if (segments.length < 2 || first === "" || first.startsWith(".") || first.toLowerCase() === VAULT.attachmentsDir) return "";
+    if (root === null) {
+      root = first;
+      prefix = name.slice(0, first.length + 1);
+    } else if (first !== root) return "";
+  }
+  return prefix;
+}
+
 // --- one note file ------------------------------------------------------------------------------
 
 export type ParsedNote = {
@@ -160,7 +188,8 @@ function readFrontMatter(lines: string[]): Map<string, Value> {
   return found;
 }
 
-function tagsOf(front: Map<string, Value>): string[] {
+/** `stripHash`: another tool's front matter writes tags without `#` (Obsidian), a tag this app stored with one keeps it. */
+function tagsOf(front: Map<string, Value>, stripHash: boolean): string[] {
   const raw = front.get("tags") ?? front.get("tag");
   const items = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
   const tags = new Set<string>();
@@ -169,7 +198,8 @@ function tagsOf(front: Map<string, Value>): string[] {
     for (const piece of item.split(",")) {
       if (++scanned > TAG_PIECES_SCANNED) return [...tags];
       if (piece === "") continue;
-      const tag = piece.replace(/\p{Cc}/gu, " ").trim().replace(/^#+/, "").trim().toLowerCase();
+      const cleaned = piece.replace(/\p{Cc}/gu, " ").trim();
+      const tag = (stripHash ? cleaned.replace(/^#+/, "").trim() : cleaned).toLowerCase();
       if (tag !== "") tags.add(cutUnits(tag, MAX_TAG));
       if (tags.size >= MAX_TAGS) return [...tags];
     }
@@ -252,7 +282,7 @@ export function parseNoteFile(path: string, raw: string): ParsedNote | { skip: s
     path,
     title,
     content: body,
-    tags: tagsOf(properties),
+    tags: tagsOf(properties, !ours),
     favorite: ours && properties.get("favorite") === true,
     course: ours ? text(properties.get("course"), MAX_TITLE) : null,
     project: ours ? text(properties.get("project"), MAX_TITLE) : null,

@@ -14,7 +14,7 @@ import { crc32, deflateRawSync } from "node:zlib";
 import { prisma } from "@/lib/prisma";
 import { AppError } from "@/lib/api-response";
 import { getAttachment, putAttachment, deleteAttachment } from "@/lib/attachment-store";
-import { ZipWriter } from "@/lib/zip";
+import { ZipWriter, openZip } from "@/lib/zip";
 import { VAULT, noteFile } from "@/lib/vault";
 import { contentHash } from "@/lib/vault-import";
 import * as noteRepository from "@/repositories/note-repository";
@@ -376,6 +376,64 @@ test("attachments are checked, stored under generated names, and nothing lands o
   const row = await prisma.attachment.findFirstOrThrow({ where: { userId: user.id } });
   assert.equal(row.filename, "ok.png");
   assert.equal(row.byteSize, PNG.length);
+});
+
+test("an Anamnesis vault zipped again inside a folder (what Finder's Compress makes) restores its attachments", async () => {
+  const alice = await newUser();
+  const bob = await newUser();
+  const note = await prisma.note.create({ data: { userId: alice.id, title: "In a folder", content: "text", tags: [] } });
+  const key = await putAttachment(PNG, "image/png");
+  await prisma.attachment.create({ data: { userId: alice.id, noteId: note.id, filename: "pic.png", mimeType: "image/png", byteSize: PNG.length, storageKey: key } });
+  const original = openZip(await exportOf(alice.id));
+  const entries: Raw[] = [{ name: "MyVault/", data: Buffer.alloc(0) }];
+  for (const e of original.entries) entries.push({ name: `MyVault/${e.name}`, data: await original.read(e) });
+  entries.push({ name: "__MACOSX/MyVault/._In a folder.md", data: Buffer.from("junk") }, { name: ".DS_Store", data: Buffer.from("junk") });
+  const report = await apply(bob.id, rawZip(entries));
+  assert.equal(report.notes.created, 1);
+  assert.equal(report.attachments.stored, 1);
+  assert.deepEqual(report.attachments.rejected, []);
+  assert.equal(await prisma.attachment.count({ where: { userId: bob.id } }), 1);
+});
+
+test("a disk that cannot take a file is counted like any other failure: the run goes on and the file can be tried again", async () => {
+  const user = await newUser();
+  const zip = await makeZip([md("One", "a", { attachments: ["a.png"] }), md("Two", "b"), { name: "attachments/a.png", data: PNG }]);
+  const report = await runVaultImport(user.id, zip, {
+    apply: true,
+    deps: {
+      createNote: noteService.createNote,
+      putAttachment: async () => {
+        throw new Error("ENOSPC: no space left on device");
+      },
+    },
+  });
+  assert.equal(report.notes.created, 2, "the second note still came in");
+  assert.equal(report.attachments.stored, 0);
+  assert.equal(report.attachments.rejected.length, 1);
+  assert.match(report.attachments.rejected[0].reason, /could not be saved/i);
+  assert.ok(!JSON.stringify(report).includes("ENOSPC"));
+});
+
+test("a file written to the store whose record then fails to save is removed again", async () => {
+  const user = await newUser();
+  const zip = await makeZip([md("Orphan", "a", { attachments: ["a.png"] }), { name: "attachments/a.png", data: PNG }]);
+  const written: string[] = [];
+  const report = await runVaultImport(user.id, zip, {
+    apply: true,
+    deps: {
+      // A note id that does not exist: the attachment record cannot be inserted (foreign key), after the file is already written.
+      createNote: async () => ({ id: randomUUID() }),
+      putAttachment: async (bytes, mime) => {
+        const key = await putAttachment(bytes, mime);
+        written.push(key);
+        return key;
+      },
+    },
+  });
+  assert.equal(written.length, 1);
+  assert.equal(report.attachments.stored, 0);
+  assert.match(report.attachments.rejected[0].reason, /could not be saved/i);
+  assert.equal(existsSync(path.join(process.cwd(), "data", "attachments", written[0])), false, "no file left without a record");
 });
 
 test("a zip written with backslash paths (an old Windows tool) still finds the attachments its notes list", async () => {

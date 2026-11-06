@@ -74,7 +74,8 @@ export class ZipWriter {
   }
 
   async add(entry: { name: string; data: Uint8Array; modified: Date; store?: boolean }): Promise<Buffer> {
-    if (this.count >= 0xffff) throw new ZipError("too-large", "A zip holds at most 65,535 entries.");
+    // 0xFFFF in the end record means "see the zip64 record", so a zip32 holds at most 65,534.
+    if (this.count >= 0xfffe) throw new ZipError("too-large", "A zip holds at most 65,534 entries.");
     const name = Buffer.from(entry.name, "utf8");
     if (name.length > 0xffff) throw new ZipError("too-large", "A name in a zip is at most 65,535 bytes.");
     const data = Buffer.from(entry.data.buffer, entry.data.byteOffset, entry.data.byteLength);

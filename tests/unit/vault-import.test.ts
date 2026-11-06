@@ -8,6 +8,7 @@ import {
   parseNoteFile,
   planImport,
   sniffAttachment,
+  vaultRoot,
   type ExistingNote,
   type ParsedNote,
 } from "@/lib/vault-import";
@@ -53,6 +54,25 @@ test("paths that climb, or are absolute, or carry control characters are unsafe"
   }
   assert.equal(classifyEntry("a/./b.md").kind, "note", "a dot segment climbs nowhere");
   assert.equal(classifyEntry("a/b..c.md").kind, "note", "two dots inside a name are a name");
+});
+
+// --- vaultRoot ----------------------------------------------------------------------------------
+
+test("a vault zipped as a folder has a root to look inside; anything else has none", () => {
+  const wrapped = ["MyVault/", "MyVault/Note.md", "MyVault/attachments/", "MyVault/attachments/x.png", "MyVault/.anamnesis/manifest.json", "__MACOSX/MyVault/._Note.md", "__MACOSX/", ".DS_Store"];
+  assert.equal(vaultRoot(wrapped), "MyVault/", "Finder's Compress: one folder, plus its own metadata beside it");
+  assert.equal(vaultRoot(["V/a.md", "V/sub/b.md"]), "V/");
+  assert.equal(vaultRoot(["V\\a.md", "V\\attachments\\x.png"]), "V\\", "old Windows tools write backslashes");
+  assert.equal(vaultRoot(["A/a.md", "B/b.md"]), "", "two top-level folders");
+  assert.equal(vaultRoot(["a.md", "V/b.md"]), "", "a file at the top level");
+  assert.equal(vaultRoot(["attachments/x.png", "attachments/y.png"]), "", "attachments/ is a folder of the vault, never its wrapper");
+  assert.equal(vaultRoot(["Attachments/x.png"]), "");
+  assert.equal(vaultRoot([".obsidian/app.json", ".obsidian/x.json"]), "", "a hidden folder is not a wrapper");
+  assert.equal(vaultRoot(["V/a.md", "../evil.md"]), "", "a climbing path stays visible");
+  assert.equal(vaultRoot(["V/a.md", "V/../x.md"]), "V/", "judged later, by classifyEntry, once the root is removed");
+  assert.equal(vaultRoot([]), "");
+  assert.equal(vaultRoot(["__MACOSX/._a.md"]), "");
+  assert.equal(vaultRoot(["V/V/a.md", "V/V/b.md"]), "V/", "only one level is a wrapper");
 });
 
 // --- parseNoteFile ------------------------------------------------------------------------------
@@ -130,6 +150,12 @@ test("a foreign note: comma text, a single tag, the legacy tag key", () => {
   assert.deepEqual(parsed("a.md", "---\ntags: a, B ,c\n---\nx").tags, ["a", "b", "c"]);
   assert.deepEqual(parsed("a.md", "---\ntag: Single\n---\nx").tags, ["single"]);
   assert.deepEqual(parsed("a.md", "---\ntags: []\n---\nx").tags, []);
+});
+
+test("a tag this app stored with a leading # keeps it in a file this app wrote, and loses it in another tool's", () => {
+  const mine = noteFile({ title: "T", content: "c", tags: ["#exam", "plain"], isFavorite: false, createdAt: new Date(0), updatedAt: new Date(0) }, { course: null, project: null, attachments: [] });
+  assert.deepEqual(parsed("T.md", mine).tags, ["#exam", "plain"]);
+  assert.deepEqual(parsed("T.md", "---\ntags: [\"#exam\", plain]\n---\nx").tags, ["exam", "plain"], "Obsidian writes tags without it");
 });
 
 test("tags are limited to 12 of at most 50 characters", () => {

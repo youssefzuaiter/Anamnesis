@@ -53,8 +53,8 @@ function Findings({ report }: { report: VaultImportReport }) {
       )}
       {notes.deferred > 0 && (
         <li>
-          {plural(notes.deferred, "more note is", "more notes are")} left for the next run: one run adds at most 500. Import the same file again
-          afterwards; nothing is added twice.
+          {plural(notes.deferred, "more note is", "more notes are")} left for the next run: one run adds at most 500 notes and reads at most 400 MB of
+          attachments. Import the same file again afterwards; nothing is added twice.
         </li>
       )}
       {notes.failed > 0 && <li>{plural(notes.failed, "note could", "notes could")} not be saved. Importing the same file again tries them again.</li>}
@@ -141,7 +141,13 @@ export function VaultImportForm() {
       if (!body.success) setPhase({ name: "failed", message: body.error.message });
       else setPhase(mode === "preview" ? { name: "previewed", report: body.data } : { name: "done", report: body.data });
     } catch {
-      setPhase({ name: "failed", message: "Could not reach the server. Try again." });
+      setPhase({
+        name: "failed",
+        message:
+          mode === "apply"
+            ? "The connection was lost. Some notes may already have been imported: choose the same file and check it again to see what is left. Nothing is added twice."
+            : "Could not reach the server. Try again.",
+      });
     } finally {
       busy.current = false;
     }

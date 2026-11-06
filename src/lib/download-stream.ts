@@ -10,7 +10,8 @@ export function errorStatus(error: unknown): number {
 /**
  * A streamed attachment download. The first chunk is read before the `Response` exists, so a
  * failure there (an account that no longer exists, a database that is down, a vault too large for
- * a zip) is an ordinary JSON error and not a half-sent file. A failure after bytes are sent aborts
+ * a zip) is an ordinary JSON error and not a half-sent file: a 500, unless the caller says which
+ * errors mean something else (`statusOf`, such as `errorStatus` for a size refusal). A failure after bytes are sent aborts
  * the download: the caller's chunks must be such that no prefix of them passes for the whole
  * (the JSON is unterminated, a zip has no end record). `no-store`: everything the person owns,
  * behind a session, and no cache, shared or private, keeps a copy.
@@ -18,12 +19,13 @@ export function errorStatus(error: unknown): number {
 export async function downloadResponse(
   chunks: AsyncGenerator<Uint8Array | string, unknown, unknown>,
   file: { filename: string; contentType: string },
+  options: { statusOf?: (error: unknown) => number } = {},
 ): Promise<Response> {
   let first: IteratorResult<Uint8Array | string, unknown>;
   try {
     first = await chunks.next();
   } catch (error) {
-    return Response.json(toApiResponse(error), { status: errorStatus(error) });
+    return Response.json(toApiResponse(error), { status: (options.statusOf ?? (() => 500))(error) });
   }
 
   const encoder = new TextEncoder();

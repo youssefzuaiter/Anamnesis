@@ -4,7 +4,7 @@ import { MAX_ATTACHMENT_BYTES } from "@/lib/attachment-types";
 import { deleteAttachment, getAttachment, putAttachment } from "@/lib/attachment-store";
 import { ZIP_LIMITS, ZipError, ZipWriter, openZip, type ZipEntry } from "@/lib/zip";
 import { VAULT, allocateNames, attachmentParts, manifestJson, noteFile, safeStem, type NameInput } from "@/lib/vault";
-import { baseName, classifyEntry, parseNoteFile, planImport, sniffAttachment, type ParsedNote } from "@/lib/vault-import";
+import { baseName, classifyEntry, parseNoteFile, planImport, sniffAttachment, vaultRoot, type ParsedNote } from "@/lib/vault-import";
 import type { NoteInput } from "@/repositories/note-repository";
 import * as noteService from "@/services/note-service";
 import * as attachmentRepository from "@/repositories/attachment-repository";
@@ -230,10 +230,17 @@ async function readAttachment(
 export async function runVaultImport(
   userId: string,
   bytes: Uint8Array,
-  options: { apply: boolean; limit?: number; byteBudget?: number; deps?: { createNote?: (userId: string, input: NoteInput) => Promise<{ id: string }> } },
+  options: {
+    apply: boolean;
+    limit?: number;
+    byteBudget?: number;
+    /** Seams for tests: the two writes that can fail for reasons outside the file. */
+    deps?: { createNote?: (userId: string, input: NoteInput) => Promise<{ id: string }>; putAttachment?: (bytes: Uint8Array, mimeType: string) => Promise<string> };
+  },
 ): Promise<VaultImportReport> {
   assertUserId(userId);
   const createNote = options.deps?.createNote ?? noteService.createNote;
+  const store = options.deps?.putAttachment ?? putAttachment;
 
   let zip: ReturnType<typeof openZip>;
   try {
@@ -266,8 +273,10 @@ export async function runVaultImport(
   const pool = new Map<string, ZipEntry>();
   const poolLower = new Map<string, ZipEntry>();
   const poolEntries: ZipEntry[] = [];
+  // A vault zipped as a folder has everything one level down: judge each name from inside it.
+  const root = vaultRoot(zip.entries.map((entry) => entry.name));
   for (const entry of zip.entries) {
-    const kind = classifyEntry(entry.name);
+    const kind = classifyEntry(entry.name.startsWith(root) ? entry.name.slice(root.length) : entry.name);
     if (kind.kind === "unsafe") {
       skip(entry.name, "Its path is not one a vault uses.");
       continue;
@@ -408,8 +417,9 @@ export async function runVaultImport(
         continue;
       }
       // The stored name is generated; the file's own name is kept only as the label it is shown under.
-      const key = await putAttachment(data, mime);
+      let key: string | null = null;
       try {
+        key = await store(data, mime);
         await attachmentRepository.createAttachment(userId, {
           noteId,
           filename: fileName.replace(/\p{Cc}/gu, " ").slice(0, 200),
@@ -419,8 +429,10 @@ export async function runVaultImport(
         });
         report.attachments.stored += 1;
       } catch (error) {
-        console.error("[WARN] vault import: an attachment could not be recorded:", error);
-        await deleteAttachment(key);
+        // A full disk or a failed insert: counted like any other failure, the run goes on, and a file
+        // that was written before the insert failed does not stay behind.
+        console.error("[WARN] vault import: an attachment could not be saved:", error);
+        if (key !== null) await deleteAttachment(key);
         reject(name, "It could not be saved.");
       }
     }

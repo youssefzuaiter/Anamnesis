@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import { crc32, deflateRawSync } from "node:zlib";
+import { createDeflateRaw, crc32, deflateRawSync } from "node:zlib";
 import { ZIP_LIMITS, ZipError, ZipWriter, openZip, type ZipEntry } from "@/lib/zip";
 
 // --- helpers ------------------------------------------------------------------------------------
@@ -433,9 +433,9 @@ test("the writer refuses a central directory that would not fit", async () => {
   assert.equal(openZip(Buffer.concat([first, fits.finish()])).entries.length, 1);
 });
 
-test("the writer refuses the 65,536th entry and a name over 65,535 bytes", async () => {
+test("the writer refuses the 65,535th entry (0xFFFF in the end record is the zip64 marker) and a name over 65,535 bytes", async () => {
   const w = new ZipWriter();
-  for (let i = 0; i < 65_535; i++) await w.add({ name: `n${i}`, data: new Uint8Array(0), modified: at, store: true });
+  for (let i = 0; i < 65_534; i++) await w.add({ name: `n${i}`, data: new Uint8Array(0), modified: at, store: true });
   assert.equal(await rejectsWith(() => w.add({ name: "one-too-many", data: new Uint8Array(0), modified: at })), "too-large");
   assert.equal(await rejectsWith(() => new ZipWriter().add({ name: "x".repeat(65_536), data: new Uint8Array(0), modified: at })), "too-large");
 });
@@ -443,9 +443,16 @@ test("the writer refuses the 65,536th entry and a name over 65,535 bytes", async
 // --- what only a mutation check asked for -------------------------------------------------------
 
 test("the inflate stops at the declared size: a 400 MiB lie is refused at once, not unpacked first", async () => {
-  const huge = Buffer.alloc(400 * 1024 * 1024);
-  const packed = deflateRawSync(huge);
-  huge.fill(0, 0, 0); // keep the buffer alive until here; the archive only needs `packed`
+  // 400 MiB of zeros, fed through the compressor 1 MiB at a time: a few MB resident, not 400.
+  const deflater = createDeflateRaw();
+  const pieces: Buffer[] = [];
+  deflater.on("data", (piece: Buffer) => pieces.push(piece));
+  const finished = new Promise<void>((resolve) => deflater.on("end", resolve));
+  const mebibyte = Buffer.alloc(1024 * 1024);
+  for (let i = 0; i < 400; i++) if (!deflater.write(mebibyte)) await new Promise((resolve) => deflater.once("drain", resolve));
+  deflater.end();
+  await finished;
+  const packed = Buffer.concat(pieces);
   const zip = openZip(craft([{ name: "lie", data: packed, method: 8, size: 10, crc: 0 }]));
   const code = await within(150, () => rejectsWith(() => zip.read(zip.entries[0])));
   assert.equal(code, "corrupt");
