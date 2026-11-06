@@ -11,6 +11,9 @@ import { scopeHref } from "@/lib/assistant-scope";
 import { ProjectForm } from "@/components/project-form";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { TaskRow } from "@/components/task-row";
+import { TaskBoard } from "@/components/task-board";
+import { toBoardCards } from "@/lib/board";
+import { checklistCounts } from "@/services/task-checklist-service";
 import { updateProjectAction, deleteProjectAction } from "@/actions/projects";
 
 export const metadata = { title: "Project · Anamnesis" };
@@ -20,11 +23,23 @@ const DATE = new Intl.DateTimeFormat("en-GB", {
   month: "short",
 });
 
+const VIEWS = [
+  { name: "list", label: "List", query: "" },
+  { name: "board", label: "Board", query: "?view=board" },
+] as const;
+
+const VIEW_LINK =
+  "inline-flex min-h-11 items-center rounded-lg border px-3.5 text-xs font-semibold transition-colors sm:min-h-8";
+
 export default async function ProjectPage({
   params,
+  searchParams,
 }: PageProps<"/projects/[id]">) {
   const userId = await requireUserId();
   const { id } = await params;
+  // Only an exact "board" is the board; anything else, a repeated parameter included, is the list.
+  const query = await searchParams;
+  const view = query.view === "board" ? "board" : "list";
 
   const project = await getProject(userId, id);
   if (!project) notFound();
@@ -33,6 +48,10 @@ export default async function ProjectPage({
     getProjectContents(userId, id),
     listGoalOptions(userId),
   ]);
+  const cards =
+    view === "board" && tasks.length > 0
+      ? toBoardCards(tasks, new Date(), await checklistCounts(userId, tasks.map((task) => task.id)))
+      : [];
   const openTasks = tasks.filter((task) => task.status !== "done");
   const doneTasks = tasks.filter((task) => task.status === "done");
   const goal = project.goalId
@@ -40,7 +59,7 @@ export default async function ProjectPage({
     : null;
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className={`mx-auto ${view === "board" ? "max-w-6xl" : "max-w-3xl"}`}>
       <header className="mb-5">
         <Link
           href="/projects"
@@ -86,9 +105,23 @@ export default async function ProjectPage({
       </header>
 
       <section className="mb-6">
-        <h2 className="mb-2 text-xs font-semibold text-text-faint">
-          Tasks · {tasks.length}
-        </h2>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h2 className="text-xs font-semibold text-text-faint">
+            Tasks · {tasks.length}
+          </h2>
+          <nav aria-label="Task view" className="flex gap-0.5 rounded-[10px] bg-surface-subtle p-0.5">
+            {VIEWS.map(({ name, label, query }) => (
+              <Link
+                key={name}
+                href={`/projects/${project.id}${query}`}
+                aria-current={view === name ? "true" : undefined}
+                className={`${VIEW_LINK} ${view === name ? "border-border-subtle bg-surface text-accent-ink" : "border-transparent text-text-muted hover:text-text"}`}
+              >
+                {label}
+              </Link>
+            ))}
+          </nav>
+        </div>
         {tasks.length === 0 ? (
           <p className="rounded-xl border border-dashed border-border-strong px-4 py-6 text-center text-sm text-text-muted">
             No tasks yet. Assign one from the{" "}
@@ -97,6 +130,8 @@ export default async function ProjectPage({
             </Link>{" "}
             page.
           </p>
+        ) : view === "board" ? (
+          <TaskBoard cards={cards} />
         ) : (
           <ul className="flex flex-col gap-2">
             {[...openTasks, ...doneTasks].map((task) => (

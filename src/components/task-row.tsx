@@ -1,23 +1,10 @@
 import Link from "next/link";
 import { setTaskStatusAction } from "@/actions/tasks";
 import { Icon } from "@/components/icons";
+import { PRIORITY_STYLES } from "@/components/priority-style";
 import type { TaskModel as Task } from "@/generated/prisma/models";
 import type { ChecklistCount } from "@/lib/checklist";
-
-// Amber means "needs attention", so it marks high priority and overdue; red is
-// kept for destructive actions and errors.
-const PRIORITY_STYLES: Record<string, string> = {
-  high: "font-semibold text-warn",
-  medium: "text-text-muted",
-  low: "text-text-faint",
-};
-
-function formatDue(date: Date): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-  }).format(date);
-}
+import { dueLabel } from "@/lib/due-label";
 
 export function TaskRow({
   task,
@@ -81,7 +68,7 @@ export function TaskRow({
           {task.dueDate && (
             <span className={overdue ? "font-semibold text-warn" : "text-text-faint"}>
               {overdue ? "Overdue · " : ""}
-              {formatDue(task.dueDate)}
+              {dueLabel(task.dueDate)}
             </span>
           )}
           <span className={PRIORITY_STYLES[task.priority]}>{task.priority}</span>

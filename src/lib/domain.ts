@@ -28,6 +28,10 @@ export type TrashKind = (typeof TRASH_KINDS)[number];
 // targets so a typo in one place can't silently break the other.
 export const TASK_DRAG_MIME = "application/x-nexus-task-id";
 
+// A card dragged between the columns of a project board. A different type from the one above on purpose: the
+// calendar's drop targets look for TASK_DRAG_MIME, so a board card must not light them up.
+export const BOARD_DRAG_MIME = "application/x-anamnesis-board-task-id";
+
 /**
  * Announced on `window` after something moves tasks in or out of "due today"
  * (Shut down day), so the Due now panel, which only polls on mount and every

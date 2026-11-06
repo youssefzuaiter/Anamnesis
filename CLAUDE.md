@@ -2520,6 +2520,110 @@ pages (their `TaskRow`s are untouched); a bulk "tick all" and "clear done"; name
 screen reader hears `Move "Read" up` twice); a rate limit. **Not verified:** a real phone (touch), a screen reader (only the
 accessible names and the hidden text were read), Firefox and Safari.
 
+## Project board
+
+A project page has a **Board** view (ROADMAP item 15): the project's tasks as three columns, To do, In progress and Done,
+that move by drag on a desktop and by buttons everywhere, with one column at a time on a phone. The entry is tagged *M,
+demo*, so it was **shown as a Design canvas first** (desktop in light and dark, a card being dragged, empty columns, the phone in
+light and dark, and a stacked-phone alternative) and built after "yes, build it with tabs on phone"; the stacked layout was not
+chosen. The plan is `docs/superpowers/plans/2026-11-06-project-kanban-board.md`. No migration, no new dependency.
+
+- **`in_progress` had existed since the start and nothing set it.** It was in the schema and in `TASK_STATUSES`, but the only way to
+  change a status was the checkbox, todo and done. Every reader already treats a task as open with `status !== "done"` or
+  `{ not: "done" }` (the daily carry-over, reminders, review, the counts), and progress is a raw count of `done / total`, so the
+  middle column moves no figure; an integration test pins both, because the board is the first thing that makes the state reachable.
+- **A move is `setTaskStatus`, the checkbox's own path** (`moveTaskAction` in `actions/tasks.ts`: Zod first, then the session, then
+  the service). Ownership, the finished time (stamped by the server, never sent by the browser), and project and goal progress are
+  the existing code; a foreign, missing or trashed task is the one `RESOURCE_NOT_FOUND`. The action takes only an id and one of the
+  three statuses.
+- **The order is derived, not stored (no migration).** Open columns by due date (none last), then priority (high first), then oldest
+  created, then id; Done by most recently finished. It is one comparator (`lib/board.ts`) used by the server that builds the board
+  and by the optimistic move, and a test checks they agree for every card and every move, so a card does not jump when the page
+  refreshes. **Cost accepted:** cards cannot be hand-ordered (that needs a position column, a migration), and the board's order
+  differs from the list view's, which sorts by due date only.
+- **Optimistic, one move at a time.** `useOptimistic` puts the card in its new column at once; if the action refuses or the
+  request fails it goes back and a `role="alert"` says why; a refusal because the task is gone also refreshes the list. While a move
+  is in flight every move control is `aria-disabled` (not `disabled`: a focused button that becomes disabled loses the keyboard's
+  place, found on item 14) and clicks and drops are ignored, because the move reflows the column and the next card slides under the
+  cursor, so a double click could otherwise move a neighbour. A `role="status"` line announces each move. Focus returns to the moved
+  card's title, or on a screen too narrow to show the column it went to, to the button that says which column is showing.
+- **Drag is native HTML5, with its own type.** No dependency; the calendar's pattern. `BOARD_DRAG_MIME` is not `TASK_DRAG_MIME`,
+  so a board card does not light up the calendar's drop targets. A drop is used only if its id is a card on this board: a forged id, a
+  task of another project, text of another type and a 100,000-character payload send nothing and change nothing (tested, with a
+  positive control). **The browser sends no `dragend` to a card that a move removes**, so the dragging state is cleared in `onDrop`;
+  found by measuring (a dropped card was left at 50% opacity) in the code review, after every test had passed.
+- **Phone and tablet, below `lg` (1024px): one column at a time**, chosen with three buttons ("To do 4"). The plan said `md`; the
+  sidebar is there from `lg`, so a 768px screen has about 520px for three columns. The buttons are a `role="group"` of
+  `aria-pressed` buttons, not `role="tab"`, because the same sections are all visible side by side on a desktop, where a tab panel role
+  would be wrong. The three columns are always in the page (CSS shows one), so nothing is drawn twice. The column's own header is
+  hidden there: the approved design has none and a second "To do 5" under the button wasted about 40px (found by looking).
+- **Done shows the 10 most recently finished, with "Show all N"** (`aria-expanded`); the count in its header is the true count.
+  The open columns draw every card (see the cost below).
+- **Where, and what a card carries.** A List | Board switch beside "Tasks · N" on `/projects/[id]` (`?view=board`; anything else,
+  a repeated parameter included, is the list), so every existing view is unchanged by default. A card has the title (a link), the
+  due day ("Overdue · 3 Nov" in the warn colour only while open), the priority word, the estimate, the `2/5` checklist badge from item 14
+  (through the existing `checklistCounts`) and the repeat mark; tags and descriptions stay on the list and the task page. Board view
+  widens the page to `max-w-6xl`, which also widens the notes, events and project form below it (960px instead of 768px at 1280).
+- **`revalidateTaskViews` now also revalidates `"/projects/[id]"` as a page.** No test can tell it from its absence: Next 16 refreshes
+  the open page for any revalidation inside an action (a mutation without it survived). Its docs say that updating the open page
+  only "if viewing the affected path" is the documented behaviour and that refreshing other pages is "temporary", so the line is
+  what the documented semantics need. The board therefore does not call `router.refresh()` after a move (the calendar's drag handler
+  does, and this file records why); that is proven by a test that watches the old column for the card flashing back, not assumed.
+
+**Measured, in the security review** (dev server, Ollama off, throwaway projects): the action over real HTTP with a context proven
+signed out (`GET /projects` gives 307 to `/login`): **AUTH_REQUIRED and the task unchanged**; invalid input is `VALIDATION_ERROR`
+(validated first, which reveals nothing); signed in, a status `archived` and an id `not-a-uuid` are refused, an unknown uuid is
+`RESOURCE_NOT_FOUND`; a request with `Origin: https://evil.example` is HTTP 500 "Invalid Server Actions request" with no change.
+Scale: **500 tasks** board 0.5 s, 5,250 DOM nodes, a move shows in 138 ms (the list view 1.9 s); **2,000** board 1.4 s, 19,050 nodes, a
+move 589 ms (list 6.5 s); **5,000** board 2.1 s, 8.2 MB of HTML, 46,650 nodes, a move 2.1 s (list 14.6 s, 15.8 MB). The board is
+lighter than the list at every size because Done is capped, but the open columns are not bounded and every state change re-renders
+every card (`CardItem` is not memoized; that needs stable handlers and `pending` off every card's props). **Accepted, not fixed:** 2,000
+open tasks in one project is far outside personal use; the fix, when wanted, is a per-column "Show all N" like Done whose target
+column expands when a card moves into it, plus memoizing the card.
+
+**What testing, looking and review turned up.**
+
+- **A false alarm of mine, caught by checking my own measurement.** My first replay of the action with "no session" reported that an
+  unauthenticated call had moved a task to done. The request context had inherited the Playwright config's stored session
+  (`request.newContext` in the test runner applies `use.storageState`). Redone with an explicit empty storage state and a proof that it
+  redirects to `/login`: AUTH_REQUIRED, no change. Nothing in the app was wrong.
+- **Four defects in code that had passed its tests**, all from measuring rather than reading: a dropped card left at opacity 0.5 (above);
+  a priority of `"constructor"` passed `value in PRIORITY_RANK` (true for everything on `Object.prototype`), which gave the sort a
+  function and `NaN`; after a move on a phone focus fell to `BODY`; and the duplicate phone header. Each was fixed test-first.
+- **Three failures in my first browser run were my tests**: the phone test measured the checkbox's 20px box (its 44px hit area is a
+  pseudo-element, so it is hit-tested, as on item 14), and the keyboard test pressed a second move while the first was still being
+  saved, which the board correctly ignored (the test now waits for the notice). That also showed the busy checkbox had no dimmed style.
+- **One unexplained failure in a neighbour.** In a combined run, item 14's "Remove deletes an item and the count follows" left the
+  list at two items for 10 s once; it passed alone and the whole checklist and board specs passed twice together (32 of 32 each).
+  Not reproduced and not explained.
+- **A plan premise that was wrong.** The plan said `revalidateTaskViews` reached only `/projects`, so the board page would be stale;
+  in Next 16 the open page refreshes anyway (see above). The line stays for the documented behaviour.
+
+**Mutation checks** (a test failed for each unless said): 17 on `lib/board.ts` (the comparator, the move, the card, the columns), 6
+on the status change (the finished time, project progress, the account and trash filters, `countOpenTasks`), 18 on the component, page
+and action (15 killed outright; one more, `aria-pressed` always true, exposed a gap and was killed once the other buttons were
+asserted; two survive: the `pending` check of the move guard, which the `busy` ref covers, and removing both is killed, and the
+`/projects/[id]` revalidation) and 3 on the drop handler (a bad id falling back to the first card, never moving, accepting
+`text/plain`). The files were verified identical to their backups each time. Task 2's five integration tests pass at once because they
+pin behaviour that already existed; the new action needs a session and is covered by the browser tests, which were written first.
+
+**Tests.** 12 unit tests (`board`), 5 integration tests (`board`: a task through every column, counted once in a goal, `in_progress`
+is open, a foreign, missing or trashed id refused alike with nothing changed, a move to the same status) and 17 browser tests
+(`board.spec.ts`: Board is opt-in, a project with no tasks, Move buttons and the numbers, the checkbox, drag and a drop on the same
+column, a move the server cannot take, a task removed elsewhere, no flash back, one move at a time, keyboard focus, a forged drop and
+a markup title, empty columns, Done's ten and Show all, a card's facts, and the phone in light and dark, and a desktop). **Not run
+locally:** the rest of the browser suite beyond the board, checklist, daily, exam-prep, task, goal, project, phone and navigation
+ones, the `evals` job (nothing here touches a model) and the container rehearsal; CI runs them. One `pnpm build` was run before the
+last fixes and none after (they touch a client component and a pure module; `tsc` and `pnpm lint` ran).
+
+**Not done:** hand-ordering cards (a position column); a cap on the open columns and a memoized card; more than three columns or
+custom ones; boards for goals, courses or the whole task list; the same board on the dashboard; a bulk move; swimlanes; keyboard
+shortcuts on the board. **Not verified:** a drag with a real mouse (the browser pane's synthetic drag does not start a native HTML5
+drag, so drag is verified only by Playwright's `dragTo`, which exercises the real handlers), Firefox and Safari (Safari reports no
+`relatedTarget` on `dragleave`, so the drop highlight may flicker), a real touch device, and a screen reader (only the accessible
+names and the status line were read). With Ollama running each move waits for the re-embed `setTaskStatus` has always done, and the
+board ignores further moves meanwhile (the controls are dimmed); not measured.
+
 ## Auth and route protection
 
 `requireUserId()` in `lib/session.ts` is the **only** sanctioned source of a userId.
