@@ -2096,8 +2096,8 @@ independent subagents, so it is weaker than four separate voices. No migration, 
   **Cost accepted:** a restore must be given the address again; **residual risk:** a secret placed in the
   host name itself would show.
 - **Attachment bytes are not in the JSON; the records are** (name, type, size, the generated storage key).
-  `ops/backup.sh` already archives `attachments.tar` beside the database dump, and the zip of item 12 is
-  where the files belong; base64 would be up to 10 MB x 1.37 per file in one string. **Cost accepted:** the
+  `ops/backup.sh` already archives `attachments.tar` beside the database dump, and the vault zip of item 12
+  (see "Markdown vault") carries the files for notes; base64 would be up to 10 MB x 1.37 per file in one string. **Cost accepted:** the
   JSON alone does not restore attachments, so the file carries a top-level `notIncluded` object that says
   so, with the other omissions (feed addresses, the search index, deleted items, the sign-in password),
   and the settings text says it before the click.
@@ -2204,9 +2204,131 @@ refused, a cut-off stream never valid, and more rows than a page) and 3 browser 
 out, the download and its headers, and what settings says). **Not run locally:** the evals (they call
 `buildFullExport`; its signature is unchanged), the other browser specs and the container rehearsal; CI runs them.
 
-**Not done:** an import from this file (restoring is from a backup; item 12 is the vault zip, with the attachment
-files); attachment bytes inside the JSON; a snapshot; a rate limit; the file is still named `nexus-export-<date>`;
+**Not done:** an import from this file (restoring is from a backup; the vault zip of item 12 restores notes and their
+attachments only, and a restore from this JSON is roadmap item 35); attachment bytes inside the JSON; a snapshot; a rate limit; the file is still named `nexus-export-<date>`;
 the links in the settings card are 18px text, as they were.
+
+## Markdown vault
+
+`GET /api/export/vault` downloads the account's notes as a zip of Markdown files that Obsidian opens, and
+`POST /api/import/vault` restores from such a zip (ROADMAP item 12, "M, depends on 11"). It was not tagged
+*demo*, so it was built from the plan (`docs/superpowers/plans/2026-11-05-vault-zip.md`) and looked at in the
+browser. No migration and **no new dependency**. The decisions came out of a council that I ran inline, not with
+independent subagents, so it is weaker than four separate voices.
+
+- **The zip layer is written here, on `node:zlib`.** I checked the registry (fflate 0.8.3, yauzl 3.4.0, archiver 8,
+  jszip 3.10.2, adm-zip 0.6.1, zip-stream 7.0.5: all maintained and MIT, jszip dual): the rule is no new dependency, the
+  hardening that matters (sizes capped before anything is inflated, the output bounded to the declared size, a CRC
+  check, zip64 and encryption refused) is ours with any of them, and fflate is about 800 KB for about 250 lines of need.
+  `lib/zip.ts` has a writer that returns one entry at a time and a reader that reads the central directory, applies the
+  limits, and inflates one entry on request. **Cost accepted:** a parser of ours; it reads the zips macOS `zip` and `ditto`
+  make (two committed fixtures), and `unzip -t` and Python's `zipfile` accept ours. **Fallback** if it proves fragile: fflate.
+- **The layout is flat.** `<Title>.md` at the root, `attachments/`, and `.anamnesis/manifest.json` (counts, what was left
+  out, what is not in a vault). The file name is the title, so `[[Title]]` finds it in Obsidian: characters Obsidian cannot
+  link or a disk cannot hold become `-`, device names (`CON`) get a `_`, at most 180 UTF-8 bytes (a Turkish letter is two),
+  NFC, and names are unique case-insensitively across notes **and** attachments (an attachment `Meeting.md` and a note
+  `Meeting` are one name to Obsidian). The note the app's own link resolution would pick (the most recently updated)
+  keeps the plain name; the others are ` (2)`, ` (3)`, given out after every plain name so a number never takes a real
+  note's name. **Cost accepted:** a link to a title that had to be sanitised does not resolve in Obsidian (it still does
+  here); the real title is in the front matter, so nothing is lost.
+- **Front matter is JSON-valued YAML** (`anamnesis: 1`, `title`, `tags`, `favorite`, `course` as the course code,
+  `project` as the title, `attachments` as `["[[diagram.png]]"]`, `created`, `updated`). JSON strings and lists are
+  valid YAML, so Obsidian reads them and the importer needs no YAML parser (only a small tolerant line reader for other
+  tools' notes). **No id and no owner is written**, so there is nothing in a vault to trust on the way back. The note text
+  is exactly as stored, after one blank line; attachments are a property, not edits to the body.
+- **What is in it:** live notes and the attachments of live notes. Tasks, events, cards, courses, grades, versions and
+  the trash are not (the file says so, and Settings says so before the click): the JSON export and the backup hold them.
+- **Identity on import is the content, never an id.** A note is "already there" when the account has a live note of the
+  same title family with the same text (SHA-256 of the LF-normalised text; the database computes it for existing notes,
+  150 MB of note text took 355 ms). Importing twice therefore adds nothing; a note changed since the export comes in
+  beside the original; nothing is overwritten or deleted. **A note whose title is already used by a different note comes
+  in as `Title (imported)`, then `(imported 2)`**, because link resolution prefers the most recently updated note of a
+  title and a restored old draft must not take `[[Title]]` from the note being written (tested: the existing note keeps
+  the links). Two notes of one title inside the file keep it, as the app allows. **Cost accepted:** a link in an imported
+  note to a renamed note points at the note the account already had; two imports at the same instant can each create a
+  copy (nothing in the database forbids it, as with daily notes).
+- **A preview, then the same code applies.** `runVaultImport(userId, bytes, { apply })` does everything with `apply: false`
+  except write, so what the preview says is what apply does; the form keeps the `File` in the browser and posts it twice.
+  The body is the zip itself, not a form: a Server Action takes 15 MB and a vault with PDFs is bigger (measured on the dev
+  server: a 30 MB body reaches the handler; 101 MB is refused 413 by its Content-Length, after the browser has finished
+  sending it, and nothing is buffered). **Cost:** the upload happens twice.
+- **Course and project are matched by name among the account's own and never created** (course by code, project by
+  title, case ignored; ambiguous or unknown means none, and the preview counts them). Notes from another tool are titled by
+  their file name (what a `[[link]]` names), tagged `imported`, and any front matter other than tags is dropped and counted;
+  notes this app wrote are restored as they were. Embedded images (`![[x.png]]`) in other tools' notes are not attached:
+  only our own files list their attachments, and the preview counts the unlisted files.
+- **A vault zipped as a folder works** (`vaultRoot`: Finder's Compress puts everything in one folder with `__MACOSX/`
+  beside it); `attachments/` was only looked for at the top, found by the code review.
+- **The zip is hostile data, and nothing in it is used as a path.** Notes are written through `noteService.createNote` as
+  the session's user, files through `putAttachment` under a generated `{uuid}.{ext}`, the course and project from the
+  account's own lists. Names that climb (`..`), are absolute, carry a drive letter or a control character, symlinks,
+  encrypted or oversize entries, duplicate names, hidden folders (`.obsidian/`, `.trash/`) and macOS metadata are skipped
+  with a counted reason; a structurally bad archive is refused whole, in a sentence. Attachment bytes must match their
+  extension's magic bytes (text types: valid UTF-8 without a NUL) before they are stored; the table of allowed types is
+  `lib/attachment-types.ts`, shared with the upload.
+- **Limits** (one place each): zip body 100 MiB, 20,000 entries, one entry 10 MiB (a note 512 KiB), 400 MiB declared in
+  total, 500 notes created per run (a second run carries on, because a run never duplicates), 20 attachments per note,
+  and **400 MiB of attachment bytes read per run**; a note that would pass it waits for the next run. Reports cap their
+  lists at 100 and every name in them has its control characters replaced.
+- **The export streams** (`streamVault`, a generator of zip chunks through the same `downloadResponse` the JSON export now
+  uses): every name is chosen first from two light listings, then each page of 50 notes is read, each attachment is read
+  and written alone and listed on its note only if it was written (a file missing from the disk is left out and named in
+  the manifest). The writer refuses before a zip32 limit could wrap, so what a stream stopped there wrote has no end record
+  and never opens as a smaller, whole-looking vault; `vaultPreflight` refuses the common case before the first byte (413).
+  The zip is not a snapshot: a note created while it runs is not in it.
+
+**What testing and the reviews turned up.**
+
+- **Measured, not read** (this machine, one process): `openZip` on 20,000 entries 9 ms, on 800 entries with 50 KB names
+  (80 MB) 8 ms, and 80 MB of end-record signatures is refused in 3 ms; a 0.6 MB zip declaring 381 MiB of notes previews in
+  626 ms with a 15 ms worst event-loop stall; 500 notes of 100,000 characters 320 ms.
+- **The security review found three things by measuring.** (1) **An amplification the caps did not cover:** a 21 KB zip of
+  60 notes each listing one 10 MiB attachment made an import write 600 MiB (5 GB at 500 notes), because the limits counted
+  what the zip declares, not how often a note reads it. Fixed with the per-run byte budget above. (2) A NUL in a note failed
+  in Postgres on every run with only "could not be saved"; it is skipped at parse time with its reason. (3) **An older bug,
+  found because a vault import makes it likely:** `/api/attachments/[id]` put the stored file name into
+  `Content-Disposition`, and a name with any character above U+00FF (Turkish ğ ş ı İ, CJK) makes `Response` throw, so the
+  download was a 500. `lib/content-disposition.ts` now sends an ASCII fallback and an RFC 5987 `filename*`; an e2e test
+  failed with a 500 on the old route first. Also found: `ATTACHMENT_TYPES` was looked up with `in`, so the browser-declared
+  types `toString` and `constructor` were accepted by the upload (now a null-prototype table).
+- **About 100 mutants were checked across the pure code, the repositories and the service; 13 survived the first tests and each got a test:**
+  the inflate bound (a 400 MiB lie must be refused in under 150 ms, not unpacked), data reading into the central directory,
+  the UTF-8 name flag, the cut after a byte limit, a device name followed by a dot, a numbered name staying inside 200
+  bytes, the folder's case, RFC 5987 characters, names leaking from another account's or a trashed note's title (found at the
+  repository level, the "masked by a second layer" gap again), a control character past the report's cap, and `reader.cancel()`.
+- **The code review (inline, at the highest effort) found nine things**, fixed with tests first where it was behaviour: a
+  vault zipped inside a folder lost its attachments; a failed `putAttachment` aborted the whole run (and a file written
+  before a failed insert stayed behind); a tag stored as `#exam` lost its `#` in a file this app wrote; the shared download
+  helper turned every early `VALIDATION_ERROR` into a 413, changing the JSON export; the writer's entry limit was one too
+  high (0xFFFF is the zip64 marker); two pieces of copy were wrong; and a unit test allocated 400 MiB. One was left: the
+  e2e import tests store attachment files that teardown (which deletes rows, not files) leaves in `data/attachments`.
+- **Found by looking at it:** the focused result region's ring hugged its text, the finished state repeated "Added N
+  notes" under "Imported N notes", and a nothing-new preview said "Would add 0 notes" and "Would store 0 attachments".
+- **The first whole-tier integration run had one failure, and it was my test:** it compared whole-directory listings of
+  `data/attachments` and `os.tmpdir()` while other test files wrote files there. The tests now look at the account's own
+  rows and at directories nothing else writes. Docker was down twice (`open -a Docker`).
+
+**Not verified:** Obsidian itself (it is not installed here: "opens in Obsidian" rests on the file naming, front matter
+and link conventions, and on `unzip` and Python accepting the zip); an import with the embedding model running (each note
+is embedded as it is saved: the earlier figures of 30 to 75 ms a chunk put 500 notes at about a minute, not measured here);
+the other browser specs, the evals and the container rehearsal (CI runs them).
+
+**Tests.** 33 unit tests (`zip`), 26 (`vault`), 37 (`vault-import`), 7 (`vault-upload`), 6 (`content-disposition`), 2
+(`download-stream`) and the attachment table's; 17 integration tests for the download (only the caller's live notes, the
+attachment bytes, unique names, the real title and text read back, no id or email anywhere, a stored file gone from disk,
+the zip limit, a paged account of 120 notes, the preflight, a refused account id) and 28 for the restore (preview writes
+nothing, twice adds nothing, an export restored into another account, courses and projects by name, title clashes and
+renames, the content hash equals the database's, ids and owners in a file ignored, attachment checks and nothing outside
+the store, a foreign Obsidian vault, runs and limits, refusals, a bomb, skipped entries, the byte budget, a failing note,
+a failing disk, a file left behind by a failed record, a zipped folder, backslash paths, hostile sizes); 11 browser tests (`vault.spec.ts`: signed out, the
+download's headers and contents, Settings, the form's states, a double click, the route's refusals, a Turkish file name,
+and the phone in light and dark).
+
+**Not done:** restoring tasks, events, cards and grades (item 35 is the JSON restore); embedded images in another tool's
+notes; Obsidian aliases and heading links (`[[Title|alias]]` does not resolve here, as before); overwriting or updating
+a note from a changed vault (an import never overwrites); a vault with more than 60,000 entries or 3.5 GB of attachments
+(the preflight refuses it and says to use the JSON export or the backup); progress while a large import runs; a rate limit
+(none exists on any route; registration must be closed before this is exposed, as already recorded); a snapshot.
 
 ## Auth and route protection
 

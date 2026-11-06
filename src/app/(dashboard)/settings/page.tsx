@@ -48,6 +48,21 @@ export default async function SettingsPage() {
             not either.
           </p>
         </div>
+        <div>
+          <a href="/api/export/vault" className="text-accent hover:underline">
+            Download my notes as a Markdown vault (.zip)
+          </a>
+          <p className="mt-1 text-xs text-text-muted">
+            One Markdown file for each note, with its attachments beside them and your{" "}
+            <code className="font-mono">[[links]]</code> as they are, so Obsidian opens it as a vault. Restore from one
+            under{" "}
+            <Link href="/notes/import" className="text-accent hover:underline">
+              Import notes
+            </Link>
+            . Only notes and their attachments are in it: tasks, events, flashcards, grades, earlier versions and deleted
+            items are not, and the JSON file and the backup hold what a vault leaves out.
+          </p>
+        </div>
         <Link href="/trash" className="text-accent hover:underline">
           Restore deleted notes, tasks and projects
         </Link>

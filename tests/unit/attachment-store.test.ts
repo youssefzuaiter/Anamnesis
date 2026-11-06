@@ -48,3 +48,12 @@ test("a malformed key is silently ignored on delete, not passed to fs.unlink", a
   await assert.doesNotReject(() => deleteAttachment("../../../etc/passwd"));
   await assert.doesNotReject(() => deleteAttachment("not-a-real-key"));
 });
+
+test("names that exist on every object are not file types", () => {
+  // The type comes from the browser (`file.type`), which will send any string.
+  // `"toString" in {}` is true, so a lookup written as `in` accepted these and
+  // then built a stored file name out of an inherited function.
+  for (const name of ["toString", "constructor", "__proto__", "hasOwnProperty", "valueOf"]) {
+    assert.equal(isAllowedType(name), false, name);
+  }
+});

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PdfImportForm } from "@/components/pdf-import-form";
 import { MarkdownImportForm } from "@/components/markdown-import-form";
+import { VaultImportForm } from "@/components/vault-import-form";
 
 export const metadata = { title: "Import · Anamnesis" };
 
@@ -40,6 +41,21 @@ export default function ImportPdfPage() {
         resolve as soon as the notes they point at are imported too.
       </p>
       <MarkdownImportForm />
+
+      <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
+        From a vault zip
+      </h2>
+      <p className="mb-2 text-sm text-text-muted">
+        A zip of Markdown files: the vault you can download from Settings, or a
+        folder from Obsidian that you zipped. You see what would happen before
+        anything is saved. A note you already have is left alone, so importing
+        the same file again adds nothing, and a note that shares its title with
+        a different one of yours comes in as &ldquo;Title (imported)&rdquo;.
+        Notes that Anamnesis wrote get their course and project back when you
+        still have ones with the same code and title. One run adds at most 500
+        notes; import the same file again for the rest.
+      </p>
+      <VaultImportForm />
     </div>
   );
 }
