@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { requireUserId } from "@/lib/session";
 import { type ApiResponse, ok, fail, toApiResponse } from "@/lib/api-response";
 import * as taskService from "@/services/task-service";
-import { TASK_PRIORITIES, TASK_STATUSES } from "@/lib/domain";
+import { TASK_PRIORITIES, TASK_STATUSES, type TaskStatus } from "@/lib/domain";
 import {
   RECURRENCE_FREQUENCIES,
   MAX_RECURRENCE_COUNT,
@@ -144,6 +144,8 @@ function revalidateTaskViews(taskId?: string) {
   revalidatePath("/tasks");
   if (taskId) revalidatePath(`/tasks/${taskId}`);
   revalidatePath("/projects");
+  // The page of one project (its list and its board). The line above is only the list of projects.
+  revalidatePath("/projects/[id]", "page");
   revalidatePath("/calendar");
   revalidatePath("/goals");
   revalidatePath("/");
@@ -242,6 +244,26 @@ export async function setTaskStatusAction(formData: FormData): Promise<void> {
   const userId = await requireUserId();
   await taskService.setTaskStatus(userId, parsed.data.taskId, parsed.data.status);
   revalidateTaskViews(parsed.data.taskId);
+}
+
+/**
+ * Moves a task to another column of a board. Called from a click or a drop, not from a form, so it answers with an
+ * ApiResponse the board can show: input first (an id and one of the three statuses), then the session, then the
+ * same `setTaskStatus` the checkbox uses (ownership, the finished time, project and goal progress).
+ */
+export async function moveTaskAction(taskId: string, status: TaskStatus): Promise<ApiResponse<null>> {
+  const parsed = z.object({ taskId: z.uuid(), status: z.enum(TASK_STATUSES) }).safeParse({ taskId, status });
+  if (!parsed.success) return fail("VALIDATION_ERROR", "That is not a task or a column.");
+
+  try {
+    const userId = await requireUserId();
+    await taskService.setTaskStatus(userId, parsed.data.taskId, parsed.data.status);
+  } catch (error) {
+    return toApiResponse(error);
+  }
+
+  revalidateTaskViews(parsed.data.taskId);
+  return ok(null);
 }
 
 export async function deleteTaskAction(taskId: string): Promise<void> {
