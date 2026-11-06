@@ -236,6 +236,26 @@ test("two quick clicks on Add make one item", async ({ page }) => {
   await expect(items(page)).toHaveCount(1);
 });
 
+test("text typed while an add is still being saved is kept, not wiped when it lands", async ({ page }) => {
+  // Found by looking: typing the next item straight after Enter lost it, because the first add's success
+  // cleared the field. The save is slowed here so the window is wide instead of a few milliseconds.
+  await makeTask(page, `Checklist typing ${Date.now()}`);
+  await page.route("**/tasks/*", async (route) => {
+    if (route.request().method() === "POST") await new Promise((resolve) => setTimeout(resolve, 700));
+    await route.continue();
+  });
+
+  await addField(page).fill("First of two");
+  await addField(page).press("Enter");
+  await addField(page).fill("Second of two"); // typed while the first is still being saved
+  await expect(checklist(page)).toContainText("First of two");
+  await expect(addField(page)).toHaveValue("Second of two");
+
+  await addField(page).press("Enter");
+  await expect(items(page)).toContainText(["First of two", "Second of two"]);
+  await expect(addField(page)).toHaveValue("");
+});
+
 test("another task's page has its own list, and a full list says so and stops", async ({ page }) => {
   const stamp = Date.now();
   const first = await makeTask(page, `Checklist one ${stamp}`);

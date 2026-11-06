@@ -66,14 +66,17 @@ export function TaskChecklist({ taskId, items, taskDone }: { taskId: string; ite
     }
   }
 
-  const add = () =>
-    run(
-      () => addChecklistItemAction(taskId, draft),
+  const add = () => {
+    const sent = draft;
+    return run(
+      () => addChecklistItemAction(taskId, sent),
       () => {
-        setDraft("");
+        // Only what was sent is cleared: anything typed while it was being saved stays for the next add.
+        setDraft((current) => (current === sent ? "" : current));
         addField.current?.focus();
       },
     );
+  };
 
   const saveEdit = () => editing && run(() => renameChecklistItemAction(editing.id, editing.text), () => setEditing(null));
 
