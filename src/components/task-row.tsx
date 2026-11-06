@@ -22,9 +22,12 @@ export function TaskRow({
   task,
   overdue,
   variant = "card",
+  checklist,
 }: {
   task: Task;
   overdue?: boolean;
+  /** Done and total of the task's checklist, when it has one: shown as a small `2/5`. */
+  checklist?: { done: number; total: number };
   /** `row` drops the card chrome, for lists that already sit inside a card. */
   variant?: "card" | "row";
 }) {
@@ -82,6 +85,16 @@ export function TaskRow({
           )}
           <span className={PRIORITY_STYLES[task.priority]}>{task.priority}</span>
           <span className="tabular-nums text-text-faint">{task.estimatedMinutes}m</span>
+          {checklist && checklist.total > 0 && (
+            <span className="tabular-nums text-text-muted">
+              <span aria-hidden="true">
+                {checklist.done}/{checklist.total}
+              </span>
+              <span className="sr-only">
+                {checklist.done} of {checklist.total} checklist items done
+              </span>
+            </span>
+          )}
           {task.tags.map((name) => (
             <span
               key={name}

@@ -1,5 +1,6 @@
 import { requireUserId } from "@/lib/session";
 import { groupTasks } from "@/services/task-service";
+import { checklistCounts } from "@/services/task-checklist-service";
 import { TaskForm } from "@/components/task-form";
 import { TaskRow } from "@/components/task-row";
 import { createTaskAction } from "@/actions/tasks";
@@ -17,10 +18,12 @@ function Section({
   title,
   tasks,
   overdue,
+  counts,
 }: {
   title: string;
   tasks: Task[];
   overdue?: boolean;
+  counts: Map<string, { done: number; total: number }>;
 }) {
   if (tasks.length === 0) return null;
 
@@ -31,7 +34,7 @@ function Section({
       </h2>
       <ul className="flex flex-col gap-2">
         {tasks.map((task) => (
-          <TaskRow key={task.id} task={task} overdue={overdue} />
+          <TaskRow key={task.id} task={task} overdue={overdue} checklist={counts.get(task.id)} />
         ))}
       </ul>
     </section>
@@ -52,6 +55,9 @@ export default async function TasksPage({
     listCourseOptions(userId),
     listGoalOptions(userId),
   ]);
+
+  const shown = [...grouped.overdue, ...grouped.today, ...grouped.upcoming, ...grouped.someday, ...grouped.done.slice(0, 20)];
+  const counts = await checklistCounts(userId, shown.map((task) => task.id));
 
   const openCount =
     grouped.overdue.length +
@@ -113,11 +119,11 @@ export default async function TasksPage({
         </p>
       )}
 
-      <Section title="Overdue" tasks={grouped.overdue} overdue />
-      <Section title="Today" tasks={grouped.today} />
-      <Section title="Upcoming" tasks={grouped.upcoming} />
-      <Section title="Someday" tasks={grouped.someday} />
-      <Section title="Done" tasks={grouped.done.slice(0, 20)} />
+      <Section title="Overdue" tasks={grouped.overdue} overdue counts={counts} />
+      <Section title="Today" tasks={grouped.today} counts={counts} />
+      <Section title="Upcoming" tasks={grouped.upcoming} counts={counts} />
+      <Section title="Someday" tasks={grouped.someday} counts={counts} />
+      <Section title="Done" tasks={grouped.done.slice(0, 20)} counts={counts} />
     </div>
   );
 }
