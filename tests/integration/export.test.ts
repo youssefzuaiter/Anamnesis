@@ -80,6 +80,7 @@ async function populate(userId: string, label: string) {
   const task = await prisma.task.create({
     data: { userId, projectId: project.id, courseId: course.id, noteId: note.id, goalId: goal.id, assessmentId: assessment.id, title: `Task ${label}`, tags: ["t"] },
   });
+  const checklistItem = await prisma.taskChecklistItem.create({ data: { userId, taskId: task.id, title: `Step ${label}`, position: 0 } });
   const subscription = await prisma.calendarSubscription.create({
     data: { userId, name: `Feed ${label}`, url: FEED_URL, lastSyncedAt: new Date("2026-10-31T08:30:00.000Z"), lastEventCount: 3 },
   });
@@ -102,7 +103,7 @@ async function populate(userId: string, label: string) {
     data: { userId, university: `Uni ${label}`, program: "AI", studentId: "123", targetGpa: 3.25, gpaScale: [{ letter: "AA", points: 4 }] },
   });
   return {
-    ids: [goal, project, course, assessment, note, version, attachment, card, task, subscription, event, link, telemetry, audit, conversation, message, profile].map((row) => row.id),
+    ids: [goal, project, course, assessment, note, version, attachment, card, task, checklistItem, subscription, event, link, telemetry, audit, conversation, message, profile].map((row) => row.id),
     note, course, conversation,
   };
 }

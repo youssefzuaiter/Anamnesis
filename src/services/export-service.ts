@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { AppError } from "@/lib/api-response";
 import { EXPORT_FORMAT_VERSION, NOT_INCLUDED, afterCreated, afterRecorded, feedHost, type ExportPage } from "@/lib/export-shape";
 import * as flashcardRepository from "@/repositories/flashcard-repository";
+import * as checklistRepository from "@/repositories/task-checklist-repository";
 
 /**
  * Everything a user owns that can safely leave the machine: a personal backup and portability
@@ -69,6 +70,8 @@ export const tables = {
   tasks: table(LIGHT_PAGE, (userId, page) =>
     prisma.task.findMany({ where: { AND: [{ userId, deletedAt: null }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
+  // The steps of live tasks only, like every other child of a task in the trash.
+  checklistItems: table(LIGHT_PAGE, (userId, page) => checklistRepository.listLiveForExport(userId, page)),
   events: table(LIGHT_PAGE, (userId, page) =>
     prisma.event.findMany({ where: { AND: [{ userId }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
@@ -168,6 +171,7 @@ export async function buildFullExport(userId: string) {
     goals,
     notes,
     tasks,
+    checklistItems,
     events,
     links,
     focusTelemetry,
@@ -187,6 +191,7 @@ export async function buildFullExport(userId: string) {
     readAll(tables.goals, userId),
     readAll(tables.notes, userId),
     readAll(tables.tasks, userId),
+    readAll(tables.checklistItems, userId),
     readAll(tables.events, userId),
     readAll(tables.links, userId),
     readAll(tables.focusTelemetry, userId),
@@ -211,6 +216,7 @@ export async function buildFullExport(userId: string) {
     goals,
     notes,
     tasks,
+    checklistItems,
     events,
     links,
     focusTelemetry,

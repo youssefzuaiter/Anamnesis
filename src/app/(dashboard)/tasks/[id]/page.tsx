@@ -15,6 +15,8 @@ import { listProjectOptions } from "@/repositories/project-repository";
 import { listCourseOptions } from "@/repositories/course-repository";
 import { listGoalOptions } from "@/repositories/goal-repository";
 import { StudyTimer } from "@/components/study-timer";
+import { TaskChecklist } from "@/components/task-checklist";
+import { getChecklist } from "@/services/task-checklist-service";
 
 
 export const metadata = { title: "Task · Anamnesis" };
@@ -38,10 +40,11 @@ export default async function TaskPage({ params }: PageProps<"/tasks/[id]">) {
   const task = await getTask(userId, id);
   if (!task) notFound();
 
-  const [projects, courses, goals] = await Promise.all([
+  const [projects, courses, goals, checklist] = await Promise.all([
     listProjectOptions(userId),
     listCourseOptions(userId),
     listGoalOptions(userId),
+    getChecklist(userId, id),
   ]);
 
   const done = task.status === "done";
@@ -89,6 +92,10 @@ export default async function TaskPage({ params }: PageProps<"/tasks/[id]">) {
 
       <div className="mb-4">
         <StudyTimer taskTitle={task.title} />
+      </div>
+
+      <div className="mb-4">
+        <TaskChecklist taskId={task.id} items={checklist.items} taskDone={done} />
       </div>
 
       <TaskForm
