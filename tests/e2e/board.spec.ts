@@ -37,6 +37,17 @@ async function sql(statement: string, params: unknown[] = []) {
   }
 }
 
+/** Reads rows from the database the app uses. */
+async function rows<T = Record<string, string>>(statement: string, params: unknown[] = []): Promise<T[]> {
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    return (await client.query(statement, params)).rows as T[];
+  } finally {
+    await client.end();
+  }
+}
+
 /** Makes a project through the form and returns the address of its page. */
 async function makeProject(page: Page, title: string): Promise<string> {
   await page.goto("/projects");
@@ -268,6 +279,67 @@ test("by keyboard, a Move button works and focus follows the card", async ({ pag
   await page.keyboard.press("Space");
   await expect(card(page, "Done", title)).toBeVisible();
   await expect(card(page, "Done", title).getByRole("link", { name: title })).toBeFocused();
+});
+
+test("a drop that carries an id that is not on this board does nothing and sends nothing", async ({ page }) => {
+  const stamp = Date.now();
+  const mine = `Mine ${stamp}`;
+  const theirs = `Theirs ${stamp}`;
+  const markup = `<img src=x onerror=alert(1)> ${stamp}`;
+  const { url } = await projectWith(page, "Forge", [mine, markup]);
+  const otherProject = `Elsewhere ${stamp}`;
+  await makeProject(page, otherProject);
+  await addTask(page, theirs, otherProject);
+  const [{ id: foreignId }] = await rows<{ id: string }>(`SELECT "id" FROM "Task" WHERE "title" = $1`, [theirs]);
+  await page.goto(`${url}?view=board`);
+
+  let dialogs = 0;
+  page.on("dialog", (dialog) => {
+    dialogs += 1;
+    void dialog.dismiss();
+  });
+  const posts: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST") posts.push(request.url());
+  });
+
+  // A drop as another tab, another window or another site could make one: our type with any text in it, or text of
+  // another type. Only a card that is on this board may move.
+  const dropOn = (name: string, type: string, payload: string) =>
+    column(page, name).evaluate(
+      (el, [mime, data]) => {
+        const transfer = new DataTransfer();
+        transfer.setData(mime, data);
+        el.dispatchEvent(new DragEvent("dragover", { dataTransfer: transfer, bubbles: true, cancelable: true }));
+        el.dispatchEvent(new DragEvent("drop", { dataTransfer: transfer, bubbles: true, cancelable: true }));
+      },
+      [type, payload],
+    );
+  const mime = "application/x-anamnesis-board-task-id";
+  const myId = (await card(page, "To do", mine).getByRole("link").getAttribute("href"))!.split("/").pop()!;
+
+  await dropOn("In progress", mime, "00000000-0000-4000-8000-000000000000");
+  await dropOn("In progress", mime, foreignId);
+  await dropOn("Done", mime, "'; DROP TABLE \"Task\"; --");
+  await dropOn("Done", mime, "x".repeat(100_000));
+  await dropOn("In progress", "text/plain", myId);
+  await dropOn("In progress", "application/x-nexus-task-id", myId); // the calendar's type is not a board card
+  await page.waitForTimeout(700);
+
+  expect(posts, "nothing was sent").toEqual([]);
+  expect(dialogs, "no script ran").toBe(0);
+  await expect(card(page, "To do", mine)).toBeVisible();
+  const [still] = await rows<{ status: string }>(`SELECT "status" FROM "Task" WHERE "id" = $1`, [foreignId]);
+  expect(still.status, "another project's task was not touched").toBe("todo");
+
+  // A title of markup is text on a card, and nothing more.
+  await expect(card(page, "To do", markup)).toBeVisible();
+  await expect(board(page).locator("img")).toHaveCount(0);
+
+  // The same drop with this board's own card does move it: the helper is not what made the rest do nothing.
+  await dropOn("In progress", mime, myId);
+  await expect(card(page, "In progress", mine)).toBeVisible();
+  expect(posts.length).toBeGreaterThan(0);
 });
 
 test("an empty column says what to do", async ({ page }) => {
