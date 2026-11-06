@@ -5,6 +5,7 @@
 import { TASK_STATUSES, type TaskPriority, type TaskStatus } from "@/lib/domain";
 import { bucketOf } from "@/lib/task-bucket";
 import type { ChecklistCount } from "@/lib/checklist";
+import { dueLabel } from "@/lib/due-label";
 
 export const BOARD_COLUMNS: readonly { status: TaskStatus; label: string }[] = [
   { status: "todo", label: "To do" },
@@ -51,8 +52,6 @@ const PRIORITY_RANK: Record<TaskPriority, number> = { high: 0, medium: 1, low: 2
 const isStatus = (value: string): value is TaskStatus => (TASK_STATUSES as readonly string[]).includes(value);
 const isPriority = (value: string): value is TaskPriority => value in PRIORITY_RANK;
 
-const DUE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
-
 const byId = (a: BoardCard, b: BoardCard) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 /**
@@ -96,7 +95,7 @@ export function toBoardCards(tasks: readonly BoardTask[], now: Date, counts: Rea
         title: task.title,
         status: isStatus(task.status) ? task.status : "todo",
         priority: isPriority(task.priority) ? task.priority : "medium",
-        dueLabel: task.dueDate ? DUE.format(task.dueDate) : null,
+        dueLabel: task.dueDate ? dueLabel(task.dueDate) : null,
         pastDue: bucketOf(task, now) === "overdue",
         estimatedMinutes: task.estimatedMinutes,
         recurring: task.recurrenceId !== null,

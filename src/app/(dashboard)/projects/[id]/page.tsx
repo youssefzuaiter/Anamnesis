@@ -23,6 +23,11 @@ const DATE = new Intl.DateTimeFormat("en-GB", {
   month: "short",
 });
 
+const VIEWS = [
+  { name: "list", label: "List", query: "" },
+  { name: "board", label: "Board", query: "?view=board" },
+] as const;
+
 const VIEW_LINK =
   "inline-flex min-h-11 items-center rounded-lg border px-3.5 text-xs font-semibold transition-colors sm:min-h-8";
 
@@ -105,20 +110,16 @@ export default async function ProjectPage({
             Tasks · {tasks.length}
           </h2>
           <nav aria-label="Task view" className="flex gap-0.5 rounded-[10px] bg-surface-subtle p-0.5">
-            <Link
-              href={`/projects/${project.id}`}
-              aria-current={view === "list" ? "true" : undefined}
-              className={`${VIEW_LINK} ${view === "list" ? "border-border-subtle bg-surface text-accent-ink" : "border-transparent text-text-muted hover:text-text"}`}
-            >
-              List
-            </Link>
-            <Link
-              href={`/projects/${project.id}?view=board`}
-              aria-current={view === "board" ? "true" : undefined}
-              className={`${VIEW_LINK} ${view === "board" ? "border-border-subtle bg-surface text-accent-ink" : "border-transparent text-text-muted hover:text-text"}`}
-            >
-              Board
-            </Link>
+            {VIEWS.map(({ name, label, query }) => (
+              <Link
+                key={name}
+                href={`/projects/${project.id}${query}`}
+                aria-current={view === name ? "true" : undefined}
+                className={`${VIEW_LINK} ${view === name ? "border-border-subtle bg-surface text-accent-ink" : "border-transparent text-text-muted hover:text-text"}`}
+              >
+                {label}
+              </Link>
+            ))}
           </nav>
         </div>
         {tasks.length === 0 ? (

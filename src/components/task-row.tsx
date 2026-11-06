@@ -4,13 +4,7 @@ import { Icon } from "@/components/icons";
 import { PRIORITY_STYLES } from "@/components/priority-style";
 import type { TaskModel as Task } from "@/generated/prisma/models";
 import type { ChecklistCount } from "@/lib/checklist";
-
-function formatDue(date: Date): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-  }).format(date);
-}
+import { dueLabel } from "@/lib/due-label";
 
 export function TaskRow({
   task,
@@ -74,7 +68,7 @@ export function TaskRow({
           {task.dueDate && (
             <span className={overdue ? "font-semibold text-warn" : "text-text-faint"}>
               {overdue ? "Overdue · " : ""}
-              {formatDue(task.dueDate)}
+              {dueLabel(task.dueDate)}
             </span>
           )}
           <span className={PRIORITY_STYLES[task.priority]}>{task.priority}</span>

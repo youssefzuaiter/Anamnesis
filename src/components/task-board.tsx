@@ -6,7 +6,7 @@ import { useEffect, useOptimistic, useRef, useState, useTransition } from "react
 import { moveTaskAction } from "@/actions/tasks";
 import { Icon, type IconName } from "@/components/icons";
 import { PRIORITY_STYLES } from "@/components/priority-style";
-import { DONE_SHOWN, columnsOf, moveCard, otherColumns, type BoardCard } from "@/lib/board";
+import { BOARD_COLUMNS, DONE_SHOWN, columnsOf, moveCard, otherColumns, type BoardCard } from "@/lib/board";
 import { BOARD_DRAG_MIME, type TaskStatus } from "@/lib/domain";
 
 const STATUS_ICON: Record<TaskStatus, IconName> = { todo: "statusTodo", in_progress: "statusDoing", done: "statusDone" };
@@ -15,6 +15,99 @@ const STATUS_ICON: Record<TaskStatus, IconName> = { todo: "statusTodo", in_progr
 // and every control is unavailable for the length of a move. Clicks are ignored in the handlers.
 const chip =
   "inline-flex min-h-11 items-center gap-1 rounded-lg border border-border-subtle px-3 text-xs font-medium text-text transition-colors hover:bg-surface-subtle aria-disabled:cursor-not-allowed aria-disabled:opacity-40 lg:min-h-8";
+
+/** One card: the checkbox, the title, its facts, and the buttons that move it to the other two columns. */
+function CardItem({
+  card,
+  pending,
+  dragging,
+  onMove,
+  onDragStart,
+  onDragEnd,
+}: {
+  card: BoardCard;
+  pending: boolean;
+  dragging: boolean;
+  onMove: (card: BoardCard, to: TaskStatus) => void;
+  onDragStart: (id: string) => void;
+  onDragEnd: () => void;
+}) {
+  const done = card.status === "done";
+  const late = card.pastDue && !done;
+  return (
+    <li
+      draggable={!pending}
+      onDragStart={(event) => {
+        event.dataTransfer.setData(BOARD_DRAG_MIME, card.id);
+        event.dataTransfer.effectAllowed = "move";
+        onDragStart(card.id);
+      }}
+      onDragEnd={onDragEnd}
+      className={`cursor-grab rounded-xl border border-border-subtle bg-surface px-4 py-3 ${dragging ? "opacity-50" : ""}`}
+    >
+      <div className="flex items-start gap-3">
+        <button
+          type="button"
+          aria-disabled={pending || undefined}
+          aria-label={done ? `Reopen ${card.title}` : `Complete ${card.title}`}
+          onClick={() => onMove(card, done ? "todo" : "done")}
+          className={`relative mt-px flex size-5 shrink-0 items-center justify-center rounded-md border-[1.5px] transition-colors after:absolute after:-inset-[13.5px] after:content-[''] aria-disabled:cursor-not-allowed aria-disabled:opacity-40 ${
+            done ? "border-accent bg-accent text-on-accent" : "border-control bg-surface hover:border-accent"
+          }`}
+        >
+          {done && <Icon name="check" className="size-3.5" strokeWidth={2.5} />}
+        </button>
+        <div className="min-w-0 flex-1">
+          <Link
+            href={`/tasks/${card.id}`}
+            data-focus-key={`card:${card.id}`}
+            className={`block break-words text-sm font-semibold leading-5 transition-colors hover:text-accent ${
+              done ? "text-text-faint line-through" : "text-text"
+            }`}
+          >
+            {card.recurring && "↻ "}
+            {card.title}
+          </Link>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-4">
+            {card.dueLabel && (
+              <span className={late ? "font-semibold text-warn" : "text-text-faint"}>
+                {late ? "Overdue · " : ""}
+                {card.dueLabel}
+              </span>
+            )}
+            <span className={PRIORITY_STYLES[card.priority]}>{card.priority}</span>
+            <span className="tabular-nums text-text-faint">{card.estimatedMinutes}m</span>
+            {card.checklist && (
+              <span className="tabular-nums text-text-muted">
+                <span aria-hidden="true">
+                  {card.checklist.done}/{card.checklist.total}
+                </span>
+                <span className="sr-only">
+                  {card.checklist.done} of {card.checklist.total} checklist items done
+                </span>
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="mt-2.5 flex flex-wrap gap-2 pl-8">
+        {otherColumns(card.status).map((to) => (
+          <button
+            key={to.status}
+            type="button"
+            aria-disabled={pending || undefined}
+            aria-label={`Move "${card.title}" to ${to.label}`}
+            onClick={() => onMove(card, to.status)}
+            className={chip}
+          >
+            <Icon name="chevronRight" className="size-3" strokeWidth={2} />
+            {to.label}
+          </button>
+        ))}
+      </div>
+    </li>
+  );
+}
 
 /**
  * A project's tasks as three columns by status. A card moves by drag (desktop) or by the buttons on it (keyboard,
@@ -38,6 +131,7 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
   const refocus = useRef<string | null>(null);
 
   const columns = columnsOf(optimistic);
+  const dragged = dragging ? optimistic.find((card) => card.id === dragging) : undefined;
 
   // A card that changes column is a different element, so focus would fall back to the top of the page: put it
   // back on the card's title once the list has changed (and again if the move is taken back).
@@ -54,7 +148,7 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
     refocus.current = card.id;
     setError(null);
     setNotice("");
-    const label = columns.find((column) => column.status === to)?.label ?? to;
+    const label = BOARD_COLUMNS.find((column) => column.status === to)?.label ?? to;
     startTransition(async () => {
       applyMove({ id: card.id, to, at: Date.now() });
       try {
@@ -75,8 +169,6 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
       }
     });
   }
-
-  const unavailable = pending || undefined;
 
   return (
     <section ref={root} aria-label="Board" className="flex flex-col gap-3">
@@ -110,7 +202,6 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
         {columns.map((column) => {
           const hidden = column.status === "done" && !showAllDone ? column.cards.length - DONE_SHOWN : 0;
           const visible = hidden > 0 ? column.cards.slice(0, DONE_SHOWN) : column.cards;
-          const dragged = dragging ? optimistic.find((card) => card.id === dragging) : undefined;
           return (
             <section
               key={column.status}
@@ -156,87 +247,20 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
               )}
 
               <ul className="flex flex-col gap-2">
-                {visible.map((card) => {
-                  const done = card.status === "done";
-                  const late = card.pastDue && !done;
-                  return (
-                    <li
-                      key={card.id}
-                      draggable={!pending}
-                      onDragStart={(event) => {
-                        event.dataTransfer.setData(BOARD_DRAG_MIME, card.id);
-                        event.dataTransfer.effectAllowed = "move";
-                        setDragging(card.id);
-                      }}
-                      onDragEnd={() => {
-                        setDragging(null);
-                        setOver(null);
-                      }}
-                      className={`cursor-grab rounded-xl border border-border-subtle bg-surface px-4 py-3 ${dragging === card.id ? "opacity-50" : ""}`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <button
-                          type="button"
-                          aria-disabled={unavailable}
-                          aria-label={done ? `Reopen ${card.title}` : `Complete ${card.title}`}
-                          onClick={() => move(card, done ? "todo" : "done")}
-                          className={`relative mt-px flex size-5 shrink-0 items-center justify-center rounded-md border-[1.5px] transition-colors after:absolute after:-inset-[13.5px] after:content-[''] aria-disabled:cursor-not-allowed aria-disabled:opacity-40 ${
-                            done ? "border-accent bg-accent text-on-accent" : "border-control bg-surface hover:border-accent"
-                          }`}
-                        >
-                          {done && <Icon name="check" className="size-3.5" strokeWidth={2.5} />}
-                        </button>
-                        <div className="min-w-0 flex-1">
-                          <Link
-                            href={`/tasks/${card.id}`}
-                            data-focus-key={`card:${card.id}`}
-                            className={`block break-words text-sm font-semibold leading-5 transition-colors hover:text-accent ${
-                              done ? "text-text-faint line-through" : "text-text"
-                            }`}
-                          >
-                            {card.recurring && "↻ "}
-                            {card.title}
-                          </Link>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-4">
-                            {card.dueLabel && (
-                              <span className={late ? "font-semibold text-warn" : "text-text-faint"}>
-                                {late ? "Overdue · " : ""}
-                                {card.dueLabel}
-                              </span>
-                            )}
-                            <span className={PRIORITY_STYLES[card.priority]}>{card.priority}</span>
-                            <span className="tabular-nums text-text-faint">{card.estimatedMinutes}m</span>
-                            {card.checklist && (
-                              <span className="tabular-nums text-text-muted">
-                                <span aria-hidden="true">
-                                  {card.checklist.done}/{card.checklist.total}
-                                </span>
-                                <span className="sr-only">
-                                  {card.checklist.done} of {card.checklist.total} checklist items done
-                                </span>
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-2.5 flex flex-wrap gap-2 pl-8">
-                        {otherColumns(card.status).map((to) => (
-                          <button
-                            key={to.status}
-                            type="button"
-                            aria-disabled={unavailable}
-                            aria-label={`Move "${card.title}" to ${to.label}`}
-                            onClick={() => move(card, to.status)}
-                            className={chip}
-                          >
-                            <Icon name="chevronRight" className="size-3" strokeWidth={2} />
-                            {to.label}
-                          </button>
-                        ))}
-                      </div>
-                    </li>
-                  );
-                })}
+                {visible.map((card) => (
+                  <CardItem
+                    key={card.id}
+                    card={card}
+                    pending={pending}
+                    dragging={dragging === card.id}
+                    onMove={move}
+                    onDragStart={setDragging}
+                    onDragEnd={() => {
+                      setDragging(null);
+                      setOver(null);
+                    }}
+                  />
+                ))}
               </ul>
 
               {column.status === "done" && column.cards.length > DONE_SHOWN && (
