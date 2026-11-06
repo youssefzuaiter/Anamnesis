@@ -180,6 +180,16 @@ test("a note that is too long, and one with no title, are skipped with a reason"
   assert.ok("skip" in parseNoteFile("  .md", "text"));
 });
 
+test("a NUL in a note is refused with its reason, not left for the database to fail on", () => {
+  // Postgres text cannot hold U+0000: a note with one would fail to save on every run, with no reason given.
+  const nul = String.fromCharCode(0);
+  const result = parseNoteFile("a.md", `before${nul}after`);
+  assert.ok("skip" in result && /NUL|null character/i.test(result.skip), JSON.stringify(result));
+  assert.ok(!("skip" in parseNoteFile("a.md", "before after")));
+  // In the front matter a control character is only a space in a name: the note itself is fine.
+  assert.equal(parsed("a.md", `---\nanamnesis: 1\ntitle: "T${"\\u0000"}x"\n---\nbody`).title, "T x");
+});
+
 test("a title is cut at 200 characters without splitting a pair", () => {
   assert.equal(parsed(`${"a".repeat(500)}.md`, "x").title.length, 200);
   const emoji = parsed(`${"😀".repeat(150)}.md`, "x").title;

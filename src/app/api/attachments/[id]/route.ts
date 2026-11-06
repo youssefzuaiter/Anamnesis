@@ -1,6 +1,7 @@
 import { requireUserId } from "@/lib/session";
 import { getAttachmentRow } from "@/repositories/attachment-repository";
 import { getAttachment } from "@/lib/attachment-store";
+import { contentDisposition } from "@/lib/content-disposition";
 
 /**
  * Serves one attachment to its owner.
@@ -38,7 +39,7 @@ export async function GET(
     headers: {
       "Content-Type": row.mimeType,
       "Content-Length": String(row.byteSize),
-      "Content-Disposition": `attachment; filename="${row.filename.replace(/["\\]/g, "")}"`,
+      "Content-Disposition": contentDisposition(row.filename),
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "private, max-age=3600",
     },

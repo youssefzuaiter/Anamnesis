@@ -448,6 +448,46 @@ test("what is not a zip, a truncated zip and a zip that would unpack to too much
   assert.equal(await count(user.id), 0);
 });
 
+/** `count` notes that each list the same attachment, so every note costs one read of it. */
+function sharedAttachmentZip(count: number, attachment: Buffer): Promise<Buffer> {
+  const files: File[] = Array.from({ length: count }, (_, i) => md(`Shared ${String(i).padStart(3, "0")}`, "x", { attachments: ["shared.png"] }));
+  files.push({ name: "attachments/shared.png", data: attachment });
+  return makeZip(files);
+}
+
+test("one attachment listed by many notes cannot make an import write more than the size limit", async () => {
+  const user = await newUser();
+  // A 21 KB zip: sixty notes, each listing the one 10 MiB attachment. Unpacked once per note that is 600 MiB.
+  const png = Buffer.concat([PNG, Buffer.alloc(10 * 1024 * 1024 - PNG.length)]);
+  const zip = await sharedAttachmentZip(60, png);
+  assert.ok(zip.length < 100_000, `the zip is ${zip.length} bytes`);
+  const report = await preview(user.id, zip);
+  assert.equal(report.attachments.stored, 40, "40 x 10 MiB is the 400 MiB the whole zip may unpack to");
+  assert.equal(report.notes.create, 40);
+  assert.equal(report.notes.deferred, 20, "the rest wait for the next run");
+});
+
+test("notes deferred for the size of their attachments are imported by the next run, none twice", async () => {
+  const user = await newUser();
+  const zip = await sharedAttachmentZip(5, PNG); // each note reads a 70-byte file
+  const first = await runVaultImport(user.id, zip, { apply: true, byteBudget: 2 * PNG.length + 10 });
+  assert.deepEqual([first.notes.created, first.notes.deferred, first.attachments.stored], [2, 3, 2]);
+  const second = await runVaultImport(user.id, zip, { apply: true, byteBudget: 2 * PNG.length + 10 });
+  assert.deepEqual([second.notes.created, second.notes.present, second.notes.deferred], [2, 2, 1]);
+  const third = await runVaultImport(user.id, zip, { apply: true, byteBudget: 2 * PNG.length + 10 });
+  assert.deepEqual([third.notes.created, third.notes.deferred], [1, 0]);
+  assert.equal(await count(user.id), 5);
+  assert.equal(await prisma.attachment.count({ where: { userId: user.id } }), 5, "one attachment for each note, none repeated");
+});
+
+test("a note with no attachments is never held back by the size budget", async () => {
+  const user = await newUser();
+  const zip = await makeZip([md("Plain one", "a"), md("Plain two", "b")]);
+  const report = await runVaultImport(user.id, zip, { apply: true, byteBudget: 0 });
+  assert.equal(report.notes.created, 2);
+  assert.equal(report.notes.deferred, 0);
+});
+
 test("a bomb is skipped, not unpacked: a thousand-to-one entry is over the size limit", async () => {
   const user = await newUser();
   const zeros = Buffer.alloc(64 * 1024 * 1024);

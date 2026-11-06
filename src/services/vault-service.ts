@@ -1,7 +1,7 @@
 import "server-only";
 import { AppError } from "@/lib/api-response";
 import { MAX_ATTACHMENT_BYTES, deleteAttachment, getAttachment, putAttachment } from "@/lib/attachment-store";
-import { ZipError, ZipWriter, openZip, type ZipEntry } from "@/lib/zip";
+import { ZIP_LIMITS, ZipError, ZipWriter, openZip, type ZipEntry } from "@/lib/zip";
 import { VAULT, allocateNames, attachmentParts, manifestJson, noteFile, safeStem, type NameInput } from "@/lib/vault";
 import { classifyEntry, parseNoteFile, planImport, sniffAttachment, type ParsedNote } from "@/lib/vault-import";
 import type { NoteInput } from "@/repositories/note-repository";
@@ -204,7 +204,7 @@ const baseOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 export async function runVaultImport(
   userId: string,
   bytes: Uint8Array,
-  options: { apply: boolean; limit?: number; deps?: { createNote?: (userId: string, input: NoteInput) => Promise<{ id: string }> } },
+  options: { apply: boolean; limit?: number; byteBudget?: number; deps?: { createNote?: (userId: string, input: NoteInput) => Promise<{ id: string }> } },
 ): Promise<VaultImportReport> {
   assertUserId(userId);
   const createNote = options.deps?.createNote ?? noteService.createNote;
@@ -303,12 +303,33 @@ export async function runVaultImport(
   const projectIds = uniqueIds(projects.map((project) => ({ id: project.id, key: project.title })));
 
   const plan = planImport(existing, notes, options.limit ?? VAULT.maxImportNotes);
-  report.notes.create = plan.create.length;
-  report.notes.present = plan.present.length;
-  report.notes.deferred = plan.deferred.length;
-  report.notes.renamed = plan.create.filter((note) => note.renamed).map((note) => ({ from: label(note.title), to: label(note.finalTitle) }));
-
   const lookup = (name: string) => pool.get(name) ?? poolLower.get(name.toLowerCase());
+
+  // The size limit of a zip is on what it says it holds, but a note that lists a file reads it again:
+  // sixty notes listing one 10 MiB file would write 600 MiB from a 21 KB upload. So what one run
+  // reads for attachments, each listing counted, is held to the same limit, and a note that would pass
+  // it waits for the next run (one note lists at most 20 files, 200 MiB, so a run always makes progress).
+  const byteBudget = options.byteBudget ?? ZIP_LIMITS.maxTotalBytes;
+  let spent = 0;
+  const creating: typeof plan.create = [];
+  let overBudget = 0;
+  for (const note of plan.create) {
+    let needs = 0;
+    for (const name of note.attachments) {
+      const entry = lookup(name);
+      if (entry && entry.unsupported === null) needs += entry.size;
+    }
+    if (spent + needs > byteBudget) {
+      overBudget += 1;
+      continue;
+    }
+    spent += needs;
+    creating.push(note);
+  }
+  report.notes.create = creating.length;
+  report.notes.present = plan.present.length;
+  report.notes.deferred = plan.deferred.length + overBudget;
+  report.notes.renamed = creating.filter((note) => note.renamed).map((note) => ({ from: label(note.title), to: label(note.finalTitle) }));
   const referenced = new Set<ZipEntry>();
   for (const note of notes) for (const name of note.attachments) {
     const entry = lookup(name);
@@ -316,7 +337,7 @@ export async function runVaultImport(
   }
   report.attachments.unreferenced = poolEntries.length - referenced.size;
 
-  for (const note of plan.create) {
+  for (const note of creating) {
     const courseId = note.course === null ? null : (courseIds.get(note.course.trim().toLowerCase()) ?? null);
     const projectId = note.project === null ? null : (projectIds.get(note.project.trim().toLowerCase()) ?? null);
     if (note.course !== null && courseId === null) report.notes.withoutCourse += 1;

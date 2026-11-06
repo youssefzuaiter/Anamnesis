@@ -243,6 +243,8 @@ export function parseNoteFile(path: string, raw: string): ParsedNote | { skip: s
   const title = (ours && typeof properties.get("title") === "string" ? cleanTitle(properties.get("title") as string) : "") || cleanTitle(stem);
   if (title === "") return { skip: "It has no title." };
   if (body.length > MAX_NOTE_LENGTH) return { skip: `It is longer than ${MAX_NOTE_LENGTH.toLocaleString("en-US")} characters.` };
+  // Postgres text cannot hold U+0000: such a note would fail to save on every run, and say nothing useful.
+  if (body.includes("\u0000")) return { skip: "It contains a NUL character, which a note cannot hold." };
 
   const known = ours ? OURS : FOREIGN_KEPT;
   return {

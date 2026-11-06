@@ -213,3 +213,23 @@ for (const scheme of ["light", "dark"] as const) {
     }
   });
 }
+
+test("an attachment with a Turkish name downloads: the file name travels as UTF-8, not as a header that throws", async ({ page }) => {
+  const stamp = Date.now();
+  const title = `Turkish file ${stamp}`;
+  const name = "Şekil ğ ı İ.png";
+  const zip = await vaultZip([{ title, content: "x", attachments: [name] }], [{ name: `attachments/${name}`, data: PNG }]);
+  const done = await page.request.post("/api/import/vault?mode=apply", { data: zip, headers: { "content-type": "application/zip" } });
+  expect((await done.json()).data.attachments.stored).toBe(1);
+
+  await page.goto("/notes");
+  await main(page).getByRole("link", { name: new RegExp(title) }).first().click();
+  await page.waitForURL(/\/notes\/[0-9a-f-]{36}$/);
+  const link = main(page).locator('a[href^="/api/attachments/"]');
+  await expect(link).toContainText(name);
+  const response = await page.request.get((await link.getAttribute("href")) as string);
+  expect(response.status(), "a name beyond Latin-1 used to be a 500").toBe(200);
+  expect(response.headers()["content-disposition"]).toContain(`filename*=UTF-8''${encodeURIComponent(name)}`);
+  expect(response.headers()["content-type"]).toBe("image/png");
+  expect(await response.body()).toEqual(PNG);
+});
