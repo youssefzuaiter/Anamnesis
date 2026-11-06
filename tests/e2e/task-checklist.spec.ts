@@ -324,6 +324,17 @@ for (const scheme of ["light", "dark"] as const) {
     }
     expect(await overflow()).toBeLessThanOrEqual(0);
 
+    // The tick box is drawn 20px wide; the button around it has to be 44px, which only a hit test can show.
+    const tickName = 'Mark "A short step" not done';
+    const missed = await page.evaluate((name) => {
+      const tick = document.querySelector(`button[aria-label='${name}']`) as HTMLElement;
+      const r = tick.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      return [[-21, 0], [21, 0], [0, -21], [0, 21], [-21, -21], [21, 21]].filter(([dx, dy]) => document.elementFromPoint(cx + dx, cy + dy)?.closest("button") !== tick);
+    }, tickName);
+    expect(missed, "points within 21px of the tick box's centre that do not reach it").toEqual([]);
+
     // The editing row is as wide as the page allows and no wider.
     await checklist(page).getByRole("button", { name: 'Edit "A short step"' }).click();
     await tall(checklist(page).getByLabel("Edit item"), "Edit field");

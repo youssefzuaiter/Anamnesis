@@ -104,7 +104,7 @@ export function TaskChecklist({ taskId, items, taskDone }: { taskId: string; ite
                   onClick={() => run(() => toggleChecklistItemAction(item.id, !item.done))}
                   aria-label={item.done ? `Mark "${item.title}" not done` : `Mark "${item.title}" done`}
                   aria-pressed={item.done}
-                  className={`relative mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border-[1.5px] transition-colors after:absolute after:-inset-3 after:content-[''] ${
+                  className={`relative mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border-[1.5px] transition-colors after:absolute after:-inset-[13.5px] after:content-[''] ${
                     item.done ? "border-accent bg-accent text-on-accent" : "border-control bg-surface hover:border-accent"
                   }`}
                 >
