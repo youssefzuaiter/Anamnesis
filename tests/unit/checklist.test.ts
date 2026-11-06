@@ -44,6 +44,18 @@ test("markup is text: it is kept as it was typed, for the page to show as text",
   assert.equal(cleanItemTitle("<b>bold</b> & <img src=x onerror=alert(1)>"), "<b>bold</b> & <img src=x onerror=alert(1)>");
 });
 
+test("a title with nothing to see in it is empty, but invisible characters inside real text are kept", () => {
+  // Zero-width space, word joiner, joiner, soft hyphen, variation selector, a lone combining accent.
+  for (const invisible of ["\u200b", "\u200b\u200b\u200b", "\u2060", "\u200d", "\u00ad", "\ufe0f", "\u0301", " \u200b \u2060 "]) {
+    assert.equal(cleanItemTitle(invisible), "", JSON.stringify(invisible));
+  }
+  // What a person can see counts: a letter, a number, punctuation or a symbol (an emoji is one).
+  for (const visible of ["a", "7", "?", "-", "\u2026", "\u65e5", "\u{1F600}", "\u0645"]) assert.equal(cleanItemTitle(visible), visible, JSON.stringify(visible));
+  // A joiner inside an emoji sequence, or a zero-width space inside a word, is part of the text.
+  assert.equal(cleanItemTitle("\u{1F468}\u200d\u{1F469}"), "\u{1F468}\u200d\u{1F469}");
+  assert.equal(cleanItemTitle("a\u200bb"), "a\u200bb");
+});
+
 test("a long title is cut at 200 characters, and never in the middle of an emoji", () => {
   assert.equal(cleanItemTitle("x".repeat(300)).length, 200);
   const cut = cleanItemTitle("😀".repeat(150)); // two UTF-16 units each

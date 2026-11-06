@@ -17,6 +17,17 @@ const status = (page: Page) => checklist(page).getByRole("status");
 const addField = (page: Page) => checklist(page).getByLabel("Add an item");
 const addButton = (page: Page) => checklist(page).getByRole("button", { name: "Add item" });
 
+/** Runs one statement against the database the app uses (for what the page cannot be asked to do). */
+async function sql(statement: string, params: unknown[] = []) {
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    await client.query(statement, params);
+  } finally {
+    await client.end();
+  }
+}
+
 /** Makes a task through the form on /tasks, opens it, and returns its address. */
 async function makeTask(page: Page, title: string): Promise<string> {
   await page.goto("/tasks");
@@ -83,8 +94,10 @@ test("ticking items counts them, shows the badge on /tasks, and survives a reloa
   await tick(page, "Bravo step").click();
   await expect(status(page)).toHaveText("1 of 3 done");
   await expect(untick(page, "Bravo step")).toBeVisible();
-  await expect(untick(page, "Bravo step")).toHaveAttribute("aria-pressed", "true");
-  await expect(tick(page, "Alpha step")).toHaveAttribute("aria-pressed", "false");
+  // The name says which way it is: a button named "...not done" is a ticked item. No pressed state is added
+  // on top of a name that already changes, which a screen reader would read twice.
+  await expect(tick(page, "Alpha step")).toBeVisible();
+  await expect(untick(page, "Bravo step")).not.toHaveAttribute("aria-pressed", /.*/);
   // Done is shown in the text as well as by the box: struck through, and not for the others.
   await expect(checklist(page).getByText("Bravo step", { exact: true })).toHaveCSS("text-decoration-line", "line-through");
   await expect(checklist(page).getByText("Alpha step", { exact: true })).toHaveCSS("text-decoration-line", "none");
@@ -256,6 +269,93 @@ test("text typed while an add is still being saved is kept, not wiped when it la
   await expect(addField(page)).toHaveValue("");
 });
 
+test("by keyboard, focus stays on the control that was used, or moves to a neighbour", async ({ page }) => {
+  await makeTask(page, `Checklist keys ${Date.now()}`);
+  for (const item of ["Alpha", "Bravo", "Charlie"]) await addByEnter(page, item);
+  const button = (name: string) => checklist(page).getByRole("button", { name });
+
+  await button('Move "Alpha" down').focus();
+  await page.keyboard.press("Enter");
+  await expect(items(page)).toContainText(["Bravo", "Alpha", "Charlie"]);
+  await expect(button('Move "Alpha" down')).toBeFocused();
+
+  await button('Mark "Bravo" done').focus();
+  await page.keyboard.press("Space");
+  await expect(status(page)).toHaveText("1 of 3 done");
+  await expect(button('Mark "Bravo" not done')).toBeFocused();
+
+  // After a removal focus goes to the next row, or the previous one when it was the last, or the field.
+  await button('Remove "Alpha"').focus();
+  await page.keyboard.press("Enter");
+  await expect(items(page)).toHaveCount(2);
+  await expect(button('Edit "Charlie"')).toBeFocused();
+  await button('Remove "Charlie"').focus();
+  await page.keyboard.press("Enter");
+  await expect(items(page)).toHaveCount(1);
+  await expect(button('Edit "Bravo"')).toBeFocused();
+  await button('Remove "Bravo"').focus();
+  await page.keyboard.press("Enter");
+  await expect(items(page)).toHaveCount(0);
+  await expect(addField(page)).toBeFocused();
+});
+
+test("by keyboard, closing the editor puts focus back on that item's Edit button", async ({ page }) => {
+  await makeTask(page, `Checklist edit focus ${Date.now()}`);
+  await addByEnter(page, "Original");
+  const field = checklist(page).getByLabel("Edit item");
+  const edit = (name: string) => checklist(page).getByRole("button", { name: `Edit "${name}"` });
+
+  await edit("Original").focus();
+  await page.keyboard.press("Enter");
+  await expect(field).toBeFocused();
+  await field.fill("Changed");
+  await page.keyboard.press("Enter");
+  await expect(checklist(page)).toContainText("Changed");
+  await expect(edit("Changed")).toBeFocused();
+
+  await edit("Changed").focus();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
+  await expect(field).toHaveCount(0);
+  await expect(edit("Changed")).toBeFocused();
+
+  await edit("Changed").focus();
+  await page.keyboard.press("Enter");
+  await checklist(page).getByRole("button", { name: "Cancel" }).click();
+  await expect(edit("Changed")).toBeFocused();
+});
+
+test("an action on a step that is gone says so and brings the list up to date", async ({ page }) => {
+  const url = await makeTask(page, `Checklist stale ${Date.now()}`);
+  for (const item of ["Stays", "Goes"]) await addByEnter(page, item);
+  // Removed behind this page's back, the way a second tab would.
+  await sql(`DELETE FROM "TaskChecklistItem" WHERE "taskId" = $1 AND "title" = 'Goes'`, [url.split("/").pop()]);
+
+  await tick(page, "Goes").click();
+  await expect(checklist(page).getByRole("alert")).toContainText("no longer exists");
+  await expect(items(page)).toHaveCount(1);
+  await expect(checklist(page)).not.toContainText("Goes");
+});
+
+test("until the refreshed list arrives the buttons do nothing, instead of acting on a row that is gone", async ({ page }) => {
+  await makeTask(page, `Checklist refresh ${Date.now()}`);
+  for (const item of ["Keep this", "Drop this"]) await addByEnter(page, item);
+  // Slow down only the page refresh (the request Next makes after a change), not the change itself.
+  await page.route("**/tasks/*", async (route) => {
+    if (route.request().method() === "GET") await new Promise((resolve) => setTimeout(resolve, 1200));
+    await route.continue();
+  });
+
+  const saved = page.waitForResponse((response) => response.request().method() === "POST");
+  await checklist(page).getByRole("button", { name: 'Remove "Drop this"' }).click();
+  await saved;
+  // The row is still drawn for a moment. A click on it must not reach the server.
+  await checklist(page).getByRole("button", { name: 'Move "Drop this" up' }).click({ force: true });
+  await checklist(page).getByRole("button", { name: 'Mark "Drop this" done' }).click({ force: true });
+  await expect(items(page)).toHaveCount(1);
+  await expect(checklist(page).getByRole("alert")).toHaveCount(0);
+});
+
 test("another task's page has its own list, and a full list says so and stops", async ({ page }) => {
   const stamp = Date.now();
   const first = await makeTask(page, `Checklist one ${stamp}`);
@@ -267,18 +367,12 @@ test("another task's page has its own list, and a full list says so and stops", 
   // Fill this task's list to the limit directly in the database: fifty adds through the page would test
   // the speed of the browser, not the rule.
   const id = page.url().split("/").pop()!;
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
-  await client.connect();
-  try {
-    await client.query(
-      `INSERT INTO "TaskChecklistItem" ("id", "userId", "taskId", "title", "position", "updatedAt")
-       SELECT gen_random_uuid()::text, t."userId", t."id", 'Seeded item ' || g, g, now()
-       FROM "Task" t, generate_series(0, 49) AS g WHERE t."id" = $1`,
-      [id],
-    );
-  } finally {
-    await client.end();
-  }
+  await sql(
+    `INSERT INTO "TaskChecklistItem" ("id", "userId", "taskId", "title", "position", "updatedAt")
+     SELECT gen_random_uuid()::text, t."userId", t."id", 'Seeded item ' || g, g, now()
+     FROM "Task" t, generate_series(0, 49) AS g WHERE t."id" = $1`,
+    [id],
+  );
 
   await page.goto(page.url());
   await expect(status(page)).toHaveText("0 of 50 done");
@@ -318,7 +412,7 @@ for (const scheme of ["light", "dark"] as const) {
 
     await page.goto(url);
     await tall(addField(page), "Add an item field");
-    await tall(addButton(page).or(checklist(page).getByRole("button", { name: "Add item" })), "Add item");
+    await tall(addButton(page), "Add item");
     for (const button of await checklist(page).getByRole("button", { name: /^(Edit|Move|Remove) / }).all()) {
       await tall(button, (await button.getAttribute("aria-label")) ?? "button");
     }

@@ -24,7 +24,7 @@
 2. **A task's checklist progress is its own** ("2 of 5 done" on the task, a `2/5` badge on `/tasks`) and **never feeds project or goal progress**. Ticking every item does not complete the task: the page says so and the existing Mark complete stays the one way to finish it. A test pins that ticking items leaves every rollup unchanged.
 3. **Order is explicit and reorderable by buttons** (Up and Down on each item), not by drag: it works on a phone, with a keyboard and with a screen reader. Positions are plain integers; a move renumbers, so gaps and duplicates left by deletes or races heal.
 4. **Items follow their task.** Soft-deleting a task hides them (every read requires a live task), restoring brings them back, purging deletes them (cascade). **A recurring series does not copy a checklist**: occurrences are made at creation, before anyone has written one.
-5. **At most 50 items per task, checked before an add.** Two adds at the same instant can pass it by one (nothing in the database forbids it); the cap is a limit on size, not a security boundary.
+5. **At most 50 items per task, held exactly.** An add counts and writes in one transaction under a lock on the task's row. (This plan first said two adds at the same instant could pass the limit by one; measured in the security review, N concurrent adds passed it by N-1, 109 rows from 49 plus 60, so the limit now holds under concurrency and a test pins it.)
 6. **The JSON export carries the items of live tasks** (`checklistItems`), so the file stays complete. Items are not in the vault, the search index or the assistant's context.
 
 ## Review Focus

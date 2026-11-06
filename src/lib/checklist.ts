@@ -9,7 +9,8 @@ export const MAX_ITEM_TITLE = 200;
  * A step's title as it is stored: every control character and line break (and U+2028, U+2029) becomes a
  * space, runs of whitespace collapse to one, the ends are trimmed, a lone surrogate is replaced, and it is
  * cut at 200 UTF-16 units (what the action's length check counts) without splitting a pair. Markup is kept as
- * typed: it is only ever shown as text. One linear pass that stops at the limit.
+ * typed: it is only ever shown as text. A title with no letter, number, punctuation or symbol in it (zero-width
+ * characters, a lone combining mark) is empty. One linear pass that stops at the limit.
  */
 export function cleanItemTitle(raw: string): string {
   const out: string[] = [];
@@ -32,7 +33,9 @@ export function cleanItemTitle(raw: string): string {
     size += width;
     gap = false;
   }
-  return out.join("");
+  const title = out.join("");
+  // Nothing a person can see (only zero-width or joining characters, a lone accent) is not a title.
+  return /[\p{L}\p{N}\p{P}\p{S}]/u.test(title) ? title : "";
 }
 
 export type ChecklistCount = { done: number; total: number };

@@ -14,6 +14,7 @@ import * as taskRepository from "@/repositories/task-repository";
 export type ChecklistItem = { id: string; title: string; done: boolean; position: number };
 
 const NOT_FOUND_ITEM = "That checklist item no longer exists.";
+const NOT_FOUND_TASK = "That task no longer exists.";
 
 /** A session always gives a string; a missing id must never reach a query (in Prisma `undefined` means no filter). */
 function assertAccount(userId: unknown): asserts userId is string {
@@ -21,7 +22,7 @@ function assertAccount(userId: unknown): asserts userId is string {
 }
 
 async function assertTaskOwned(userId: string, taskId: string): Promise<void> {
-  if (!(await taskRepository.getTask(userId, taskId))) throw new AppError("RESOURCE_NOT_FOUND", "That task no longer exists.");
+  if (!(await taskRepository.getTask(userId, taskId))) throw new AppError("RESOURCE_NOT_FOUND", NOT_FOUND_TASK);
 }
 
 const asItem = (row: { id: string; title: string; done: boolean; position: number }): ChecklistItem => ({
@@ -52,7 +53,7 @@ export async function addItem(userId: string, taskId: string, rawTitle: string):
   assertAccount(userId);
   const title = titleOrRefuse(rawTitle);
   const added = await checklistRepository.createIfRoom(userId, taskId, title, MAX_CHECKLIST_ITEMS);
-  if (added.kind === "missing") throw new AppError("RESOURCE_NOT_FOUND", "That task no longer exists.");
+  if (added.kind === "missing") throw new AppError("RESOURCE_NOT_FOUND", NOT_FOUND_TASK);
   if (added.kind === "full") throw new AppError("VALIDATION_ERROR", `A checklist holds at most ${MAX_CHECKLIST_ITEMS} items.`);
   return asItem(added.item);
 }

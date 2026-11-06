@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   addChecklistItemAction,
@@ -15,13 +15,24 @@ import { Icon } from "@/components/icons";
 
 type Item = { id: string; title: string; done: boolean };
 
+// "Unavailable" is aria-disabled, not `disabled`: a focused button that becomes disabled loses the keyboard's
+// place, and a button is unavailable for the length of every change. Clicks are ignored in the handlers.
 const smallButton =
-  "inline-flex min-h-11 items-center justify-center rounded-lg border border-border-subtle px-3 text-xs font-medium text-text transition-colors hover:bg-surface-subtle disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-8";
+  "inline-flex min-h-11 items-center justify-center rounded-lg border border-border-subtle px-3 text-xs font-medium text-text transition-colors hover:bg-surface-subtle aria-disabled:cursor-not-allowed aria-disabled:opacity-40 sm:min-h-8";
 
 /** A quiet button on an item's row, named for the item it acts on so a screen reader hears which one. */
-function RowButton({ label, name, disabled, onClick }: { label: string; name: string; disabled: boolean; onClick: () => void }) {
+function RowButton({ label, name, unavailable, focusKey, onClick }: { label: string; name: string; unavailable: boolean; focusKey: string; onClick: () => void }) {
   return (
-    <button type="button" disabled={disabled} onClick={onClick} aria-label={name} className={smallButton}>
+    <button
+      type="button"
+      aria-disabled={unavailable || undefined}
+      aria-label={name}
+      data-focus-key={focusKey}
+      onClick={() => {
+        if (!unavailable) onClick();
+      }}
+      className={smallButton}
+    >
       {label}
     </button>
   );
@@ -37,34 +48,56 @@ export function TaskChecklist({ taskId, items, taskDone }: { taskId: string; ite
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [working, setWorking] = useState(false);
+  const [refreshing, startRefresh] = useTransition();
   const guard = useRef(false);
   const addField = useRef<HTMLInputElement>(null);
+  const section = useRef<HTMLElement>(null);
+  const refocus = useRef<string | null>(null);
 
   const progress = checklistProgress(items);
   const full = items.length >= MAX_CHECKLIST_ITEMS;
+  // Unavailable from the click until the refreshed list has arrived, so nothing acts on a row that is gone.
+  const busy = working || refreshing;
+
+  // Where the keyboard should be once the list or the editor has changed: a row that moved or closed its editor
+  // is a different element, and focus would otherwise fall back to the top of the page.
+  useEffect(() => {
+    const key = refocus.current;
+    if (!key) return;
+    refocus.current = null;
+    section.current?.querySelector<HTMLElement>(`[data-focus-key="${key}"]`)?.focus();
+  }, [items, editing]);
 
   /** One change at a time: a second click while one is running does nothing, so a double click acts once. */
   async function run(work: () => Promise<ApiResponse<null>>, after?: () => void) {
-    if (guard.current) return;
+    if (guard.current || refreshing) return;
     guard.current = true;
-    setBusy(true);
+    setWorking(true);
     try {
       const result = await work();
-      if (!result.success) {
+      if (result.success) {
+        setError(null);
+        after?.();
+      } else {
         setError(result.error.message);
-        return;
       }
-      setError(null);
-      after?.();
-      router.refresh();
+      // After a success, and when the step is gone (removed in another tab): the list on screen is out of date.
+      // Not after a refusal of the input ("write what needs doing"): nothing changed, and a refresh would make
+      // the next Enter wait.
+      if (result.success || result.error.code === "RESOURCE_NOT_FOUND") startRefresh(() => router.refresh());
     } catch {
       setError("Could not reach the server. Try again.");
     } finally {
       guard.current = false;
-      setBusy(false);
+      setWorking(false);
     }
   }
+
+  const closeEditor = (id: string) => {
+    refocus.current = `edit:${id}`;
+    setEditing(null);
+  };
 
   const add = () =>
     run(
@@ -76,10 +109,27 @@ export function TaskChecklist({ taskId, items, taskDone }: { taskId: string; ite
       },
     );
 
-  const saveEdit = () => editing && run(() => renameChecklistItemAction(editing.id, editing.text), () => setEditing(null));
+  const remove = (id: string, index: number) =>
+    run(
+      () => removeChecklistItemAction(id),
+      () => {
+        const next = items[index + 1] ?? items[index - 1];
+        refocus.current = next ? `edit:${next.id}` : "add";
+      },
+    );
+
+  const move = (id: string, direction: "up" | "down") =>
+    run(
+      () => moveChecklistItemAction(id, direction),
+      () => {
+        refocus.current = `${direction}:${id}`;
+      },
+    );
+
+  const saveEdit = () => editing && run(() => renameChecklistItemAction(editing.id, editing.text), () => closeEditor(editing.id));
 
   return (
-    <section aria-labelledby="checklist-heading" className="rounded-xl border border-border-subtle bg-surface p-4">
+    <section ref={section} aria-labelledby="checklist-heading" className="rounded-xl border border-border-subtle bg-surface p-4">
       <div className="mb-2 flex items-baseline justify-between gap-3">
         <h2 id="checklist-heading" className="text-sm font-semibold text-text">
           Checklist
@@ -100,10 +150,9 @@ export function TaskChecklist({ taskId, items, taskDone }: { taskId: string; ite
               <div className="flex items-start gap-3">
                 <button
                   type="button"
-                  disabled={busy}
+                  aria-disabled={busy || undefined}
                   onClick={() => run(() => toggleChecklistItemAction(item.id, !item.done))}
                   aria-label={item.done ? `Mark "${item.title}" not done` : `Mark "${item.title}" done`}
-                  aria-pressed={item.done}
                   className={`relative mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border-[1.5px] transition-colors after:absolute after:-inset-[13.5px] after:content-[''] ${
                     item.done ? "border-accent bg-accent text-on-accent" : "border-control bg-surface hover:border-accent"
                   }`}
@@ -125,13 +174,15 @@ export function TaskChecklist({ taskId, items, taskDone }: { taskId: string; ite
                       maxLength={MAX_ITEM_TITLE}
                       aria-label="Edit item"
                       onChange={(event) => setEditing({ id: item.id, text: event.target.value })}
-                      onKeyDown={(event) => event.key === "Escape" && setEditing(null)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") closeEditor(item.id);
+                      }}
                       className="min-h-11 min-w-0 flex-1 rounded-lg border border-control bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
                     />
-                    <button type="submit" disabled={busy} className={smallButton}>
+                    <button type="submit" aria-disabled={busy || undefined} className={smallButton}>
                       Save
                     </button>
-                    <button type="button" onClick={() => setEditing(null)} className={smallButton}>
+                    <button type="button" onClick={() => closeEditor(item.id)} className={smallButton}>
                       Cancel
                     </button>
                   </form>
@@ -142,15 +193,16 @@ export function TaskChecklist({ taskId, items, taskDone }: { taskId: string; ite
 
               {editing?.id !== item.id && (
                 <div className="flex flex-wrap gap-1.5 pl-8">
-                  <RowButton label="Edit" name={`Edit "${item.title}"`} disabled={busy} onClick={() => setEditing({ id: item.id, text: item.title })} />
-                  <RowButton label="Up" name={`Move "${item.title}" up`} disabled={busy || index === 0} onClick={() => run(() => moveChecklistItemAction(item.id, "up"))} />
+                  <RowButton label="Edit" name={`Edit "${item.title}"`} unavailable={busy} focusKey={`edit:${item.id}`} onClick={() => setEditing({ id: item.id, text: item.title })} />
+                  <RowButton label="Up" name={`Move "${item.title}" up`} unavailable={busy || index === 0} focusKey={`up:${item.id}`} onClick={() => move(item.id, "up")} />
                   <RowButton
                     label="Down"
                     name={`Move "${item.title}" down`}
-                    disabled={busy || index === items.length - 1}
-                    onClick={() => run(() => moveChecklistItemAction(item.id, "down"))}
+                    unavailable={busy || index === items.length - 1}
+                    focusKey={`down:${item.id}`}
+                    onClick={() => move(item.id, "down")}
                   />
-                  <RowButton label="Remove" name={`Remove "${item.title}"`} disabled={busy} onClick={() => run(() => removeChecklistItemAction(item.id))} />
+                  <RowButton label="Remove" name={`Remove "${item.title}"`} unavailable={busy} focusKey={`remove:${item.id}`} onClick={() => remove(item.id, index)} />
                 </div>
               )}
             </li>
@@ -167,6 +219,7 @@ export function TaskChecklist({ taskId, items, taskDone }: { taskId: string; ite
       >
         <input
           ref={addField}
+          data-focus-key="add"
           value={draft}
           maxLength={MAX_ITEM_TITLE}
           disabled={full}
@@ -177,8 +230,9 @@ export function TaskChecklist({ taskId, items, taskDone }: { taskId: string; ite
         />
         <button
           type="submit"
-          disabled={busy || full || draft.trim() === ""}
-          className="inline-flex min-h-11 items-center justify-center rounded-lg bg-accent px-4 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={full || draft.trim() === ""}
+          aria-disabled={busy || undefined}
+          className="inline-flex min-h-11 items-center justify-center rounded-lg bg-accent px-4 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60 aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
         >
           Add item
         </button>
