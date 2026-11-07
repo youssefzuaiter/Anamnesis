@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import { moveEventAction } from "@/actions/events";
 import { moveTaskBlockAction, scheduleTaskAtAction } from "@/actions/tasks";
 import { Icon } from "@/components/icons";
+import type { ApiResponse } from "@/lib/api-response";
 import { dayBounds } from "@/lib/day";
 import { TASK_DRAG_MIME } from "@/lib/domain";
 import {
@@ -14,6 +15,7 @@ import {
   applyRange,
   dropRange,
   estimateFromDragTypes,
+  findItem,
   formatRange,
   layoutDay,
   minutesAtY,
@@ -53,7 +55,7 @@ function headLabel(ms: number): string {
 const kindWord = (item: GridItem) => (item.locked ? "imported, read-only" : item.kind === "event" ? "event" : "time block");
 const editHref = (item: GridItem) => (item.kind === "event" ? `/calendar/${item.id}` : `/tasks/${item.id}`);
 const rangeOf = (item: GridItem): Range => ({ start: item.start, end: item.end });
-const dayEnd = (day: GridDay) => dayBounds(new Date(day.date)).to.getTime();
+const holds = (day: GridDay, at: number) => at >= day.date && at < dayBounds(new Date(day.date)).to.getTime();
 
 type Move = { key: string; range: Range };
 type Preview = { date: number; range: Range };
@@ -91,6 +93,26 @@ function itemStyle(item: GridItem): string {
   if (item.locked) return "border border-border-subtle bg-surface-subtle text-text-muted";
   if (item.kind === "event") return "border border-accent bg-accent-soft text-accent-ink";
   return `border-[1.5px] border-dashed border-border-strong bg-surface ${item.done ? "text-text-faint" : "text-text-muted"}`;
+}
+
+/** Where a range sits in its day's column. */
+function boxOf(day: number, range: Range): { top: number; height: number } {
+  const start = minutesIn(day, range.start);
+  return { top: topPx(start), height: Math.max(MIN_HEIGHT_PX, Math.round(topPx(minutesIn(day, range.end) - start)) - GAP_PX) };
+}
+
+/** A dashed box over a range of a day: the draft of a drag in progress, or where a dropped task would land. */
+function Outline({ day, range, ghost, children }: { day: number; range: Range; ghost?: boolean; children: React.ReactNode }) {
+  return (
+    <div
+      data-drag-ghost={ghost ? "" : undefined}
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-x-0.5 z-[4] box-border overflow-hidden rounded-lg border-[1.5px] border-dashed border-accent bg-accent-soft px-1.5 py-1 text-xs leading-4 text-accent-ink"
+      style={boxOf(day, range)}
+    >
+      {children}
+    </div>
+  );
 }
 
 /** Something that spans days: a link to its own page, over the columns it touches. */
@@ -139,34 +161,33 @@ export function TimeGrid({
   const refocus = useRef<string | null>(null);
   const gesture = useRef<Gesture | null>(null);
 
-  const current = selected ? shown.flatMap((day) => day.items).find((item) => item.key === selected) : undefined;
-  const visibleDay = (range: Range) => shown.some((day) => range.start >= day.date && range.start < dayEnd(day));
+  const current = selected ? findItem(shown, selected) : undefined;
+  // Lanes change when an item moves, not on every step of a drag.
+  const laidOut = useMemo(() => shown.map((day) => layoutDay(day.items)), [shown]);
+  const visibleDay = (range: Range) => shown.some((day) => holds(day, range.start));
 
   // The grid opens at 07:00; the hours before it are above, one scroll away.
   useEffect(() => {
     if (scroller.current) scroller.current.scrollTop = topPx(OPEN_AT_MINUTES);
   }, []);
 
-  // A drag that ends anywhere (dropped, cancelled with Escape, released outside) takes its preview with it.
+  // A drag that ends anywhere (dropped, cancelled with Escape, released outside) takes its preview with it, and
+  // Escape takes a pointer drag back: nothing is sent, and the block was never moved.
   useEffect(() => {
-    const clear = () => setPreview(null);
-    window.addEventListener("dragend", clear);
-    window.addEventListener("drop", clear);
-    return () => {
-      window.removeEventListener("dragend", clear);
-      window.removeEventListener("drop", clear);
-    };
-  }, []);
-
-  // Escape takes a drag back: nothing is sent, and the block was never moved.
-  useEffect(() => {
+    const clearPreview = () => setPreview(null);
     function onKey(event: KeyboardEvent) {
       if (event.key !== "Escape" || !gesture.current) return;
       gesture.current = null;
       setDraft(null);
     }
+    window.addEventListener("dragend", clearPreview);
+    window.addEventListener("drop", clearPreview);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("dragend", clearPreview);
+      window.removeEventListener("drop", clearPreview);
+      window.removeEventListener("keydown", onKey);
+    };
   }, []);
 
   // A block that changes day is a different element, so focus that was on it would fall back to the top of the
@@ -219,12 +240,8 @@ export function TimeGrid({
     const scrolled = (scroller.current?.scrollTop ?? 0) - g.scrollTop;
     const minutes = ((event.clientY - g.y + scrolled) * 60) / HOUR_PX;
     const origin = rangeOf(g.item);
-    let range: Range;
-    if (g.mode === "move") {
-      range = moveRange(origin, minutes, columnUnder(event.clientX, g.column) - g.column);
-    } else {
-      range = resizeRange(origin, g.mode, minutes);
-    }
+    const range =
+      g.mode === "move" ? moveRange(origin, minutes, columnUnder(event.clientX, g.column) - g.column) : resizeRange(origin, g.mode, minutes);
     g.range = range;
     setDraft((before) =>
       before && before.range.start === range.start && before.range.end === range.end ? before : { key: g.item.key, title: g.item.title, range },
@@ -245,21 +262,21 @@ export function TimeGrid({
     setDraft(null);
   }
 
-  function save(item: GridItem, next: Range) {
-    if (busy.current || pending || item.locked) return;
+  /**
+   * One change at a time: `move` (if any) shows at once, `work` makes it real, and a refusal is said out loud. If the
+   * item is gone (removed in another tab) the grid on screen is what is out of date, so the page is refreshed.
+   */
+  function change(work: () => Promise<ApiResponse<null>>, options: { move?: Move; focus?: string } = {}) {
+    if (busy.current || pending) return;
     busy.current = true;
-    refocus.current = item.key;
+    if (options.focus) refocus.current = options.focus;
     setError(null);
     startTransition(async () => {
-      applyMove({ key: item.key, range: next });
+      if (options.move) applyMove(options.move);
       try {
-        const result =
-          item.kind === "event"
-            ? await moveEventAction(item.id, next.start, next.end)
-            : await moveTaskBlockAction(item.id, next.start, next.end);
+        const result = await work();
         if (!result.success) {
           setError(result.error.message);
-          // The item is gone (removed in another tab): the grid on screen is what is out of date.
           if (result.error.code === "RESOURCE_NOT_FOUND") router.refresh();
         }
       } catch {
@@ -270,21 +287,16 @@ export function TimeGrid({
     });
   }
 
+  function save(item: GridItem, next: Range) {
+    if (item.locked) return;
+    change(
+      () => (item.kind === "event" ? moveEventAction(item.id, next.start, next.end) : moveTaskBlockAction(item.id, next.start, next.end)),
+      { move: { key: item.key, range: next }, focus: item.key },
+    );
+  }
+
   function place(taskId: string, range: Range) {
-    if (busy.current || pending) return;
-    busy.current = true;
-    setError(null);
-    startTransition(async () => {
-      try {
-        const result = await scheduleTaskAtAction(taskId, range.start);
-        if (!result.success) setError(result.error.message);
-        else router.refresh();
-      } catch {
-        setError("Could not reach the server. Try again.");
-      } finally {
-        busy.current = false;
-      }
-    });
+    change(() => scheduleTaskAtAction(taskId, range.start));
   }
 
   function aim(event: React.DragEvent<HTMLDivElement>, day: GridDay) {
@@ -419,9 +431,7 @@ export function TimeGrid({
                     </>
                   )}
 
-                  {layoutDay(day.items).map((item) => {
-                    const start = minutesIn(day.date, item.start);
-                    const end = minutesIn(day.date, item.end);
+                  {laidOut[columnIndex].map((item) => {
                     const range = formatRange(rangeOf(item));
                     return (
                       <button
@@ -437,8 +447,7 @@ export function TimeGrid({
                         onPointerCancel={abandon}
                         onLostPointerCapture={abandon}
                         style={{
-                          top: topPx(start),
-                          height: Math.max(MIN_HEIGHT_PX, Math.round(((end - start) * HOUR_PX) / 60) - GAP_PX),
+                          ...boxOf(day.date, rangeOf(item)),
                           left: `${(item.lane * 100) / item.lanes}%`,
                           width: `calc(${100 / item.lanes}% - ${GAP_PX}px)`,
                         }}
@@ -468,32 +477,17 @@ export function TimeGrid({
                     );
                   })}
 
-                  {draft && draft.range.start >= day.date && draft.range.start < dayEnd(day) && (
-                    <div
-                      data-drag-ghost
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-x-0.5 z-[4] box-border overflow-hidden rounded-lg border-[1.5px] border-dashed border-accent bg-accent-soft px-1.5 py-1 text-xs leading-4 text-accent-ink"
-                      style={{
-                        top: topPx(minutesIn(day.date, draft.range.start)),
-                        height: Math.max(MIN_HEIGHT_PX, Math.round(((minutesIn(day.date, draft.range.end) - minutesIn(day.date, draft.range.start)) * HOUR_PX) / 60) - GAP_PX),
-                      }}
-                    >
+                  {draft && holds(day, draft.range.start) && (
+                    <Outline day={day.date} range={draft.range} ghost>
                       <span className="block font-semibold">{draft.title}</span>
                       <span className="block tabular-nums">{formatRange(draft.range)}</span>
-                    </div>
+                    </Outline>
                   )}
 
                   {preview && preview.date === day.date && (
-                    <div
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-x-0.5 z-[3] box-border overflow-hidden rounded-lg border-[1.5px] border-dashed border-accent bg-accent-soft px-1.5 py-1 text-xs font-medium leading-4 text-accent-ink"
-                      style={{
-                        top: topPx(minutesIn(day.date, preview.range.start)),
-                        height: Math.max(MIN_HEIGHT_PX, Math.round(((minutesIn(day.date, preview.range.end) - minutesIn(day.date, preview.range.start)) * HOUR_PX) / 60) - GAP_PX),
-                      }}
-                    >
-                      Drops at {formatRange(preview.range)}
-                    </div>
+                    <Outline day={day.date} range={preview.range}>
+                      <span className="font-medium">Drops at {formatRange(preview.range)}</span>
+                    </Outline>
                   )}
                 </div>
               ))}

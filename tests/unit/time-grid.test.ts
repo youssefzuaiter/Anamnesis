@@ -9,6 +9,7 @@ import {
   applyRange,
   checkRange,
   estimateFromDragTypes,
+  findItem,
   dropRange,
   formatRange,
   layoutDay,
@@ -365,6 +366,12 @@ test("applying a range to another day moves the item to that day's column", () =
   assert.equal(next[2].items[0].start, at(11, 14));
 });
 
+test("an item moved to exactly the next midnight belongs to the next day's column", () => {
+  const next = applyRange(week(), "a", { start: at(10, 0), end: at(10, 1) });
+  assert.deepEqual(next[0].items.map((i) => i.key), ["b"]);
+  assert.deepEqual(next[1].items.map((i) => i.key), ["a", "c"], "00:00 sorts before 11:00");
+});
+
 test("an item moved to a day that is not shown leaves the grid, and an unknown key changes nothing", () => {
   const gone = applyRange(week(), "c", range(20, 11, 0, 12, 0));
   assert.deepEqual(gone.flatMap((d) => d.items.map((i) => i.key)), ["a", "b"]);
@@ -379,4 +386,12 @@ test("the estimate travels in the type of the drag, because only types can be re
   assert.equal(estimateFromDragTypes(["application/x-nexus-task-minutes-4x5"]), null);
   assert.equal(estimateFromDragTypes(["application/x-nexus-task-minutes-0"]), null, "an estimate is at least a minute");
   assert.equal(estimateFromDragTypes(["application/x-nexus-task-minutes-99999999999999999999"]), null, "a number that is not safe is refused");
+});
+
+test("an item is found by its key in whichever column holds it", () => {
+  const days = week();
+  assert.equal(findItem(days, "c")?.start, at(10, 11));
+  assert.equal(findItem(days, "b")?.key, "b");
+  assert.equal(findItem(days, "nope"), undefined);
+  assert.equal(findItem([], "a"), undefined);
 });

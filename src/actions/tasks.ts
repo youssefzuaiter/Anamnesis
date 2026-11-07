@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { requireUserId } from "@/lib/session";
 import { type ApiResponse, ok, fail, toApiResponse } from "@/lib/api-response";
 import * as taskService from "@/services/task-service";
-import { TIME_WINDOW } from "@/lib/time-grid";
+import { NOT_A_TIME, epochMs } from "@/lib/epoch-ms";
 import { TASK_PRIORITIES, TASK_STATUSES, type TaskStatus } from "@/lib/domain";
 import {
   RECURRENCE_FREQUENCIES,
@@ -313,7 +313,6 @@ export async function scheduleTaskAction(
   return ok(null);
 }
 
-const epochMs = z.number().int().min(TIME_WINDOW.from).max(TIME_WINDOW.to);
 const blockSchema = z.object({ taskId: z.uuid(), startMs: epochMs, endMs: epochMs });
 const scheduleAtSchema = z.object({ taskId: z.uuid(), startMs: epochMs });
 
@@ -327,7 +326,7 @@ export async function moveTaskBlockAction(
   endMs: number,
 ): Promise<ApiResponse<null>> {
   const parsed = blockSchema.safeParse({ taskId, startMs, endMs });
-  if (!parsed.success) return fail("VALIDATION_ERROR", "That is not a time the calendar can hold.");
+  if (!parsed.success) return fail("VALIDATION_ERROR", NOT_A_TIME);
 
   try {
     const userId = await requireUserId();
@@ -349,7 +348,7 @@ export async function scheduleTaskAtAction(
   startMs: number,
 ): Promise<ApiResponse<null>> {
   const parsed = scheduleAtSchema.safeParse({ taskId, startMs });
-  if (!parsed.success) return fail("VALIDATION_ERROR", "That is not a time the calendar can hold.");
+  if (!parsed.success) return fail("VALIDATION_ERROR", NOT_A_TIME);
 
   try {
     const userId = await requireUserId();

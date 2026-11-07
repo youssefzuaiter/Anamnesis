@@ -536,7 +536,10 @@ test.describe("dragging", () => {
     await page.mouse.up();
 
     await expect.poll(async () => stored("task", id)).toEqual([at(friday, 14).getTime(), at(friday, 15).getTime()]);
-    await expect(column(page, label(friday)).getByRole("button", { name: `${title}, ${label(friday)} 14:00 to 15:00, time block` })).toBeVisible();
+    const moved = column(page, label(friday)).getByRole("button", { name: `${title}, ${label(friday)} 14:00 to 15:00, time block` });
+    await expect(moved).toBeVisible();
+    // It is a new element in a new column; the focus that was on it comes back to it.
+    await expect(moved).toBeFocused();
     await expect(column(page, label(d)).getByRole("button", { name: new RegExp(`^${title},`) })).toHaveCount(0);
   });
 
@@ -598,6 +601,21 @@ test.describe("dragging", () => {
     await expect(ghost(page)).toHaveCount(0);
     await page.mouse.up();
     await expect(item(page, title)).toHaveAttribute("aria-pressed", "true");
+    await page.waitForTimeout(600);
+    expect(seen).toEqual([]);
+    expect(await stored("task", id)).toEqual([at(d, 10).getTime(), at(d, 11).getTime()]);
+  });
+
+  test("dragging a block away and back to where it was sends nothing", async ({ page }) => {
+    const { d, title, id } = await block(page, 53, 2, [10, 0], [11, 0]);
+    const seen = posts(page);
+    const start = centre(await must(item(page, title)));
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x, start.y + 112, { steps: 6 });
+    await expect(ghost(page)).toContainText("12:00–13:00");
+    await page.mouse.move(start.x, start.y, { steps: 6 });
+    await page.mouse.up();
     await page.waitForTimeout(600);
     expect(seen).toEqual([]);
     expect(await stored("task", id)).toEqual([at(d, 10).getTime(), at(d, 11).getTime()]);

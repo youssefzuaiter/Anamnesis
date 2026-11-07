@@ -247,13 +247,22 @@ export function dropRange(day: number, minutes: number, estimateMinutes: number)
   return { start: wall(day, start), end: wall(day, start + length) };
 }
 
+/** The item with this key, in whichever column holds it. */
+export function findItem(days: readonly GridDay[], key: string): GridItem | undefined {
+  for (const day of days) {
+    const found = day.items.find((candidate) => candidate.key === key);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 /**
  * The columns with one item given a new range: it leaves the column it was in and goes to the one holding its new
  * start, sorted among that column's items. It is dropped if no shown column holds the new start (a move to a day
  * that is not on screen). Nothing is changed in place: the browser shows the move before the server has answered.
  */
 export function applyRange(days: readonly GridDay[], key: string, range: Range): GridDay[] {
-  const moved = days.flatMap((day) => day.items).find((candidate) => candidate.key === key);
+  const moved = findItem(days, key);
   if (!moved) return [...days];
   const updated: GridItem = { ...moved, start: range.start, end: range.end };
   const column = days.findIndex((day) => range.start >= day.date && range.start < nextMidnightOf(day.date));
