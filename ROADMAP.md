@@ -66,8 +66,9 @@ services. Nothing may need a paid API key.
   tasks, so no rollup changes (see "Task checklists" in `CLAUDE.md`).
 - [x] **15. Kanban view for projects** (M, demo). To do, In progress and Done by the existing
   task status, no migration; see "Project board" in `CLAUDE.md`.
-- [ ] **16. Hourly week and day grid** (L, demo). Drag to move, drag the edge to resize a time
-  block. The redesign left this out; dropping a task still lands at 09:00 today.
+- [x] **16. Hourly week and day grid** (L, demo). Drag to move, drag the edge to resize a time
+  block, a task dropped on the grid lands where it is let go (Month still lands at 09:00); no
+  migration; see "Hourly calendar grid" in `CLAUDE.md`.
 - [ ] **17. Repeating items: edit this and future** (M, migration?). Today a series is
   materialised rows with a shared `recurrenceId`; keep that model.
 - [ ] **18. Study time per course** (S to M, demo). From the existing timer and opt-in focus

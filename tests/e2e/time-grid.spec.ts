@@ -743,7 +743,9 @@ test.describe("dragging", () => {
     }
     await dropFromTray(`First tray ${stamp}`, 9 * 60);
     await dropFromTray(`Second tray ${stamp}`, 13 * 60);
-    await page.waitForTimeout(2500);
+    // Next runs server actions one after another, and each answer is held for 1.5 s: a second action that was not
+    // ignored would only be finished after about 3 s.
+    await page.waitForTimeout(4500);
     expect((await stored("task", first))[0]).toBe(at(d, 9).getTime());
     const [row] = await sql<{ scheduledStart: string | null }>(`SELECT "scheduledStart" FROM "Task" WHERE "id" = $1`, [second]);
     expect(row.scheduledStart, "the second drop was ignored").toBeNull();
