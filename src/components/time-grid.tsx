@@ -18,7 +18,9 @@ import {
   layoutDay,
   minutesAtY,
   minutesIn,
+  moveRange,
   nudge,
+  resizeRange,
   topPx,
   type GridDay,
   type GridItem,
@@ -55,6 +57,21 @@ const dayEnd = (day: GridDay) => dayBounds(new Date(day.date)).to.getTime();
 
 type Move = { key: string; range: Range };
 type Preview = { date: number; range: Range };
+/** What is drawn while a block is dragged: the range it would take if let go now. */
+type Draft = { key: string; title: string; range: Range };
+/** A mouse or pen press on a block: it becomes a drag only after it has moved this far, so a click stays a click. */
+type Gesture = {
+  item: GridItem;
+  mode: "move" | "start" | "end";
+  pointerId: number;
+  x: number;
+  y: number;
+  scrollTop: number;
+  column: number;
+  active: boolean;
+  range: Range | null;
+};
+const DRAG_THRESHOLD_PX = 4;
 
 // "Unavailable" is aria-disabled, not `disabled`: a focused button that becomes disabled loses the keyboard's place,
 // and every control is unavailable for the length of a save. Clicks are ignored in the handlers.
@@ -115,10 +132,12 @@ export function TimeGrid({
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLElement>(null);
   const busy = useRef(false);
   const refocus = useRef<string | null>(null);
+  const gesture = useRef<Gesture | null>(null);
 
   const current = selected ? shown.flatMap((day) => day.items).find((item) => item.key === selected) : undefined;
   const visibleDay = (range: Range) => shown.some((day) => range.start >= day.date && range.start < dayEnd(day));
@@ -139,6 +158,17 @@ export function TimeGrid({
     };
   }, []);
 
+  // Escape takes a drag back: nothing is sent, and the block was never moved.
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape" || !gesture.current) return;
+      gesture.current = null;
+      setDraft(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // A block that changes day is a different element, so focus that was on it would fall back to the top of the
   // page: put it back once the grid has changed. Focus on a bar button is left where it is.
   useEffect(() => {
@@ -148,6 +178,72 @@ export function TimeGrid({
     if (document.activeElement && document.activeElement !== document.body) return;
     root.current.querySelector<HTMLElement>(`[data-focus-key="${key}"]`)?.focus();
   }, [shown]);
+
+  // Dragging is for a mouse or a pen. A finger scrolls and taps; the bar above the grid moves a block for it.
+  function begin(event: React.PointerEvent<HTMLButtonElement>, item: GridItem, column: number) {
+    if (event.pointerType === "touch" || event.button !== 0 || !event.isPrimary || item.locked) return;
+    if (busy.current || pending) return;
+    const edge = (event.target as HTMLElement).closest<HTMLElement>("[data-edge]")?.dataset.edge;
+    gesture.current = {
+      item,
+      mode: edge === "start" ? "start" : edge === "end" ? "end" : "move",
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      scrollTop: scroller.current?.scrollTop ?? 0,
+      column,
+      active: false,
+      range: null,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  /** The column under the pointer; outside the grid it is the nearest one. */
+  function columnUnder(clientX: number, fallback: number): number {
+    const columnsOnScreen = root.current?.querySelectorAll<HTMLElement>("[data-day-col]");
+    if (!columnsOnScreen || columnsOnScreen.length === 0) return fallback;
+    for (let index = 0; index < columnsOnScreen.length; index += 1) {
+      if (clientX < columnsOnScreen[index].getBoundingClientRect().right) return index;
+    }
+    return columnsOnScreen.length - 1;
+  }
+
+  function follow(event: React.PointerEvent<HTMLButtonElement>) {
+    const g = gesture.current;
+    if (!g || event.pointerId !== g.pointerId) return;
+    if (!g.active) {
+      if (Math.hypot(event.clientX - g.x, event.clientY - g.y) < DRAG_THRESHOLD_PX) return;
+      g.active = true;
+      setSelected(g.item.key);
+    }
+    const scrolled = (scroller.current?.scrollTop ?? 0) - g.scrollTop;
+    const minutes = ((event.clientY - g.y + scrolled) * 60) / HOUR_PX;
+    const origin = rangeOf(g.item);
+    let range: Range;
+    if (g.mode === "move") {
+      range = moveRange(origin, minutes, columnUnder(event.clientX, g.column) - g.column);
+    } else {
+      range = resizeRange(origin, g.mode, minutes);
+    }
+    g.range = range;
+    setDraft((before) =>
+      before && before.range.start === range.start && before.range.end === range.end ? before : { key: g.item.key, title: g.item.title, range },
+    );
+  }
+
+  function finish(event: React.PointerEvent<HTMLButtonElement>) {
+    const g = gesture.current;
+    if (!g || event.pointerId !== g.pointerId) return;
+    gesture.current = null;
+    setDraft(null);
+    if (g.active && g.range && (g.range.start !== g.item.start || g.range.end !== g.item.end)) save(g.item, g.range);
+  }
+
+  function abandon(event: React.PointerEvent<HTMLButtonElement>) {
+    if (gesture.current?.pointerId !== event.pointerId) return;
+    gesture.current = null;
+    setDraft(null);
+  }
 
   function save(item: GridItem, next: Range) {
     if (busy.current || pending || item.locked) return;
@@ -208,7 +304,7 @@ export function TimeGrid({
   }
 
   return (
-    <div ref={root} className="flex min-w-0 flex-col gap-3">
+    <div ref={root} className={`flex min-w-0 flex-col gap-3 ${draft ? "cursor-grabbing" : ""}`}>
       {error && (
         <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
           {error}
@@ -285,9 +381,10 @@ export function TimeGrid({
               ))}
             </div>
             <div className="grid min-w-0 flex-1" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
-              {shown.map((day) => (
+              {shown.map((day, columnIndex) => (
                 <div
                   key={day.date}
+                  data-day-col
                   role="group"
                   aria-label={dayLabel(day.date)}
                   onDragOver={(event) => {
@@ -334,15 +431,20 @@ export function TimeGrid({
                         aria-pressed={selected === item.key}
                         aria-label={`${item.title}, ${dayLabel(item.start)} ${range.replace("–", " to ")}, ${kindWord(item)}${item.done ? ", done" : ""}`}
                         onClick={() => setSelected(item.key)}
+                        onPointerDown={(event) => begin(event, item, columnIndex)}
+                        onPointerMove={follow}
+                        onPointerUp={finish}
+                        onPointerCancel={abandon}
+                        onLostPointerCapture={abandon}
                         style={{
                           top: topPx(start),
                           height: Math.max(MIN_HEIGHT_PX, Math.round(((end - start) * HOUR_PX) / 60) - GAP_PX),
                           left: `${(item.lane * 100) / item.lanes}%`,
                           width: `calc(${100 / item.lanes}% - ${GAP_PX}px)`,
                         }}
-                        className={`absolute z-[1] box-border overflow-hidden rounded-lg px-1.5 py-1 text-left text-xs leading-4 outline-offset-1 transition-colors ${itemStyle(item)} ${
-                          selected === item.key ? "outline-2 outline-accent" : ""
-                        }`}
+                        className={`absolute z-[1] box-border select-none overflow-hidden rounded-lg px-1.5 py-1 text-left text-xs leading-4 outline-offset-1 transition-colors ${itemStyle(item)} ${
+                          item.locked ? "cursor-default" : "cursor-grab"
+                        } ${selected === item.key ? "outline-2 outline-accent" : ""} ${draft?.key === item.key ? "opacity-40" : ""}`}
                       >
                         <span className={`block font-semibold ${item.done ? "line-through" : ""}`}>
                           {item.locked && <Icon name="lock" className="mr-1 inline size-[11px] align-[-1px]" strokeWidth={2.2} />}
@@ -350,9 +452,36 @@ export function TimeGrid({
                           {item.title}
                         </span>
                         <span className="block tabular-nums">{range}</span>
+                        {!item.locked && (
+                          <>
+                            <span data-edge="start" aria-hidden="true" className="absolute inset-x-0 top-0 h-1.5 cursor-ns-resize" />
+                            <span data-edge="end" aria-hidden="true" className="absolute inset-x-0 bottom-0 h-1.5 cursor-ns-resize" />
+                          </>
+                        )}
+                        {selected === item.key && !item.locked && (
+                          <>
+                            <span aria-hidden="true" className="pointer-events-none absolute left-1/2 top-0.5 -ml-3 h-[3px] w-6 rounded-sm bg-accent" />
+                            <span aria-hidden="true" className="pointer-events-none absolute bottom-0.5 left-1/2 -ml-3 h-[3px] w-6 rounded-sm bg-accent" />
+                          </>
+                        )}
                       </button>
                     );
                   })}
+
+                  {draft && draft.range.start >= day.date && draft.range.start < dayEnd(day) && (
+                    <div
+                      data-drag-ghost
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-x-0.5 z-[4] box-border overflow-hidden rounded-lg border-[1.5px] border-dashed border-accent bg-accent-soft px-1.5 py-1 text-xs leading-4 text-accent-ink"
+                      style={{
+                        top: topPx(minutesIn(day.date, draft.range.start)),
+                        height: Math.max(MIN_HEIGHT_PX, Math.round(((minutesIn(day.date, draft.range.end) - minutesIn(day.date, draft.range.start)) * HOUR_PX) / 60) - GAP_PX),
+                      }}
+                    >
+                      <span className="block font-semibold">{draft.title}</span>
+                      <span className="block tabular-nums">{formatRange(draft.range)}</span>
+                    </div>
+                  )}
 
                   {preview && preview.date === day.date && (
                     <div

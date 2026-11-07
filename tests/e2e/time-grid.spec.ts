@@ -102,6 +102,14 @@ async function stored(kind: "task" | "event", id: string): Promise<[number, numb
   return [Number(row.a), Number(row.b)];
 }
 
+/** Waits until React has taken over the grid: a raw mouse press before that reaches markup with no handlers. */
+async function hydrated(page: Page) {
+  await page.waitForFunction(() => {
+    const column = document.querySelector("[data-day-col]");
+    return !!column && Object.keys(column).some((key) => key.startsWith("__reactProps$"));
+  });
+}
+
 /** Where on screen a time sits in a day's column, measured against the hour labels (a label is centred on its line). */
 async function lineOf(page: Page, hour: string): Promise<number> {
   const box = await grid(page).getByText(hour, { exact: true }).boundingBox();
@@ -392,6 +400,7 @@ test("a task dropped from the tray lands where it is let go, as long as its esti
   const title = `Dropped ${Date.now()}`;
   const id = await addUnscheduled(title, 45);
   await page.goto(weekUrl(23));
+  await hydrated(page);
 
   const tray = main(page).getByRole("listitem").filter({ hasText: title });
   await expect(tray).toBeVisible();
@@ -473,3 +482,273 @@ for (const scheme of ["light", "dark"] as const) {
     }
   });
 }
+
+// ---- Dragging: real mouse events, a tall window so the grid and the whole range of a drag stay on screen ----
+
+test.describe("dragging", () => {
+  test.use({ viewport: { width: 1280, height: 1100 } });
+
+  const ghost = (page: Page) => grid(page).locator("[data-drag-ghost]");
+  const centre = (box: { x: number; y: number; width: number; height: number }) => ({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+  const posts = (page: Page) => {
+    const seen: string[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "POST") seen.push(request.url());
+    });
+    return seen;
+  };
+
+  /** A block on day `i` of private week `n`, opened in Week view. */
+  async function block(page: Page, n: number, i: number, from: [number, number], to: [number, number], word = "Drag") {
+    const d = day(n, i);
+    const title = `${word} ${Date.now()}`;
+    const id = await addBlock(title, at(d, ...from), at(d, ...to));
+    await page.goto(weekUrl(n));
+    await hydrated(page);
+    return { d, title, id };
+  }
+
+  test("dragging a block down two hours moves it, the label and the saved time agree, and a reload shows it", async ({ page }) => {
+    const { d, title, id } = await block(page, 40, 2, [9, 0], [10, 0]);
+    const start = centre(await must(item(page, title)));
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x, start.y + 112, { steps: 8 });
+    await expect(ghost(page)).toHaveText(new RegExp(`${title}\\s*11:00–12:00`));
+    await page.mouse.up();
+
+    await expect(status(page)).toHaveText(`${title} · ${label(d)} · 11:00–12:00 · time block`);
+    await expect(ghost(page)).toHaveCount(0);
+    await expect.poll(async () => stored("task", id)).toEqual([at(d, 11).getTime(), at(d, 12).getTime()]);
+    await page.reload();
+    await expect(column(page, label(d)).getByRole("button", { name: `${title}, ${label(d)} 11:00 to 12:00, time block` })).toBeVisible();
+  });
+
+  test("dragging across to another column in the week moves it to that day, at the same time", async ({ page }) => {
+    const { d, title, id } = await block(page, 41, 2, [14, 0], [15, 0]);
+    const friday = addDays(d, 2);
+    const from = centre(await must(item(page, title)));
+    const target = centre(await must(column(page, label(friday))));
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(target.x, from.y, { steps: 10 });
+    await expect(column(page, label(friday)).locator("[data-drag-ghost]")).toContainText("14:00–15:00");
+    await page.mouse.up();
+
+    await expect.poll(async () => stored("task", id)).toEqual([at(friday, 14).getTime(), at(friday, 15).getTime()]);
+    await expect(column(page, label(friday)).getByRole("button", { name: `${title}, ${label(friday)} 14:00 to 15:00, time block` })).toBeVisible();
+    await expect(column(page, label(d)).getByRole("button", { name: new RegExp(`^${title},`) })).toHaveCount(0);
+  });
+
+  test("dragging the bottom edge makes a block longer, and the top edge moves its start", async ({ page }) => {
+    const { d, title, id } = await block(page, 42, 2, [10, 0], [11, 0]);
+    const box = await must(item(page, title));
+    const bottom = { x: box.x + box.width / 2, y: box.y + box.height - 2 };
+    await page.mouse.move(bottom.x, bottom.y);
+    await page.mouse.down();
+    await page.mouse.move(bottom.x, bottom.y + 56, { steps: 6 });
+    await expect(ghost(page)).toContainText("10:00–12:00");
+    await page.mouse.up();
+    await expect.poll(async () => stored("task", id)).toEqual([at(d, 10).getTime(), at(d, 12).getTime()]);
+    // The next drag is ignored while a save is in flight, so wait for the bar to say it is done.
+    await expect(barButton(page, `Move "${title}" 15 minutes later`)).not.toHaveAttribute("aria-disabled", "true");
+
+    const after = await must(item(page, title));
+    const top = { x: after.x + after.width / 2, y: after.y + 2 };
+    await page.mouse.move(top.x, top.y);
+    await page.mouse.down();
+    await page.mouse.move(top.x, top.y + 28, { steps: 6 });
+    await expect(ghost(page)).toContainText("10:30–12:00");
+    await page.mouse.up();
+    await expect.poll(async () => stored("task", id)).toEqual([at(d, 10, 30).getTime(), at(d, 12).getTime()]);
+    await expect(status(page)).toContainText("10:30–12:00");
+  });
+
+  test("a block cannot be dragged past midnight", async ({ page }) => {
+    const { d, title, id } = await block(page, 43, 2, [21, 0], [22, 0]);
+    await grid(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    const start = centre(await must(item(page, title)));
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x, start.y + 300, { steps: 8 });
+    await expect(ghost(page)).toContainText("23:00–00:00");
+    await page.mouse.up();
+    await expect.poll(async () => stored("task", id)).toEqual([at(d, 23).getTime(), at(addDays(d, 1), 0).getTime()]);
+  });
+
+  test("a block cannot be made shorter than fifteen minutes", async ({ page }) => {
+    const { d, title, id } = await block(page, 44, 2, [10, 0], [11, 0]);
+    const box = await must(item(page, title));
+    const bottom = { x: box.x + box.width / 2, y: box.y + box.height - 2 };
+    await page.mouse.move(bottom.x, bottom.y);
+    await page.mouse.down();
+    await page.mouse.move(bottom.x, bottom.y - 500, { steps: 8 });
+    await expect(ghost(page)).toContainText("10:00–10:15");
+    await page.mouse.up();
+    await expect.poll(async () => stored("task", id)).toEqual([at(d, 10).getTime(), at(d, 10, 15).getTime()]);
+  });
+
+  test("a press with no movement selects the block and sends nothing", async ({ page }) => {
+    const { d, title, id } = await block(page, 45, 2, [10, 0], [11, 0]);
+    const seen = posts(page);
+    const start = centre(await must(item(page, title)));
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x + 2, start.y + 2);
+    await expect(ghost(page)).toHaveCount(0);
+    await page.mouse.up();
+    await expect(item(page, title)).toHaveAttribute("aria-pressed", "true");
+    await page.waitForTimeout(600);
+    expect(seen).toEqual([]);
+    expect(await stored("task", id)).toEqual([at(d, 10).getTime(), at(d, 11).getTime()]);
+  });
+
+  test("Escape during a drag puts the block back and sends nothing", async ({ page }) => {
+    const { d, title, id } = await block(page, 46, 2, [10, 0], [11, 0]);
+    const seen = posts(page);
+    const before = await must(item(page, title));
+    const start = centre(before);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x, start.y + 100, { steps: 6 });
+    await expect(ghost(page)).toHaveCount(1);
+    await page.keyboard.press("Escape");
+    await expect(ghost(page)).toHaveCount(0);
+    await page.mouse.move(start.x, start.y + 150, { steps: 3 });
+    await page.mouse.up();
+    await page.waitForTimeout(600);
+    expect(seen).toEqual([]);
+    expect(await stored("task", id)).toEqual([at(d, 10).getTime(), at(d, 11).getTime()]);
+    expect((await must(item(page, title))).y).toBeCloseTo(before.y, 0);
+  });
+
+  test("a touch pointer does not start a drag", async ({ page }) => {
+    const { d, title, id } = await block(page, 47, 2, [10, 0], [11, 0]);
+    const seen = posts(page);
+    const target = item(page, title);
+    const start = centre(await must(target));
+    const touch = { pointerType: "touch", pointerId: 7, isPrimary: true, button: 0, bubbles: true };
+    await target.dispatchEvent("pointerdown", { ...touch, clientX: start.x, clientY: start.y });
+    await target.dispatchEvent("pointermove", { ...touch, clientX: start.x, clientY: start.y + 120 });
+    await expect(ghost(page)).toHaveCount(0);
+    await target.dispatchEvent("pointerup", { ...touch, clientX: start.x, clientY: start.y + 120 });
+    await page.waitForTimeout(600);
+    expect(seen).toEqual([]);
+    expect(await stored("task", id)).toEqual([at(d, 10).getTime(), at(d, 11).getTime()]);
+  });
+
+  test("an imported event cannot be dragged and has no edge handles", async ({ page }) => {
+    const d = day(48, 2);
+    const stamp = Date.now();
+    const lockedTitle = `Imported ${stamp}`;
+    const movableTitle = `Movable ${stamp}`;
+    const subscription = await addSubscription();
+    const lockedId = await addEvent(lockedTitle, at(d, 10), at(d, 11), subscription);
+    await addBlock(movableTitle, at(d, 13), at(d, 14));
+    await page.goto(weekUrl(48));
+    await hydrated(page);
+    const seen = posts(page);
+
+    await expect(item(page, lockedTitle).locator("[data-edge]")).toHaveCount(0);
+    await expect(item(page, movableTitle).locator("[data-edge]")).toHaveCount(2);
+
+    const start = centre(await must(item(page, lockedTitle)));
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x, start.y + 120, { steps: 6 });
+    await expect(ghost(page)).toHaveCount(0);
+    await page.mouse.up();
+    await page.waitForTimeout(600);
+    expect(seen).toEqual([]);
+    expect(await stored("event", lockedId)).toEqual([at(d, 10).getTime(), at(d, 11).getTime()]);
+  });
+
+  test("a drag the server cannot take puts the block back and says so", async ({ page }) => {
+    const { d, title, id } = await block(page, 49, 2, [10, 0], [11, 0]);
+    await page.route("**/calendar**", async (route) => {
+      if (route.request().method() === "POST") {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        await route.abort();
+        return;
+      }
+      await route.continue();
+    });
+    const start = centre(await must(item(page, title)));
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x, start.y + 56, { steps: 6 });
+    await page.mouse.up();
+    await expect(status(page)).toContainText("11:00–12:00");
+    await expect(alertIn(page)).toContainText("Could not reach the server");
+    await expect(item(page, title)).toHaveAccessibleName(`${title}, ${label(d)} 10:00 to 11:00, time block`);
+    expect(await stored("task", id)).toEqual([at(d, 10).getTime(), at(d, 11).getTime()]);
+  });
+
+  test("the refreshed grid does not flash the block back into the column it left", async ({ page }) => {
+    const { d, title } = await block(page, 50, 2, [14, 0], [15, 0]);
+    const friday = addDays(d, 2);
+    await page.route("**/calendar**", async (route) => {
+      if (route.request().method() === "POST") await new Promise((resolve) => setTimeout(resolve, 700));
+      await route.continue();
+    });
+    await page.evaluate(
+      ({ name, text }) => {
+        const origin = document.querySelector(`[role="group"][aria-label="${name}"]`)!;
+        const w = window as unknown as { __back: number };
+        w.__back = 0;
+        new MutationObserver((records) => {
+          for (const record of records) for (const node of record.addedNodes) if (node instanceof HTMLButtonElement && node.textContent?.includes(text)) w.__back += 1;
+        }).observe(origin, { childList: true, subtree: true });
+      },
+      { name: label(d), text: title },
+    );
+
+    const from = centre(await must(item(page, title)));
+    const target = centre(await must(column(page, label(friday))));
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(target.x, from.y, { steps: 8 });
+    await page.mouse.up();
+    await expect(column(page, label(friday)).getByRole("button", { name: new RegExp(`^${title},`) })).toBeVisible();
+    await page.waitForTimeout(1500);
+    expect(await page.evaluate(() => (window as unknown as { __back: number }).__back), "the block was drawn in its old column again").toBe(0);
+    await expect(column(page, label(friday)).getByRole("button", { name: new RegExp(`^${title},`) })).toBeVisible();
+  });
+
+  test("while a save is in flight a second drag is ignored", async ({ page }) => {
+    const { d, title, id } = await block(page, 51, 2, [10, 0], [11, 0]);
+    await page.route("**/calendar**", async (route) => {
+      if (route.request().method() === "POST") await new Promise((resolve) => setTimeout(resolve, 1200));
+      await route.continue();
+    });
+    const start = centre(await must(item(page, title)));
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x, start.y + 56, { steps: 6 });
+    await page.mouse.up();
+    await expect(status(page)).toContainText("11:00–12:00");
+
+    // Still saving: press the block where it now is and try to take it further.
+    const now = centre(await must(item(page, title)));
+    await page.mouse.move(now.x, now.y);
+    await page.mouse.down();
+    await page.mouse.move(now.x, now.y + 112, { steps: 6 });
+    await expect(ghost(page)).toHaveCount(0);
+    await page.mouse.up();
+    await page.waitForTimeout(2000);
+    expect(await stored("task", id), "one move, not two").toEqual([at(d, 11).getTime(), at(d, 12).getTime()]);
+  });
+
+  test("a drag that ends outside the grid lands in the nearest column", async ({ page }) => {
+    const { d, title, id } = await block(page, 52, 2, [10, 0], [11, 0]);
+    const sunday = addDays(d, 4);
+    const from = centre(await must(item(page, title)));
+    const last = await must(column(page, label(sunday)));
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(last.x + last.width + 150, from.y, { steps: 10 });
+    await expect(column(page, label(sunday)).locator("[data-drag-ghost]")).toContainText("10:00–11:00");
+    await page.mouse.up();
+    await expect.poll(async () => stored("task", id)).toEqual([at(sunday, 10).getTime(), at(sunday, 11).getTime()]);
+  });
+});
