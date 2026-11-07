@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { requireUserId } from "@/lib/session";
 import { type ApiResponse, ok, fail, toApiResponse } from "@/lib/api-response";
 import * as eventService from "@/services/event-service";
+import { NOT_A_TIME, epochMs } from "@/lib/epoch-ms";
 import {
   RECURRENCE_FREQUENCIES,
   MAX_RECURRENCE_COUNT,
@@ -144,6 +145,32 @@ export async function updateEventAction(
       endTime,
       projectId,
     });
+  } catch (error) {
+    return toApiResponse(error);
+  }
+
+  revalidateCalendar(eventId);
+  return ok(null);
+}
+
+const moveEventSchema = z.object({ eventId: z.uuid(), startMs: epochMs, endMs: epochMs });
+
+/**
+ * Called directly from the hourly grid (a drag, or a button of the selection bar), not through a form: moves or
+ * resizes an event, changing only its two times. The numbers came from the browser, so they are checked here
+ * before anything else, then again, with the same rule, by the service.
+ */
+export async function moveEventAction(
+  eventId: string,
+  startMs: number,
+  endMs: number,
+): Promise<ApiResponse<null>> {
+  const parsed = moveEventSchema.safeParse({ eventId, startMs, endMs });
+  if (!parsed.success) return fail("VALIDATION_ERROR", NOT_A_TIME);
+
+  try {
+    const userId = await requireUserId();
+    await eventService.rescheduleEvent(userId, parsed.data.eventId, new Date(parsed.data.startMs), new Date(parsed.data.endMs));
   } catch (error) {
     return toApiResponse(error);
   }

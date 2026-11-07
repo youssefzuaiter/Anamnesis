@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { requireUserId } from "@/lib/session";
 import { type ApiResponse, ok, fail, toApiResponse } from "@/lib/api-response";
 import * as taskService from "@/services/task-service";
+import { NOT_A_TIME, epochMs } from "@/lib/epoch-ms";
 import { TASK_PRIORITIES, TASK_STATUSES, type TaskStatus } from "@/lib/domain";
 import {
   RECURRENCE_FREQUENCIES,
@@ -304,6 +305,54 @@ export async function scheduleTaskAction(
     const [year, month, day] = dateStr.split("-").map(Number);
     const scheduledStart = new Date(year, month - 1, day, 9, 0, 0, 0);
     await taskService.scheduleTask(userId, taskId, scheduledStart);
+  } catch (error) {
+    return toApiResponse(error);
+  }
+
+  revalidateTaskViews(taskId);
+  return ok(null);
+}
+
+const blockSchema = z.object({ taskId: z.uuid(), startMs: epochMs, endMs: epochMs });
+const scheduleAtSchema = z.object({ taskId: z.uuid(), startMs: epochMs });
+
+/**
+ * Called directly from the hourly grid: moves or resizes a task's time block, changing only the block (never the
+ * due date). The numbers came from the browser, so they are checked here and again by the service.
+ */
+export async function moveTaskBlockAction(
+  taskId: string,
+  startMs: number,
+  endMs: number,
+): Promise<ApiResponse<null>> {
+  const parsed = blockSchema.safeParse({ taskId, startMs, endMs });
+  if (!parsed.success) return fail("VALIDATION_ERROR", NOT_A_TIME);
+
+  try {
+    const userId = await requireUserId();
+    await taskService.setTaskBlock(userId, parsed.data.taskId, new Date(parsed.data.startMs), new Date(parsed.data.endMs));
+  } catch (error) {
+    return toApiResponse(error);
+  }
+
+  revalidateTaskViews(taskId);
+  return ok(null);
+}
+
+/**
+ * Called directly from the hourly grid when a task from the tray is dropped on a time: the block starts where it
+ * was dropped and runs for the task's estimate (`scheduleTask`), so unlike the month view it does not land at 09:00.
+ */
+export async function scheduleTaskAtAction(
+  taskId: string,
+  startMs: number,
+): Promise<ApiResponse<null>> {
+  const parsed = scheduleAtSchema.safeParse({ taskId, startMs });
+  if (!parsed.success) return fail("VALIDATION_ERROR", NOT_A_TIME);
+
+  try {
+    const userId = await requireUserId();
+    await taskService.scheduleTask(userId, parsed.data.taskId, new Date(parsed.data.startMs));
   } catch (error) {
     return toApiResponse(error);
   }

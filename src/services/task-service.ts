@@ -8,6 +8,7 @@ import { assertAssessmentOwned, assertCourseOwned } from "@/services/course-serv
 import { assertGoalOwned, recalculateGoalProgress } from "@/services/goal-service";
 import { generateOccurrences, type RecurrenceFrequency } from "@/lib/recurrence";
 import { bucketOf, type TaskBucket } from "@/lib/task-bucket";
+import { checkRange } from "@/lib/time-grid";
 import { embeddableTextFor } from "@/services/embeddable-text";
 import type { TaskInput, TaskStatus, TaskPriority } from "@/repositories/task-repository";
 import type { TaskModel as Task } from "@/generated/prisma/models";
@@ -291,6 +292,21 @@ export async function scheduleTask(
   scheduledStart: Date,
 ): Promise<Task> {
   return patchTask(userId, taskId, { scheduledStart, scheduledEnd: null });
+}
+
+/**
+ * Moves or resizes a task's time block: only the block changes, never the due date ("Time blocks are separate
+ * from due dates"). The range came from the browser, so it is checked first.
+ */
+export async function setTaskBlock(
+  userId: string,
+  taskId: string,
+  scheduledStart: Date,
+  scheduledEnd: Date,
+): Promise<Task> {
+  const problem = checkRange(scheduledStart.getTime(), scheduledEnd.getTime());
+  if (problem) throw new AppError("VALIDATION_ERROR", problem);
+  return patchTask(userId, taskId, { scheduledStart, scheduledEnd });
 }
 
 /**

@@ -11,8 +11,10 @@ import { listUnscheduled } from "@/repositories/task-repository";
 import { EventForm } from "@/components/event-form";
 import { createEventAction } from "@/actions/events";
 import { listProjectOptions } from "@/repositories/project-repository";
-import { CalendarGrid, DayAgenda } from "@/components/calendar-dnd";
+import { CalendarGrid } from "@/components/calendar-dnd";
+import { TimeGrid } from "@/components/time-grid";
 import { UnscheduledTasks } from "@/components/unscheduled-tasks";
+import { toGrid } from "@/lib/time-grid";
 
 export const metadata = { title: "Calendar · Anamnesis" };
 
@@ -150,8 +152,22 @@ export default async function CalendarPage({
   const eventCount = new Set(counted.flatMap((d) => d.events.map((e) => e.id))).size;
   const blockCount = new Set(counted.flatMap((d) => d.tasks.map((t) => t.id))).size;
 
+  // Week and Day are an hourly grid, which wants more room than the month's cells, and the tray of unscheduled
+  // tasks sits beside it (below it under lg) so a task can be dropped on the hour it should happen.
+  const hourly = view === "month" ? null : toGrid(days);
+
+  const tray = (
+    <div>
+      <h2 className="mb-2 text-xs font-semibold text-text-faint">Unscheduled · {unscheduled.length}</h2>
+      <p className="mb-2 text-xs text-text-faint">
+        {hourly ? "Drag a task onto the grid to block time at that hour." : "Drag a task onto a day to block time for it."}
+      </p>
+      <UnscheduledTasks tasks={unscheduled} />
+    </div>
+  );
+
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className={`mx-auto ${hourly ? "max-w-6xl" : "max-w-4xl"}`}>
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-text">{title}</h1>
@@ -163,12 +179,12 @@ export default async function CalendarPage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <nav className="flex items-center gap-0.5 rounded-lg border border-border-subtle p-0.5">
+          <nav aria-label="Calendar view" className="grid w-full grid-cols-3 gap-0.5 rounded-lg border border-border-subtle p-0.5 sm:flex sm:w-auto sm:items-center">
             {VIEWS.map((v) => (
               <Link
                 key={v}
                 href={v === "week" ? weekHref(referenceDate) : v === "day" ? dayHref(referenceDate) : monthHref(referenceDate.getFullYear(), referenceDate.getMonth())}
-                className={`rounded-md px-2.5 py-1 text-sm capitalize transition-colors ${
+                className={`rounded-md px-2.5 py-1 text-sm capitalize transition-colors max-sm:flex max-sm:min-h-11 max-sm:items-center max-sm:justify-center ${
                   v === view
                     ? "bg-accent text-on-accent"
                     : "text-text-muted hover:bg-surface-subtle"
@@ -182,26 +198,26 @@ export default async function CalendarPage({
             <Link
               href={prevHref}
               aria-label={`Previous ${view}`}
-              className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-sm text-text transition-colors hover:bg-surface-subtle"
+              className="max-sm:flex max-sm:min-h-11 max-sm:min-w-11 max-sm:items-center max-sm:justify-center rounded-lg border border-border-subtle px-2.5 py-1.5 text-sm text-text transition-colors hover:bg-surface-subtle"
             >
               ←
             </Link>
             <Link
               href={todayHref}
-              className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-text transition-colors hover:bg-surface-subtle"
+              className="max-sm:flex max-sm:min-h-11 max-sm:items-center rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-text transition-colors hover:bg-surface-subtle"
             >
               Today
             </Link>
             <Link
               href={nextHref}
               aria-label={`Next ${view}`}
-              className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-sm text-text transition-colors hover:bg-surface-subtle"
+              className="max-sm:flex max-sm:min-h-11 max-sm:min-w-11 max-sm:items-center max-sm:justify-center rounded-lg border border-border-subtle px-2.5 py-1.5 text-sm text-text transition-colors hover:bg-surface-subtle"
             >
               →
             </Link>
             <Link
               href="/calendar/subscriptions"
-              className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-text transition-colors hover:bg-surface-subtle"
+              className="max-sm:flex max-sm:min-h-11 max-sm:items-center rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-text transition-colors hover:bg-surface-subtle"
             >
               Import
             </Link>
@@ -209,8 +225,32 @@ export default async function CalendarPage({
         </div>
       </header>
 
-      {view === "day" ? (
-        <DayAgenda day={days[0]} />
+      {view === "day" && (
+        <nav aria-label="Days of this week" className="mb-3 flex gap-1.5 overflow-x-auto pb-0.5 sm:hidden">
+          {Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(referenceDate), i)).map((d, i) => {
+            const current = dateParam(d) === dateParam(referenceDate);
+            return (
+              <Link
+                key={i}
+                href={dayHref(d)}
+                aria-current={current ? "page" : undefined}
+                className={`flex min-h-[52px] min-w-12 flex-none flex-col items-center justify-center rounded-[10px] border text-xs leading-4 transition-colors ${
+                  current ? "border-accent bg-accent text-on-accent" : "border-border-subtle text-text-muted hover:bg-surface-subtle"
+                }`}
+              >
+                <span>{WEEKDAYS[i]}</span>
+                <span className="text-sm font-semibold tabular-nums">{d.getDate()}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      )}
+
+      {hourly ? (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_14rem] lg:items-start">
+          <TimeGrid key={`${view}:${dateParam(referenceDate)}`} view={view === "week" ? "week" : "day"} days={hourly.days} strip={hourly.strip} nowMs={now.getTime()} />
+          {tray}
+        </div>
       ) : (
         <div className="overflow-x-auto">
           <div className="min-w-[560px]">
@@ -220,19 +260,17 @@ export default async function CalendarPage({
                   key={i}
                   className="pb-1.5 text-center text-xs font-medium text-text-faint"
                 >
-                  {view === "week"
-                    ? `${WEEKDAYS[i]} ${day.date.getDate()}`
-                    : WEEKDAYS[i]}
+                  {WEEKDAYS[i]}
                 </div>
               ))}
             </div>
 
-            <CalendarGrid days={days} tall={view === "week"} />
+            <CalendarGrid days={days} />
           </div>
         </div>
       )}
 
-      <section className="mt-6 grid gap-4 sm:grid-cols-3">
+      <section className={`mt-6 grid gap-4 ${hourly ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
         <div>
           <h2 className="mb-2 text-xs font-semibold text-text-faint">
             Add event
@@ -245,15 +283,7 @@ export default async function CalendarPage({
           />
         </div>
 
-        <div>
-          <h2 className="mb-2 text-xs font-semibold text-text-faint">
-            Unscheduled · {unscheduled.length}
-          </h2>
-          <p className="mb-2 text-xs text-text-faint">
-            Drag a task onto a day to block time for it.
-          </p>
-          <UnscheduledTasks tasks={unscheduled} />
-        </div>
+        {!hourly && tray}
 
         <div>
           <h2 className="mb-2 text-xs font-semibold text-text-faint">

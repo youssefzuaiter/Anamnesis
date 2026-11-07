@@ -28,6 +28,11 @@ export type TrashKind = (typeof TRASH_KINDS)[number];
 // targets so a typo in one place can't silently break the other.
 export const TASK_DRAG_MIME = "application/x-nexus-task-id";
 
+// The tray also puts the task's estimate (minutes) into the *type* of the drag, after this prefix. A drop target can
+// read the types of a drag while the pointer is still over it, but not the data, and the hourly grid needs the
+// length to draw where the block would land. Only the person's own browser ever reads it, and only to place a preview.
+export const TASK_MINUTES_MIME_PREFIX = "application/x-nexus-task-minutes-";
+
 // A card dragged between the columns of a project board. A different type from the one above on purpose: the
 // calendar's drop targets look for TASK_DRAG_MIME, so a board card must not light them up.
 export const BOARD_DRAG_MIME = "application/x-anamnesis-board-task-id";

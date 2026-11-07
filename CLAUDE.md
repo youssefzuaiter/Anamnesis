@@ -308,10 +308,9 @@ partial update in this codebase — so `scheduleTask()` in `task-service.ts`
 reads the existing row first and carries every field forward, changing only
 `scheduledStart`/`scheduledEnd`. Skipping that read and sending just the two
 schedule fields would silently null out the title, priority and everything
-else on drop. The drop always lands at 09:00 local on the target day with the
-usual `estimatedMinutes` duration — precise time-of-day dragging would need
-an hourly grid the calendar doesn't have, so the existing task detail page is
-still where you fine-tune the exact time.
+else on drop. In the Month view the drop still lands at 09:00 local on the target
+day with the usual `estimatedMinutes` duration; Week and Day are an hourly grid and a
+task dropped there lands where it is let go (see "Hourly calendar grid").
 
 `scheduleTaskAction` is called directly from the client drag handler
 (`components/calendar-dnd.tsx`), not through a `<form>` — so unlike every
@@ -368,9 +367,10 @@ different start date and day count, so the multi-day-event and time-block
 filtering logic exists exactly once. Switching view tabs preserves your place
 rather than jumping to today: the reference date carries over (month's is the
 1st of the month, week's is that week's Monday), so `?view=week` from September
-shows the week containing September 1st, not the current week. Day view skips
-the per-cell item cap (month: 5–6, week: same) and renders a flat chronological
-agenda instead — a day has room for the full list.
+shows the week containing September 1st, not the current week. Week and Day
+are drawn by `components/time-grid.tsx` from the same `CalendarDay[]` (through
+`toGrid` in `lib/time-grid.ts`), as an hourly grid with no per-cell item cap; only
+Month uses `CalendarGrid`'s cells and their cap of 5.
 
 ## Link suggestions and unlinked mentions
 
@@ -1304,9 +1304,8 @@ type-checks, lints and passes every test either way. `grid-cols-1` (tracks of
 month with `opacity-40`, which pulled their events below readable contrast; they now
 get a different ground instead.
 
-**Deliberately not done:** an hour-by-hour week grid (the proposal drew one; the week
-view is still a row of days, and dropping a task still lands it at 09:00); a manual
-theme switch beyond that choice; renaming "Nexus" in the assistant's system
+**Deliberately not done:** a manual theme switch beyond that choice (the hour-by-hour
+week grid the proposal drew was built later, see "Hourly calendar grid"); renaming "Nexus" in the assistant's system
 prompt, since the prompt's behaviour is measured by the evals and a visual change
 should not move it. In `next dev`, Next.js's own indicator badge sits over the phone
 tab bar's More button; production builds do not show it.
@@ -2623,6 +2622,118 @@ drag, so drag is verified only by Playwright's `dragTo`, which exercises the rea
 `relatedTarget` on `dragleave`, so the drop highlight may flicker), a real touch device, and a screen reader (only the accessible
 names and the status line were read). With Ollama running each move waits for the re-embed `setTaskStatus` has always done, and the
 board ignores further moves meanwhile (the controls are dimmed); not measured.
+
+## Hourly calendar grid
+
+The Week and Day views are an hourly grid (ROADMAP item 16, tagged *L, demo*). It was shown as a Design canvas (week in light
+and dark, a day with a block being moved, resized and dropped from the tray, and a phone in light and dark) and approved with
+"yes, build it as drawn" before any code; the answers it settled are that **both edges resize, a touch screen never drags (the
+selection bar is its way), and there is no undo toast**. The plan is `docs/superpowers/plans/2026-11-07-hourly-time-grid.md`. No
+migration and no new dependency. The council-style forks were decided inline by me, not by independent subagents.
+
+- **The grid.** 00:00 to 24:00, 56px an hour (`HOUR_PX`), opens scrolled to 07:00, snaps to 15 minutes, overlaps share a lane
+  within a cluster of overlaps (`layoutDay`). Three kinds of item are told apart by fill, edge and a word, not colour alone: an
+  event (solid, accent edge), a task block (dashed), an imported event (grey, a lock, "imported, read-only" in its name). A line
+  marks now in today's column and follows the clock (a one-minute timer; the "today" mark is worked out in the browser, not
+  taken from the server's render). **Only an item that starts and ends on one local day is a grid item** (ending at exactly
+  midnight counts); anything else is drawn once in an **All day** strip over the columns it touches and is edited on its own page.
+  The Day view also shows an event's location and says so when the day is empty.
+- **The rules are pure and shared.** `lib/time-grid.ts` has no Prisma and no React: `toGrid`, `layoutDay`, `moveRange`,
+  `resizeRange`, `nudge`, `dropRange`, `applyRange`, `findItem`, `estimateFromDragTypes` and `checkRange`. Every step is taken on
+  the local wall clock, so a day is a calendar day and a block at 09:00 is still at 09:00 the day after the clocks change (tested in
+  Europe/London across 29 March and 25 October). `checkRange` is the one rule for a time that came from the browser: whole
+  milliseconds, both inside 2000 to 2100, the end after the start, at most 24 hours. The browser clamps with it and the server
+  refuses with it; the three actions check the numbers with Zod (`lib/epoch-ms.ts`) before reading the session.
+- **A move writes the existing fields.** An event's `startTime` and `endTime` (re-indexed); a task block's
+  `scheduledStart` and `scheduledEnd` through `patchTask`, so the **due date is never touched** ("Time blocks are separate from due
+  dates") and every other field is carried. Only the dragged occurrence of a series changes.
+- **An imported event is read-only in the grid and on the server.** The feed sync updates a row by its uid, so a moved imported
+  event would be put back at the next sync. `rescheduleEvent` refuses it with "An imported event can't be moved here. Change it in
+  the calendar it came from.", and `setEventTimes` has `subscriptionId: null` in its `where`, so either layer holds alone.
+  Another account's id, a missing one and (for a task) a trashed one are the same `RESOURCE_NOT_FOUND`.
+- **Moving by pointer.** `Pointer Events`, for a mouse or a pen with the primary button. A press that moves under 4px is a click
+  (it selects). Past that a dashed ghost with the live time follows the pointer (days from the column under it in Week, the
+  nearest column when it is outside the grid) while **the real block stays mounted**, so pointer capture survives a change of
+  column; release saves. Pressing within 6px of the top or bottom takes that edge, read from the press position and not from the
+  element hit. Escape, `pointercancel`, a lost pointer capture and a move with no button held (the release was taken by a context
+  menu) end the drag and send nothing; a drag that ends where it began sends nothing; a locked item and a touch start nothing.
+  Scrolling the grid while a block is held counts as movement. There is no auto-scroll.
+- **The selection bar is the touch and keyboard path.** Earlier, Later, Shorter, Longer (15 minutes), Previous day, Next day and
+  Edit details, above the grid; a status line (`role="status"`) says what is selected and its time, or why a locked item cannot
+  move. Previous and Next day exist only in Week and are unavailable at its first and last column (the target would not be on
+  screen); the Day view has a strip of the week's days on a phone instead.
+- **One change at a time, optimistic.** As on the board: `useOptimistic` inside `startTransition`, a `busy` ref and `aria-disabled`
+  (never `disabled`, which would lose the keyboard's place); a refusal puts the block back and says why in a `role="alert"`; a
+  refusal because the item is gone refreshes the page; focus goes back to a block that changed column. The grid remounts for each
+  view and date (a `key` on the page), so an alert, a selection and the scroll position are not carried to another week.
+- **A task dropped from the tray lands where it is let go.** The start is the pointer's quarter hour, the length is the task's
+  estimate, shown as "Drops at 11:15–12:45" while hovering. **Only the types of a drag can be read while the pointer is still over a
+  target**, so the tray adds one with the estimate in its name (`TASK_MINUTES_MIME_PREFIX`); the server still works out the real
+  end (`scheduleTask`), and a stale or missing type can make the two differ (below). Below `lg` the tray is under the grid; Month
+  is unchanged and lands at 09:00.
+- **Removed:** `DayAgenda` and `CalendarGrid`'s `tall`. An event is no longer one click from its page in Week and Day: select it,
+  then "Edit details".
+
+**Measured, on this machine.**
+- *Security, by replaying the three real server actions by their `Next-Action` id:* 56 probes with a signed-in session (end equal
+  to start, before the start, 30 hours, the year 3000, before 2000, negative, a fraction, NaN, Infinity, 1e308, a string, null, an
+  object or an array as a time, too few or no arguments, an id that is not a uuid, an object or SQL as the id, a uuid that does not
+  exist, another account's task, event and tray task, a trashed task, an event id used as a task id and the reverse, my imported
+  event, and drops with a bad start) were each refused with `VALIDATION_ERROR` or `RESOURCE_NOT_FOUND`, and a snapshot of eight rows
+  (mine and the other account's) was unchanged after every one. With no session (a context proven signed out first: `GET /calendar`
+  gave 307 to `/login`) all three actions answered `AUTH_REQUIRED` and changed nothing.
+- *Scale (dev server, titles of 200 characters, heavy overlap):* 300 items in a week took the server 292 to 344 ms, 566 KiB, and the
+  page hydrated in 0.6 s; 3,000 items took 862 ms, 4.9 MiB and 1.5 s, and selecting and moving one block took 0.57 s. There is no cap
+  on the items in a week. A drag at that size was not measured (every step re-renders every item; only the lane layout is memoised).
+
+**What testing, the look and the reviews turned up.**
+- *The look:* on a phone the selection bar's status line was **224px tall** (a 14rem flex-basis, which in a column layout is a
+  height) and pushed the buttons down. No check had noticed; the phone test now asserts the line's height.
+- *Raw-mouse tests race hydration.* A press before React has taken the page reaches markup with no handlers; the first test after
+  a code change flaked. They wait for React's `__reactProps$` on the first column. **Playwright's drag sends `dragover` only when the
+  mouse moves** (a browser repeats it), so a preview needs a last small move. **Playwright will not click an `aria-disabled`
+  button**; the tests that prove a click does nothing use `force`. A test with two drags must wait for the first save to finish,
+  because the second is ignored while one is in flight (the spec).
+- *A `Date` holds whole milliseconds*, so "a fraction of a millisecond" cannot reach the service; the Zod `int()` in the action and
+  `checkRange` (unit-tested) refuse it, and the replay above sent fractions.
+- *Mutation checks* (each rule removed, a test had to fail): Task 1's rules, 8 for the server, 23 for the grid and the drag, 7 more
+  after the refactor and 10 after the review. They found three missing tests (a drag that ends where it began must send nothing,
+  focus must return to a block that changes column, midnight belongs to the next column) and one redundant line (the extra
+  `router.refresh()` after a tray drop; the action's own revalidation is enough, so it was removed), and one test that could not tell (the tray drop's busy guard survived until the test waited
+  longer than two held server answers: Next runs actions one after another). Not covered: the
+  `pointercancel` path with a real mouse (the test sends the event) and a touch screen.
+- *The review (inline, at the highest effort, 12 findings):* a drag whose release was lost kept following the mouse, the Day view had
+  lost the location and the empty-day text the old agenda showed, the now line never moved, the edge came from the element hit, and an
+  alert and the selection stayed when the week changed; each was fixed test-first. A first attempt at the empty-day message edited
+  the wrong variable and `tsc` could not notice; the test caught it.
+
+**Known limits and not done.**
+- **The grid groups by the server's local days and positions by the browser's clock.** In a container whose time zone differs from
+  the browser's (no `TZ` is set in the Dockerfile or compose file) an item near midnight can land in the wrong column or at the foot
+  of a day, and a drag writes times on the browser's clock. This is the app-wide "the server's local calendar days" assumption with
+  new browser-side arithmetic on top. Predicted from the code, **not reproduced in a browser**.
+- A tray drop clamps its start with the estimate in the drag's type (60 minutes when there is none) while the server ends the block
+  at the task's real estimate, so a stale tray, or a browser that drops a custom type with empty data, can make a block cross
+  midnight and appear in the All day strip. Safari and Firefox were not tried.
+- `moveTaskBlockAction` sets a block even on a task that has none (it is the caller's own task, so it is a semantics gap, not a
+  leak). A pen on a touch screen may scroll the page instead of dragging.
+- Not built: an undo, creating an event by clicking the grid, a touch drag, dragging a multi-day item, hand-set hours or zoom,
+  auto-scroll while dragging, a cap on the items in a week.
+- **Not verified:** a drag with a real mouse in the browser pane (its synthetic drag cannot hold a drag for a screenshot; Playwright
+  drives the real handlers), the 07:00 opening seen in a screenshot (it was read as `scrollTop` 392), Firefox and Safari, a real
+  touch device, and a screen reader (only the accessible names and the status line were read). **Not run locally:** the rest of the
+  browser suite beyond the grid, board, exam-prep, calendar-feed and workspace task, navigation and phone tests, the `evals` job
+  (nothing here touches a model) and the container rehearsal; CI runs them. One `pnpm build` was run before the review fixes and
+  none after (they touch a client component; `tsc` and `pnpm lint` ran).
+
+**Tests.** 30 unit tests (`time-grid`: geometry, `toGrid`, layout, move, resize, nudge, drop, `applyRange`, `findItem`, the drag
+types, `checkRange`, DST and a 5,000-item layout), 8 integration tests (the two writes, the imported refusal, ownership, hostile
+ranges, only the times change, a block's due date, a finished task) and 44 browser tests (`time-grid.spec.ts`: the form, one column,
+lanes, the strip, selecting, each of the six buttons and a reload, an event, the week's edge, a locked event, an offline move, a
+gone task, one change at a time, the keyboard, a tray drop and the month's 09:00, the month, the now line and the clock, location
+and an empty day, an alert not carried over, the phone in light and dark, and 18 with a real mouse: moving, crossing columns,
+both edges, midnight, the 15-minute floor, a press, Escape, a lost release, a cancelled pointer, scrolling while held, a touch, a
+locked event, a failed save, no flash, one at a time, outside the grid, and a second tray drop).
 
 ## Auth and route protection
 

@@ -65,6 +65,24 @@ export async function updateEvent(
   return getEvent(userId, eventId);
 }
 
+/**
+ * Sets only an event's two times. An imported event (one with a `subscriptionId`) is never written here: the feed
+ * it came from would put it back at the next sync, so the where refuses it as well as the service.
+ */
+export async function setEventTimes(
+  userId: string,
+  eventId: string,
+  start: Date,
+  end: Date,
+): Promise<Event | null> {
+  const { count } = await prisma.event.updateMany({
+    where: { id: eventId, userId, subscriptionId: null },
+    data: { startTime: start, endTime: end },
+  });
+  if (count === 0) return null;
+  return getEvent(userId, eventId);
+}
+
 // Event has no deletedAt in the schema, so this is a hard delete.
 export async function deleteEvent(
   userId: string,

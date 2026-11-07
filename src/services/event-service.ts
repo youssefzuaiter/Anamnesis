@@ -7,6 +7,7 @@ import * as taskRepository from "@/repositories/task-repository";
 import { assertProjectOwned } from "@/services/project-service";
 import { generateOccurrences, type RecurrenceFrequency } from "@/lib/recurrence";
 import { embeddableTextFor } from "@/services/embeddable-text";
+import { checkRange } from "@/lib/time-grid";
 import type { EventInput } from "@/repositories/event-repository";
 import type { EventModel as Event } from "@/generated/prisma/models";
 
@@ -72,6 +73,31 @@ export async function updateEvent(
   if (!event) {
     throw new AppError("RESOURCE_NOT_FOUND", "That event no longer exists.");
   }
+  await syncEventIndex(userId, event);
+  return event;
+}
+
+/**
+ * Moves or resizes an event: only its two times change. The range is checked first (it came from the browser), then
+ * whose the event is; an imported event is refused with the place to change it, since its feed would undo the move.
+ */
+export async function rescheduleEvent(
+  userId: string,
+  eventId: string,
+  startTime: Date,
+  endTime: Date,
+): Promise<Event> {
+  const problem = checkRange(startTime.getTime(), endTime.getTime());
+  if (problem) throw new AppError("VALIDATION_ERROR", problem);
+
+  const existing = await eventRepository.getEvent(userId, eventId);
+  if (!existing) throw new AppError("RESOURCE_NOT_FOUND", "That event no longer exists.");
+  if (existing.subscriptionId) {
+    throw new AppError("VALIDATION_ERROR", "An imported event can't be moved here. Change it in the calendar it came from.");
+  }
+
+  const event = await eventRepository.setEventTimes(userId, eventId, startTime, endTime);
+  if (!event) throw new AppError("RESOURCE_NOT_FOUND", "That event no longer exists.");
   await syncEventIndex(userId, event);
   return event;
 }
