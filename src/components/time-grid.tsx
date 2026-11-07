@@ -324,7 +324,7 @@ export function TimeGrid({
       )}
 
       <section aria-label="Selected block" className="flex flex-col gap-2.5 rounded-xl border border-border-subtle bg-surface px-3 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
-        <p role="status" className="min-w-0 flex-1 basis-56 text-[13px] leading-5 text-text-muted">
+        <p role="status" className="min-w-0 text-[13px] leading-5 text-text-muted sm:flex-1 sm:basis-56">
           {text}
         </p>
         <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-1.5">

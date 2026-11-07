@@ -461,6 +461,8 @@ for (const scheme of ["light", "dark"] as const) {
       expect(overflow, `${url} is wider than the screen by ${overflow}px`).toBeLessThanOrEqual(0);
       const gridBox = await must(grid(page));
       expect(gridBox.x + gridBox.width).toBeLessThanOrEqual(376);
+      // Found by looking at it: the status line had a 14rem flex-basis, which in the phone's column made it 224px tall.
+      expect((await must(status(page))).height, "the status line is only as tall as its text").toBeLessThan(90);
       const controls = bar(page).locator("button, a");
       expect(await controls.count()).toBeGreaterThanOrEqual(5);
       for (const control of await controls.all()) {
