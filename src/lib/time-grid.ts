@@ -246,8 +246,8 @@ export function dropRange(day: number, minutes: number, estimateMinutes: number)
   return { start: wall(day, start), end: wall(day, start + length) };
 }
 
-const WINDOW_FROM = Date.UTC(2000, 0, 1);
-const WINDOW_TO = Date.UTC(2100, 0, 1);
+/** The times a block may have: 2000 to 2100, as epoch milliseconds (the browser's numbers are checked against it). */
+export const TIME_WINDOW = { from: Date.UTC(2000, 0, 1), to: Date.UTC(2100, 0, 1) } as const;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
@@ -256,7 +256,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 export function checkRange(start: number, end: number): string | null {
   if (!Number.isInteger(start) || !Number.isInteger(end)) return "That is not a time.";
-  if (start < WINDOW_FROM || start > WINDOW_TO || end < WINDOW_FROM || end > WINDOW_TO) return "That time is out of range.";
+  if (start < TIME_WINDOW.from || start > TIME_WINDOW.to || end < TIME_WINDOW.from || end > TIME_WINDOW.to) return "That time is out of range.";
   if (end <= start) return "A block must end after it starts.";
   if (end - start > DAY_MS) return "A block can be at most a day long.";
   return null;
