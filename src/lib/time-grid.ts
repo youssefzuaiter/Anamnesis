@@ -7,6 +7,7 @@
 // hours, so a block at 09:00 is still at 09:00 the day after the clocks change.
 
 import { dayBounds } from "@/lib/day";
+import { TASK_MINUTES_MIME_PREFIX } from "@/lib/domain";
 
 export const SLOT_MINUTES = 15;
 export const MIN_BLOCK_MINUTES = 15;
@@ -244,6 +245,30 @@ export function dropRange(day: number, minutes: number, estimateMinutes: number)
   const length = clamp(Math.round(estimateMinutes), MIN_BLOCK_MINUTES, MINUTES_PER_DAY);
   const start = clamp(snapMinutes(minutes), 0, MINUTES_PER_DAY - length);
   return { start: wall(day, start), end: wall(day, start + length) };
+}
+
+/**
+ * The columns with one item given a new range: it leaves the column it was in and goes to the one holding its new
+ * start, sorted among that column's items. It is dropped if no shown column holds the new start (a move to a day
+ * that is not on screen). Nothing is changed in place: the browser shows the move before the server has answered.
+ */
+export function applyRange(days: readonly GridDay[], key: string, range: Range): GridDay[] {
+  const moved = days.flatMap((day) => day.items).find((candidate) => candidate.key === key);
+  if (!moved) return [...days];
+  const updated: GridItem = { ...moved, start: range.start, end: range.end };
+  const column = days.findIndex((day) => range.start >= day.date && range.start < nextMidnightOf(day.date));
+  return days.map((day, index) => {
+    const rest = day.items.filter((candidate) => candidate.key !== key);
+    if (index !== column) return rest.length === day.items.length ? day : { ...day, items: rest };
+    return { ...day, items: [...rest, updated].sort(byStartThenKey) };
+  });
+}
+
+/** The task's estimate in minutes, read from the types of a drag that came from the tray; null if there is none. */
+export function estimateFromDragTypes(types: readonly string[]): number | null {
+  const type = types.find((candidate) => candidate.startsWith(TASK_MINUTES_MIME_PREFIX));
+  const digits = type?.slice(TASK_MINUTES_MIME_PREFIX.length);
+  return digits !== undefined && /^[1-9]\d{0,3}$/.test(digits) ? Number(digits) : null;
 }
 
 /** The times a block may have: 2000 to 2100, as epoch milliseconds (the browser's numbers are checked against it). */

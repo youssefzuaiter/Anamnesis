@@ -6,7 +6,9 @@ import {
   MINUTES_PER_DAY,
   OPEN_AT_MINUTES,
   SLOT_MINUTES,
+  applyRange,
   checkRange,
+  estimateFromDragTypes,
   dropRange,
   formatRange,
   layoutDay,
@@ -20,6 +22,7 @@ import {
   toGrid,
   topPx,
   type CalendarDayLike,
+  type GridDay,
   type NudgeOp,
   type Range,
 } from "@/lib/time-grid";
@@ -324,4 +327,56 @@ test("a range is written the way the page shows it", () => {
   assert.equal(formatRange(range(9, 15, 30, 17, 0)), "15:30–17:00");
   assert.equal(formatRange(range(9, 9, 5, 9, 45)), "09:05–09:45");
   assert.equal(formatRange({ start: at(9, 22), end: at(10, 0) }), "22:00–00:00");
+});
+
+const item = (key: string, r: Range) => ({
+  key,
+  kind: "block" as const,
+  id: key,
+  title: key,
+  start: r.start,
+  end: r.end,
+  done: false,
+  recurring: false,
+  locked: false,
+  location: null,
+});
+const week = (): GridDay[] => [
+  { date: dayOf(9), isToday: false, items: [item("a", range(9, 9, 0, 10, 0)), item("b", range(9, 14, 0, 15, 0))] },
+  { date: dayOf(10), isToday: true, items: [item("c", range(10, 11, 0, 12, 0))] },
+  { date: dayOf(11), isToday: false, items: [] },
+];
+
+test("applying a range moves an item inside its column and keeps the column sorted", () => {
+  const days = week();
+  const before = JSON.stringify(days);
+  const next = applyRange(days, "a", range(9, 16, 0, 17, 30));
+  assert.deepEqual(next[0].items.map((i) => i.key), ["b", "a"], "a is now the later item");
+  assert.equal(next[0].items[1].start, at(9, 16));
+  assert.equal(next[0].items[1].end, at(9, 17, 30));
+  assert.equal(JSON.stringify(days), before, "the input is not changed");
+  assert.deepEqual(next[1], days[1], "another column is the same object's contents");
+});
+
+test("applying a range to another day moves the item to that day's column", () => {
+  const next = applyRange(week(), "b", range(11, 14, 0, 15, 0));
+  assert.deepEqual(next[0].items.map((i) => i.key), ["a"]);
+  assert.deepEqual(next[2].items.map((i) => i.key), ["b"]);
+  assert.equal(next[2].items[0].start, at(11, 14));
+});
+
+test("an item moved to a day that is not shown leaves the grid, and an unknown key changes nothing", () => {
+  const gone = applyRange(week(), "c", range(20, 11, 0, 12, 0));
+  assert.deepEqual(gone.flatMap((d) => d.items.map((i) => i.key)), ["a", "b"]);
+  assert.deepEqual(applyRange(week(), "nope", range(9, 9, 0, 10, 0)), week());
+});
+
+test("the estimate travels in the type of the drag, because only types can be read while the pointer is still over a target", () => {
+  assert.equal(estimateFromDragTypes(["application/x-nexus-task-id", "application/x-nexus-task-minutes-45"]), 45);
+  assert.equal(estimateFromDragTypes(["application/x-nexus-task-id"]), null);
+  assert.equal(estimateFromDragTypes([]), null);
+  assert.equal(estimateFromDragTypes(["application/x-nexus-task-minutes-"]), null);
+  assert.equal(estimateFromDragTypes(["application/x-nexus-task-minutes-4x5"]), null);
+  assert.equal(estimateFromDragTypes(["application/x-nexus-task-minutes-0"]), null, "an estimate is at least a minute");
+  assert.equal(estimateFromDragTypes(["application/x-nexus-task-minutes-99999999999999999999"]), null, "a number that is not safe is refused");
 });

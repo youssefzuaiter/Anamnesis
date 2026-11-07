@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { TASK_DRAG_MIME } from "@/lib/domain";
+import { TASK_DRAG_MIME, TASK_MINUTES_MIME_PREFIX } from "@/lib/domain";
 
 export type UnscheduledTask = {
   id: string;
   title: string;
   dueDate: Date | null;
   priority: string;
+  estimatedMinutes: number;
 };
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -37,9 +38,12 @@ export function UnscheduledTasks({ tasks }: { tasks: UnscheduledTask[] }) {
           draggable
           onDragStart={(e) => {
             e.dataTransfer.setData(TASK_DRAG_MIME, task.id);
+            // Only the types of a drag can be read while it is still over a target: the hourly grid reads the
+            // estimate here to draw where the block would land.
+            e.dataTransfer.setData(`${TASK_MINUTES_MIME_PREFIX}${task.estimatedMinutes}`, "");
             e.dataTransfer.effectAllowed = "move";
           }}
-          title="Drag onto a day to block time for it"
+          title="Drag onto the calendar to block time for it"
           className="flex cursor-grab items-center gap-2 rounded-lg border border-dashed border-border-strong bg-surface px-2.5 py-1.5 text-sm text-text transition-colors hover:border-accent active:cursor-grabbing"
         >
           <Link
