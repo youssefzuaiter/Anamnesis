@@ -56,11 +56,11 @@ async function me(): Promise<string> {
 }
 
 // Times go in as ISO strings: the columns are `timestamp` without a zone and hold UTC, as Prisma writes them.
-async function addEvent(title: string, start: Date, end: Date, subscriptionId: string | null = null): Promise<string> {
+async function addEvent(title: string, start: Date, end: Date, subscriptionId: string | null = null, location: string | null = null): Promise<string> {
   const rows = await sql<{ id: string }>(
-    `INSERT INTO "Event" ("id", "userId", "title", "startTime", "endTime", "subscriptionId", "externalUid", "updatedAt")
-     VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, now()) RETURNING "id"`,
-    [await me(), title, start.toISOString(), end.toISOString(), subscriptionId, subscriptionId ? `uid-${title}` : null],
+    `INSERT INTO "Event" ("id", "userId", "title", "startTime", "endTime", "subscriptionId", "externalUid", "location", "updatedAt")
+     VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, now()) RETURNING "id"`,
+    [await me(), title, start.toISOString(), end.toISOString(), subscriptionId, subscriptionId ? `uid-${title}` : null, location],
   );
   return rows[0].id;
 }
@@ -159,6 +159,52 @@ test("day view is one column", async ({ page }) => {
   await expect(column(page, label(d)).getByRole("button", { name: `${title}, ${label(d)} 11:00 to 12:00, event` })).toBeVisible();
   // Two days next to it are not drawn.
   await expect(column(page, label(addDays(d, 1)))).toHaveCount(0);
+});
+
+test("the day view shows an event's location and says so when the day is empty; the week does not draw the location", async ({ page }) => {
+  const d = day(60, 2);
+  const title = `Hall ${Date.now()}`;
+  await addEvent(title, at(d, 10), at(d, 12), null, "Hall C");
+  await page.goto(dayUrl(d));
+  await expect(item(page, title)).toContainText("Hall C");
+  await expect(main(page)).not.toContainText("Nothing scheduled for this day");
+  await page.goto(weekUrl(60));
+  await expect(item(page, title)).not.toContainText("Hall C");
+
+  await page.goto(dayUrl(day(61, 2)));
+  await expect(main(page)).toContainText("Nothing scheduled for this day. Drag an unscheduled task onto the grid to block time for it.");
+});
+
+test("an alert from a failed move is not carried into the next week", async ({ page }) => {
+  const d = day(62, 2);
+  const title = `Carry ${Date.now()}`;
+  await addBlock(title, at(d, 14), at(d, 15));
+  await page.goto(weekUrl(62));
+  await item(page, title).click();
+  await page.route("**/calendar**", async (route) => {
+    if (route.request().method() === "POST") await route.abort();
+    else await route.continue();
+  });
+  await barButton(page, `Move "${title}" 15 minutes later`).click();
+  await expect(alertIn(page)).toContainText("Could not reach the server");
+
+  await main(page).getByRole("link", { name: "Next week" }).click();
+  await page.waitForURL(new RegExp(`week=${iso(monday(63))}`));
+  await expect(alertIn(page)).toHaveCount(0);
+  await expect(status(page)).toHaveText("Select a block to move it.");
+});
+
+test("the now line follows the clock", async ({ page }) => {
+  const soon = new Date();
+  test.skip(soon.getHours() === 23 && soon.getMinutes() >= 45, "ten minutes from now is tomorrow");
+  await page.clock.install({ time: soon });
+  await page.goto("/calendar?view=week");
+  await hydrated(page);
+  const line = grid(page).locator("[data-now-line]");
+  const topOf = () => line.evaluate((el) => parseFloat((el as HTMLElement).style.top));
+  const before = await topOf();
+  await page.clock.fastForward("10:00");
+  await expect.poll(topOf).toBeCloseTo(before + (10 * 56) / 60, 0);
 });
 
 test("overlapping events sit side by side and a lone one has the whole column", async ({ page }) => {
@@ -621,6 +667,86 @@ test.describe("dragging", () => {
     await page.waitForTimeout(600);
     expect(seen).toEqual([]);
     expect(await stored("task", id)).toEqual([at(d, 10).getTime(), at(d, 11).getTime()]);
+  });
+
+  test("a drag whose release was lost ends as soon as the mouse moves with no button held", async ({ page }) => {
+    const { d, title, id } = await block(page, 54, 2, [10, 0], [11, 0]);
+    const seen = posts(page);
+    const target = item(page, title);
+    const start = centre(await must(target));
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x, start.y + 100, { steps: 6 });
+    await expect(ghost(page)).toHaveCount(1);
+    // A context menu took the release: the next move says no button is held.
+    await target.dispatchEvent("pointermove", { pointerType: "mouse", pointerId: 1, isPrimary: true, buttons: 0, button: -1, clientX: start.x, clientY: start.y + 140, bubbles: true });
+    await expect(ghost(page)).toHaveCount(0);
+    await page.mouse.up();
+    await page.waitForTimeout(600);
+    expect(seen).toEqual([]);
+    expect(await stored("task", id)).toEqual([at(d, 10).getTime(), at(d, 11).getTime()]);
+  });
+
+  test("a cancelled pointer takes the drag back and sends nothing", async ({ page }) => {
+    const { d, title, id } = await block(page, 56, 2, [10, 0], [11, 0]);
+    const seen = posts(page);
+    const target = item(page, title);
+    const start = centre(await must(target));
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x, start.y + 100, { steps: 6 });
+    await expect(ghost(page)).toHaveCount(1);
+    await target.dispatchEvent("pointercancel", { pointerType: "mouse", pointerId: 1, isPrimary: true, bubbles: true });
+    await expect(ghost(page)).toHaveCount(0);
+    await page.mouse.up();
+    await page.waitForTimeout(600);
+    expect(seen).toEqual([]);
+    expect(await stored("task", id)).toEqual([at(d, 10).getTime(), at(d, 11).getTime()]);
+  });
+
+  test("scrolling the grid while a block is held counts as movement", async ({ page }) => {
+    const { title } = await block(page, 57, 2, [10, 0], [11, 0]);
+    const start = centre(await must(item(page, title)));
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x, start.y + 10, { steps: 2 });
+    await expect(ghost(page)).toContainText("10:15–11:15");
+    await page.mouse.wheel(0, 112);
+    await expect.poll(() => grid(page).evaluate((el) => el.scrollTop)).toBe(7 * 56 + 112);
+    await page.mouse.move(start.x, start.y + 11);
+    // 11px of mouse and 112px of scroll is two hours and a quarter by the grid's scale (123px = 132 minutes, snapped).
+    await expect(ghost(page)).toContainText("12:15–13:15");
+    await page.keyboard.press("Escape");
+    await page.mouse.up();
+  });
+
+  test("a second tray drop is ignored while the first is being saved", async ({ page }) => {
+    const d = day(58, 2);
+    const stamp = Date.now();
+    const first = await addUnscheduled(`First tray ${stamp}`, 30);
+    const second = await addUnscheduled(`Second tray ${stamp}`, 30);
+    await page.goto(weekUrl(58));
+    await hydrated(page);
+    await page.route("**/calendar**", async (route) => {
+      if (route.request().method() === "POST") await new Promise((resolve) => setTimeout(resolve, 1500));
+      await route.continue();
+    });
+    const col = await must(column(page, label(d)));
+    async function dropFromTray(title: string, minutes: number) {
+      const row = main(page).getByRole("listitem").filter({ hasText: title });
+      const box = await must(row);
+      await page.mouse.move(box.x + 20, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(col.x + 30, col.y + (minutes / 60) * 56, { steps: 8 });
+      await page.mouse.move(col.x + 31, col.y + (minutes / 60) * 56 + 1);
+      await page.mouse.up();
+    }
+    await dropFromTray(`First tray ${stamp}`, 9 * 60);
+    await dropFromTray(`Second tray ${stamp}`, 13 * 60);
+    await page.waitForTimeout(2500);
+    expect((await stored("task", first))[0]).toBe(at(d, 9).getTime());
+    const [row] = await sql<{ scheduledStart: string | null }>(`SELECT "scheduledStart" FROM "Task" WHERE "id" = $1`, [second]);
+    expect(row.scheduledStart, "the second drop was ignored").toBeNull();
   });
 
   test("Escape during a drag puts the block back and sends nothing", async ({ page }) => {

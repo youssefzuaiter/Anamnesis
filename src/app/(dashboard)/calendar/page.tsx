@@ -248,7 +248,7 @@ export default async function CalendarPage({
 
       {hourly ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_14rem] lg:items-start">
-          <TimeGrid view={view === "week" ? "week" : "day"} days={hourly.days} strip={hourly.strip} nowMs={now.getTime()} />
+          <TimeGrid key={`${view}:${dateParam(referenceDate)}`} view={view === "week" ? "week" : "day"} days={hourly.days} strip={hourly.strip} nowMs={now.getTime()} />
           {tray}
         </div>
       ) : (

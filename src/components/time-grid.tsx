@@ -9,6 +9,7 @@ import { Icon } from "@/components/icons";
 import type { ApiResponse } from "@/lib/api-response";
 import { dayBounds } from "@/lib/day";
 import { TASK_DRAG_MIME } from "@/lib/domain";
+import { dateLabel } from "@/lib/note-templates";
 import {
   HOUR_PX,
   OPEN_AT_MINUTES,
@@ -36,17 +37,13 @@ const GAP_PX = 2;
 const MIN_HEIGHT_PX = 20;
 const DEFAULT_ESTIMATE_MINUTES = 60;
 
-const dayFormat = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short" });
 const headFormat = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric" });
 
 function parts(format: Intl.DateTimeFormat, ms: number): Record<string, string> {
   return Object.fromEntries(format.formatToParts(new Date(ms)).map((part) => [part.type, part.value]));
 }
-/** "Wed 11 Nov": how the grid names a day, built from the parts so the order does not depend on the locale's punctuation. */
-function dayLabel(ms: number): string {
-  const p = parts(dayFormat, ms);
-  return `${p.weekday} ${p.day} ${p.month}`;
-}
+/** "Wed 11 Nov": how the grid names a day (the same label a note template writes for a date). */
+const dayLabel = (ms: number): string => dateLabel(new Date(ms));
 function headLabel(ms: number): string {
   const p = parts(headFormat, ms);
   return `${p.weekday} ${p.day}`;
@@ -74,6 +71,8 @@ type Gesture = {
   range: Range | null;
 };
 const DRAG_THRESHOLD_PX = 4;
+/** How close to a block's top or bottom a press is to take that edge. */
+const EDGE_PX = 6;
 
 // "Unavailable" is aria-disabled, not `disabled`: a focused button that becomes disabled loses the keyboard's place,
 // and every control is unavailable for the length of a save. Clicks are ignored in the handlers.
@@ -155,6 +154,7 @@ export function TimeGrid({
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [now, setNow] = useState(nowMs);
   const root = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLElement>(null);
   const busy = useRef(false);
@@ -165,6 +165,12 @@ export function TimeGrid({
   // Lanes change when an item moves, not on every step of a drag.
   const laidOut = useMemo(() => shown.map((day) => layoutDay(day.items)), [shown]);
   const visibleDay = (range: Range) => shown.some((day) => holds(day, range.start));
+
+  // The line and the day marked as today follow the clock, not the moment the page was made.
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // The grid opens at 07:00; the hours before it are above, one scroll away.
   useEffect(() => {
@@ -204,10 +210,14 @@ export function TimeGrid({
   function begin(event: React.PointerEvent<HTMLButtonElement>, item: GridItem, column: number) {
     if (event.pointerType === "touch" || event.button !== 0 || !event.isPrimary || item.locked) return;
     if (busy.current || pending) return;
-    const edge = (event.target as HTMLElement).closest<HTMLElement>("[data-edge]")?.dataset.edge;
+    // The edge comes from where on the block the press is, not from which element was hit: some browsers report
+    // the button itself for a press on something inside it.
+    const box = event.currentTarget.getBoundingClientRect();
+    const fromTop = event.clientY - box.top;
+    const fromBottom = box.bottom - event.clientY;
     gesture.current = {
       item,
-      mode: edge === "start" ? "start" : edge === "end" ? "end" : "move",
+      mode: fromTop <= EDGE_PX && fromTop <= fromBottom ? "start" : fromBottom <= EDGE_PX ? "end" : "move",
       pointerId: event.pointerId,
       x: event.clientX,
       y: event.clientY,
@@ -232,6 +242,12 @@ export function TimeGrid({
   function follow(event: React.PointerEvent<HTMLButtonElement>) {
     const g = gesture.current;
     if (!g || event.pointerId !== g.pointerId) return;
+    // The release never arrived (a context menu took it, the window lost the mouse): the drag is over, unsent.
+    if ((event.buttons & 1) === 0) {
+      gesture.current = null;
+      setDraft(null);
+      return;
+    }
     if (!g.active) {
       if (Math.hypot(event.clientX - g.x, event.clientY - g.y) < DRAG_THRESHOLD_PX) return;
       g.active = true;
@@ -363,11 +379,11 @@ export function TimeGrid({
                 {shown.map((day) => (
                   <div
                     key={day.date}
-                    aria-current={day.isToday ? "date" : undefined}
-                    className={`px-1 py-2 text-center text-xs font-medium leading-4 ${day.isToday ? "text-accent-ink" : "text-text-muted"}`}
+                    aria-current={holds(day, now) ? "date" : undefined}
+                    className={`px-1 py-2 text-center text-xs font-medium leading-4 ${holds(day, now) ? "text-accent-ink" : "text-text-muted"}`}
                   >
                     {headLabel(day.date)}
-                    {day.isToday && <span className="sr-only"> (today)</span>}
+                    {holds(day, now) && <span className="sr-only"> (today)</span>}
                   </div>
                 ))}
               </div>
@@ -424,10 +440,10 @@ export function TimeGrid({
                     backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_PX - 1}px, var(--border) ${HOUR_PX - 1}px, var(--border) ${HOUR_PX}px)`,
                   }}
                 >
-                  {day.isToday && (
+                  {holds(day, now) && (
                     <>
-                      <div data-now-line aria-hidden="true" className="pointer-events-none absolute inset-x-0 z-[2] h-0.5 bg-accent" style={{ top: topPx(minutesIn(day.date, nowMs)) }} />
-                      <div aria-hidden="true" className="pointer-events-none absolute -left-[5px] z-[2] size-2.5 rounded-full bg-accent" style={{ top: topPx(minutesIn(day.date, nowMs)) - 4 }} />
+                      <div data-now-line aria-hidden="true" className="pointer-events-none absolute inset-x-0 z-[2] h-0.5 bg-accent" style={{ top: topPx(minutesIn(day.date, now)) }} />
+                      <div aria-hidden="true" className="pointer-events-none absolute -left-[5px] z-[2] size-2.5 rounded-full bg-accent" style={{ top: topPx(minutesIn(day.date, now)) - 4 }} />
                     </>
                   )}
 
@@ -461,6 +477,7 @@ export function TimeGrid({
                           {item.title}
                         </span>
                         <span className="block tabular-nums">{range}</span>
+                        {view === "day" && item.location && <span className="block truncate">{item.location}</span>}
                         {!item.locked && (
                           <>
                             <span data-edge="start" aria-hidden="true" className="absolute inset-x-0 top-0 h-1.5 cursor-ns-resize" />
@@ -495,6 +512,12 @@ export function TimeGrid({
           </div>
         </div>
       </section>
+
+      {view === "day" && !shown.some((day) => day.items.length > 0) && strip.length === 0 && (
+        <p className="rounded-xl border border-dashed border-border-strong px-4 py-3 text-center text-sm text-text-muted">
+          Nothing scheduled for this day. Drag an unscheduled task onto the grid to block time for it.
+        </p>
+      )}
     </div>
   );
 }
