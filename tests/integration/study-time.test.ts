@@ -357,12 +357,14 @@ test("the course card reads one course over 28 days, and is hidden only when it 
   const cs = await makeCourse(user.id, "CS 301");
   const eng = await makeCourse(user.id, "ENG 102");
   await writeAt(user.id, ago(1), 600, cs.id);
+  await writeAt(user.id, ago(20), 60, cs.id);
   await writeAt(user.id, ago(40), 6000, cs.id);
   await writeAt(user.id, ago(1), 77, eng.id);
   await timeAt(user.id, ago(2), 1500, cs.id);
+  await timeAt(user.id, ago(15), 30, cs.id);
 
   const card = await focus.getCourseStudyTime(user.id, cs.id, NOW);
-  assert.deepEqual([card.writing, card.timer], [{ seconds: 600, sessions: 1 }, { seconds: 1500, sessions: 1 }]);
+  assert.deepEqual([card.writing, card.timer], [{ seconds: 660, sessions: 2 }, { seconds: 1530, sessions: 2 }], "28 days of this course only");
   assert.equal(card.visible, true, "it has history for this course");
   assert.deepEqual(card.shown, { writing: true, timer: true });
 
@@ -372,4 +374,13 @@ test("the course card reads one course over 28 days, and is hidden only when it 
   await focus.setTimerSessions(user.id, true);
   assert.equal((await focus.getCourseStudyTime(user.id, empty.id, NOW)).visible, true, "a switch is on: say that nothing is recorded yet");
   assert.deepEqual((await focus.getCourseStudyTime(user.id, empty.id, NOW)).shown, { writing: false, timer: true });
+});
+
+test("history of one kind alone is history, and only the newest thirty timer sessions are listed", async () => {
+  const user = await newUser();
+  for (let i = 0; i < 35; i++) await timeAt(user.id, new Date(NOW.getTime() - i * 60_000), 100 + i);
+  const view = await focus.getStudyTime(user.id, "28", NOW);
+  assert.equal(view.hasHistory, true, "timer sessions alone");
+  assert.equal(view.recent.length, 30);
+  assert.deepEqual(view.recent.map((e) => e.seconds), Array.from({ length: 30 }, (_, i) => 100 + i), "the newest thirty, newest first");
 });
