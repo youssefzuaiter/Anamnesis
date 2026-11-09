@@ -6,6 +6,7 @@ import {
   diffEvent,
   diffTask,
   isEmptyChange,
+  parseScope,
   sameEvent,
   sameTask,
   savedMessage,
@@ -219,4 +220,12 @@ test("two events or tasks that differ in any one field are not the same, and a c
   assert.equal(isEmptyChange({ title: "x" }), false);
   assert.equal(isEmptyChange({ description: null }), false, "a change to null is a change");
   assert.equal(isEmptyChange({}), true);
+});
+
+test("only exactly 'future' is the later occurrences; anything else a browser sends is only this one", () => {
+  assert.equal(parseScope("future"), "future");
+  assert.equal(parseScope("this"), "this");
+  for (const hostile of [null, undefined, "", "FUTURE", "future ", " future", "all", "both", 1, true, ["future"], { toString: () => "future" }, "future\u0000"]) {
+    assert.equal(parseScope(hostile), "this", `${JSON.stringify(hostile)} is not a request for the later occurrences`);
+  }
 });

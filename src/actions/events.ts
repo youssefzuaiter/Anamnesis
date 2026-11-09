@@ -7,6 +7,7 @@ import { requireUserId } from "@/lib/session";
 import { type ApiResponse, ok, fail, toApiResponse } from "@/lib/api-response";
 import * as eventService from "@/services/event-service";
 import { NOT_A_TIME, epochMs } from "@/lib/epoch-ms";
+import { parseScope, type SeriesSaved } from "@/lib/series-edit";
 import {
   RECURRENCE_FREQUENCIES,
   MAX_RECURRENCE_COUNT,
@@ -94,9 +95,9 @@ function revalidateCalendar(eventId?: string) {
 }
 
 export async function createEventAction(
-  _prevState: ApiResponse<null> | null,
+  _prevState: ApiResponse<SeriesSaved | null> | null,
   formData: FormData,
-): Promise<ApiResponse<null>> {
+): Promise<ApiResponse<SeriesSaved | null>> {
   const parsed = parseForm(formData);
   if (!parsed.success) return fail("VALIDATION_ERROR", firstIssue(parsed.error));
 
@@ -124,33 +125,36 @@ export async function createEventAction(
 
 export async function updateEventAction(
   eventId: string,
-  _prevState: ApiResponse<null> | null,
+  _prevState: ApiResponse<SeriesSaved | null> | null,
   formData: FormData,
-): Promise<ApiResponse<null>> {
+): Promise<ApiResponse<SeriesSaved | null>> {
   const parsed = parseForm(formData);
   if (!parsed.success) return fail("VALIDATION_ERROR", firstIssue(parsed.error));
 
-  // Recurrence is offered only at creation — editing one occurrence never
-  // turns it into (or updates) a series, so only the plain event fields
-  // are forwarded here.
+  // Recurrence is offered only at creation — editing one occurrence never turns it into a series, so only the plain
+  // event fields are forwarded here. "This and later occurrences" is a scope, not a list: the server finds the rows.
   const { title, description, location, startTime, endTime, projectId } = parsed.data;
+  const input = { title, description, location, startTime, endTime, projectId };
+  const scope = parseScope(formData.get("applyTo"));
 
+  let saved: SeriesSaved;
   try {
     const userId = await requireUserId();
-    await eventService.updateEvent(userId, eventId, {
-      title,
-      description,
-      location,
-      startTime,
-      endTime,
-      projectId,
-    });
+    if (scope === "future") {
+      const { changed } = await eventService.updateEventSeriesFrom(userId, eventId, input);
+      saved = { changed, scope };
+    } else {
+      await eventService.updateEvent(userId, eventId, input);
+      saved = { changed: 1, scope };
+    }
   } catch (error) {
     return toApiResponse(error);
   }
 
   revalidateCalendar(eventId);
-  return ok(null);
+  // The other occurrences' own pages show what was just changed.
+  if (scope === "future") revalidatePath("/calendar/[id]", "page");
+  return ok(saved);
 }
 
 const moveEventSchema = z.object({ eventId: z.uuid(), startMs: epochMs, endMs: epochMs });

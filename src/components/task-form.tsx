@@ -4,14 +4,16 @@ import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import type { ApiResponse } from "@/lib/api-response";
 import type { TaskPriority, ProjectOption, GoalOption } from "@/lib/domain";
+import { savedMessage, type SeriesSaved } from "@/lib/series-edit";
+import { SeriesChoice } from "@/components/series-choice";
 import { ProjectSelect } from "@/components/project-select";
 import { CourseSelect, type CourseOption } from "@/components/course-select";
 import { GoalSelect } from "@/components/goal-select";
 
 type TaskAction = (
-  prevState: ApiResponse<null> | null,
+  prevState: ApiResponse<SeriesSaved | null> | null,
   formData: FormData,
-) => Promise<ApiResponse<null>>;
+) => Promise<ApiResponse<SeriesSaved | null>>;
 
 type TaskFormProps = {
   action: TaskAction;
@@ -20,6 +22,8 @@ type TaskFormProps = {
   projects: ProjectOption[];
   courses: CourseOption[];
   goals: GoalOption[];
+  /** On an occurrence of a series that has later ones: how many, so the form can offer to change them too. */
+  series?: { later: number };
   initial?: {
     title: string;
     description: string | null;
@@ -55,6 +59,7 @@ export function TaskForm({
   projects,
   courses,
   goals,
+  series,
   resetOnSuccess = false,
 }: TaskFormProps) {
   const [state, formAction] = useActionState(action, null);
@@ -214,6 +219,13 @@ export function TaskForm({
         </fieldset>
       )}
 
+      {initial && series && series.later > 0 && (
+        <SeriesChoice
+          later={series.later}
+          copied="Only what you change is copied to the later ones: title, description, priority, tags, estimate, project, course and goal. Due dates, time blocks and done marks stay."
+        />
+      )}
+
       {state && !state.success && (
         <p
           role="alert"
@@ -225,7 +237,7 @@ export function TaskForm({
 
       {state?.success && !resetOnSuccess && (
         <p role="status" className="text-sm text-text-muted">
-          Saved.
+          {savedMessage(state.data)}
         </p>
       )}
 

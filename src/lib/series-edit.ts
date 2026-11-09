@@ -6,6 +6,11 @@
 
 export type SeriesScope = "this" | "future";
 
+/** The scope a browser asked for. It is only the later occurrences when the value is exactly "future": anything else is this one. */
+export function parseScope(value: unknown): SeriesScope {
+  return value === "future" ? "future" : "this";
+}
+
 /** What a save of an occurrence did: how many rows it changed (this one included) and for which scope. */
 export type SeriesSaved = { changed: number; scope: SeriesScope };
 
