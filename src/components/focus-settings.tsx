@@ -23,7 +23,7 @@ export function FocusSettings({
     setBusy(true);
 
     const response = await setFocusTrackingAction(next);
-    setOn(response.success ? response.data.enabled : !next);
+    setOn(response.success ? response.data.tracking : !next);
     setBusy(false);
     router.refresh();
   }
