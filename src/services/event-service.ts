@@ -8,6 +8,7 @@ import { assertProjectOwned } from "@/services/project-service";
 import { generateOccurrences, type RecurrenceFrequency } from "@/lib/recurrence";
 import { embeddableTextFor } from "@/services/embeddable-text";
 import { checkRange } from "@/lib/time-grid";
+import { partialFailure } from "@/services/series-failure";
 import { applyEventChange, diffEvent, isEmptyChange, sameEvent, type EventFields } from "@/lib/series-edit";
 import type { EventInput } from "@/repositories/event-repository";
 import type { EventModel as Event } from "@/generated/prisma/models";
@@ -114,11 +115,15 @@ export async function updateEventSeriesFrom(
   let changed = 1;
   if (isEmptyChange(change)) return { changed };
 
-  for (const row of later) {
-    const next = applyEventChange(eventFields(row), change);
-    if (sameEvent(next, row)) continue;
-    await updateEvent(userId, row.id, next);
-    changed += 1;
+  try {
+    for (const row of later) {
+      const next = applyEventChange(eventFields(row), change);
+      if (sameEvent(next, row)) continue;
+      await updateEvent(userId, row.id, next);
+      changed += 1;
+    }
+  } catch (error) {
+    throw partialFailure(error, changed);
   }
   return { changed };
 }

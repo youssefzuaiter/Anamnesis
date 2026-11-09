@@ -7,6 +7,7 @@ import {
   diffTask,
   isEmptyChange,
   parseScope,
+  partialFailureMessage,
   sameEvent,
   sameTask,
   savedMessage,
@@ -228,4 +229,34 @@ test("only exactly 'future' is the later occurrences; anything else a browser se
   for (const hostile of [null, undefined, "", "FUTURE", "future ", " future", "all", "both", 1, true, ["future"], { toString: () => "future" }, "future\u0000"]) {
     assert.equal(parseScope(hostile), "this", `${JSON.stringify(hostile)} is not a request for the later occurrences`);
   }
+});
+
+test("an empty description or location is the same as none: an untouched field is not a change", () => {
+  const stored = event(at(2026, 11, 9, 9), 90, { description: "", location: "" });
+  const posted = { ...stored, description: null, location: null };
+  assert.deepEqual(diffEvent(stored, posted), {}, "the form posts '' and the action makes it null");
+  assert.ok(sameEvent(stored, posted));
+  const filled = event(at(2026, 11, 9, 9));
+  assert.deepEqual(diffEvent(filled, { ...filled, description: null }), { description: null }, "a real clearing is still a change");
+  assert.deepEqual(diffEvent(filled, { ...filled, location: null }), { location: null });
+
+  const t = task({ description: "" });
+  assert.deepEqual(diffTask(t, { ...t, description: null }), {});
+  assert.ok(sameTask(t, { ...t, description: null }));
+  assert.deepEqual(diffTask(task({ description: "x" }), { ...t, description: null }), { description: null });
+});
+
+test("a failure part-way says what was already saved", () => {
+  assert.equal(
+    partialFailureMessage("The event must end after it starts.", 1),
+    "The event must end after it starts. This occurrence was saved, but the later ones were not changed.",
+  );
+  assert.equal(
+    partialFailureMessage("The event must end after it starts.", 2),
+    "The event must end after it starts. This occurrence and 1 later occurrence were saved, but the rest were not.",
+  );
+  assert.equal(
+    partialFailureMessage("Nope.", 5),
+    "Nope. This occurrence and 4 later occurrences were saved, but the rest were not.",
+  );
 });

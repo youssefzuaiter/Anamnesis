@@ -32,6 +32,9 @@ export type EventChange = Partial<Pick<EventFields, "title" | "description" | "l
   durationMs?: number;
 };
 
+/** An empty description or location is the same as none: the form posts '' and the action stores null. */
+const blank = (value: string | null): string | null => (value === "" ? null : value);
+
 const minutesOfDay = (date: Date): number => date.getHours() * 60 + date.getMinutes();
 const lengthOf = (event: EventFields): number => event.endTime.getTime() - event.startTime.getTime();
 
@@ -39,8 +42,8 @@ const lengthOf = (event: EventFields): number => event.endTime.getTime() - event
 export function diffEvent(before: EventFields, after: EventFields): EventChange {
   const change: EventChange = {};
   if (before.title !== after.title) change.title = after.title;
-  if (before.description !== after.description) change.description = after.description;
-  if (before.location !== after.location) change.location = after.location;
+  if (blank(before.description) !== blank(after.description)) change.description = after.description;
+  if (blank(before.location) !== blank(after.location)) change.location = after.location;
   if (before.projectId !== after.projectId) change.projectId = after.projectId;
   if (minutesOfDay(before.startTime) !== minutesOfDay(after.startTime)) change.startMinutes = minutesOfDay(after.startTime);
   if (lengthOf(before) !== lengthOf(after)) change.durationMs = lengthOf(after);
@@ -70,8 +73,8 @@ export function applyEventChange(row: EventFields, change: EventChange): EventFi
 export function sameEvent(a: EventFields, b: EventFields): boolean {
   return (
     a.title === b.title &&
-    a.description === b.description &&
-    a.location === b.location &&
+    blank(a.description) === blank(b.description) &&
+    blank(a.location) === blank(b.location) &&
     a.projectId === b.projectId &&
     a.startTime.getTime() === b.startTime.getTime() &&
     a.endTime.getTime() === b.endTime.getTime()
@@ -99,7 +102,7 @@ const sameTags = (a: readonly string[], b: readonly string[]): boolean => a.leng
 export function diffTask(before: TaskFields, after: TaskFields): TaskChange {
   const change: TaskChange = {};
   if (before.title !== after.title) change.title = after.title;
-  if (before.description !== after.description) change.description = after.description;
+  if (blank(before.description) !== blank(after.description)) change.description = after.description;
   if (before.priority !== after.priority) change.priority = after.priority;
   if (!sameTags(before.tags, after.tags)) change.tags = after.tags;
   if (before.estimatedMinutes !== after.estimatedMinutes) change.estimatedMinutes = after.estimatedMinutes;
@@ -117,7 +120,7 @@ export function applyTaskChange(row: TaskFields, change: TaskChange): TaskFields
 export function sameTask(a: TaskFields, b: TaskFields): boolean {
   return (
     a.title === b.title &&
-    a.description === b.description &&
+    blank(a.description) === blank(b.description) &&
     a.priority === b.priority &&
     sameTags(a.tags, b.tags) &&
     a.estimatedMinutes === b.estimatedMinutes &&
@@ -129,6 +132,13 @@ export function sameTask(a: TaskFields, b: TaskFields): boolean {
 
 export function isEmptyChange(change: object): boolean {
   return Object.keys(change).length === 0;
+}
+
+/** The refusal of a row, with what had already been saved, when a run over the later occurrences stops part-way. */
+export function partialFailureMessage(message: string, changed: number): string {
+  if (changed <= 1) return `${message} This occurrence was saved, but the later ones were not changed.`;
+  const later = changed - 1;
+  return `${message} This occurrence and ${later} later occurrence${later === 1 ? "" : "s"} were saved, but the rest were not.`;
 }
 
 /** What the form says after a save, from the server's count, so a date-only edit is not a silent no-op. */

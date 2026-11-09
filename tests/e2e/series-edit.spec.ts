@@ -104,6 +104,8 @@ test("a location and a time of day reach the later occurrences on their own date
   await expect(onlyThis(page)).toBeChecked();
   await expect(choice(page)).toContainText("title, description, location, project, time of day and length");
   await expect(choice(page)).toContainText("Each occurrence keeps its own date");
+  // A screen reader hears what the choice overwrites when it reaches the group.
+  await expect(choice(page)).toHaveAccessibleDescription(/Only what you change is copied to the later ones: title, description, location/);
   await page.getByLabel("Location").fill("Hall D");
   await page.getByLabel("Start time").fill(`${iso(second)}T10:30`);
   await page.getByLabel("End time").fill(`${iso(second)}T12:00`);

@@ -15,6 +15,7 @@ import type { TaskInput } from "@/repositories/task-repository";
 import type { EventModel as Event, TaskModel as Task } from "@/generated/prisma/models";
 import * as eventService from "@/services/event-service";
 import * as taskService from "@/services/task-service";
+import { partialFailure } from "@/services/series-failure";
 
 const users: string[] = [];
 async function newUser(): Promise<{ id: string }> {
@@ -211,10 +212,26 @@ test("not atomic: a later occurrence that cannot be saved stops the run, with th
   await prisma.event.update({ where: { id: series[3].id }, data: { endTime: at(30, 9) } });
   const fourthBefore = await prisma.event.findUniqueOrThrow({ where: { id: series[3].id } });
 
-  await assert.rejects(() => eventService.updateEventSeriesFrom(user.id, series[1].id, asEventInput(series[1], { title: "ML seminar" })), invalid);
+  await assert.rejects(
+    () => eventService.updateEventSeriesFrom(user.id, series[1].id, asEventInput(series[1], { title: "ML seminar" })),
+    (error: unknown) =>
+      invalid(error) &&
+      (error as AppError).message === "The event must end after it starts. This occurrence and 1 later occurrence were saved, but the rest were not.",
+  );
   const rows = await eventRows(series.map((e) => e.id));
   assert.deepEqual(rows.map((e) => e.title), ["ML lecture", "ML seminar", "ML seminar", "ML lecture"], "this row first, then the later ones in order, until one fails");
   assert.deepEqual(rows[3], fourthBefore);
+});
+
+test("when the first later occurrence is the one that cannot be saved, the message says only this one was", async () => {
+  const user = await newUser();
+  const series = await eventSeries(user.id);
+  await prisma.event.update({ where: { id: series[2].id }, data: { endTime: at(23, 9) } });
+  await assert.rejects(
+    () => eventService.updateEventSeriesFrom(user.id, series[1].id, asEventInput(series[1], { title: "ML seminar" })),
+    (error: unknown) => invalid(error) && (error as AppError).message === "The event must end after it starts. This occurrence was saved, but the later ones were not changed.",
+  );
+  assert.equal((await prisma.event.findUniqueOrThrow({ where: { id: series[1].id } })).title, "ML seminar");
 });
 
 test("another account's event and a missing one are the same refusal, and the series is unchanged", async () => {
@@ -392,7 +409,12 @@ test("not atomic: a later task that cannot be saved stops the run, with this one
   await prisma.task.update({ where: { id: series[3].id }, data: { scheduledEnd: at(30, 8) } });
   const fourthBefore = await prisma.task.findUniqueOrThrow({ where: { id: series[3].id } });
 
-  await assert.rejects(() => taskService.updateTaskSeriesFrom(user.id, series[1].id, asTaskInput(series[1], { title: "Review the notes" })), invalid);
+  await assert.rejects(
+    () => taskService.updateTaskSeriesFrom(user.id, series[1].id, asTaskInput(series[1], { title: "Review the notes" })),
+    (error: unknown) =>
+      invalid(error) &&
+      (error as AppError).message === "The scheduled block must end after it starts. This occurrence and 1 later occurrence were saved, but the rest were not.",
+  );
   const rows = await taskRows(series.map((t) => t.id));
   assert.deepEqual(rows.map((t) => t.title), ["Review notes", "Review the notes", "Review the notes", "Review notes"]);
   assert.deepEqual(rows[3], fourthBefore);
@@ -412,4 +434,23 @@ test("a task's later set is worked out from its old due date, and a missing or f
   await assert.rejects(() => taskService.updateTaskSeriesFrom(bob.id, series[1].id, taskInput({ title: "x" })), gone);
   await assert.rejects(() => taskService.updateTaskSeriesFrom(bob.id, randomUUID(), taskInput({ title: "x" })), gone);
   assert.deepEqual(await taskRows(ids), before);
+});
+
+test("a failure that is not an AppError becomes one that says what was saved and leaks nothing of the original", () => {
+  const original = console.error;
+  const logged: unknown[][] = [];
+  console.error = (...args: unknown[]) => void logged.push(args);
+  try {
+    const refused = partialFailure(new Error("connection to db-host-7 lost, password=hunter2"), 3);
+    assert.ok(refused instanceof AppError);
+    assert.equal(refused.code, "INTEGRATION_ERROR");
+    assert.equal(refused.message, "Something went wrong. This occurrence and 2 later occurrences were saved, but the rest were not.");
+    assert.ok(!/hunter2|db-host/.test(refused.message));
+    assert.equal(logged.length, 1, "the original is logged on the server");
+    const kept = partialFailure(new AppError("RESOURCE_NOT_FOUND", "That project no longer exists."), 1);
+    assert.equal(kept.code, "RESOURCE_NOT_FOUND", "an AppError keeps its code");
+    assert.equal(kept.message, "That project no longer exists. This occurrence was saved, but the later ones were not changed.");
+  } finally {
+    console.error = original;
+  }
 });

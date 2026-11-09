@@ -9,6 +9,7 @@ import { assertGoalOwned, recalculateGoalProgress } from "@/services/goal-servic
 import { generateOccurrences, type RecurrenceFrequency } from "@/lib/recurrence";
 import { bucketOf, type TaskBucket } from "@/lib/task-bucket";
 import { checkRange } from "@/lib/time-grid";
+import { partialFailure } from "@/services/series-failure";
 import { applyTaskChange, diffTask, isEmptyChange, sameTask } from "@/lib/series-edit";
 import { embeddableTextFor } from "@/services/embeddable-text";
 import type { TaskInput, TaskStatus, TaskPriority } from "@/repositories/task-repository";
@@ -261,10 +262,14 @@ export async function updateTaskSeriesFrom(
   let changed = 1;
   if (isEmptyChange(change)) return { changed };
 
-  for (const row of later) {
-    if (sameTask(applyTaskChange(row, change), row)) continue;
-    await patchTask(userId, row.id, change as Partial<TaskInput>);
-    changed += 1;
+  try {
+    for (const row of later) {
+      if (sameTask(applyTaskChange(row, change), row)) continue;
+      await patchTask(userId, row.id, change as Partial<TaskInput>);
+      changed += 1;
+    }
+  } catch (error) {
+    throw partialFailure(error, changed);
   }
   return { changed };
 }
