@@ -5,7 +5,7 @@ import { getTemplate, renderTemplate } from "@/lib/note-templates";
 import { requireUserId } from "@/lib/session";
 import { listProjectOptions } from "@/repositories/project-repository";
 import { listCourseOptions } from "@/repositories/course-repository";
-import { isTrackingEnabled } from "@/repositories/focus-repository";
+import { getSettings } from "@/services/focus-service";
 import { FocusTracker } from "@/components/focus-tracker";
 
 
@@ -23,10 +23,10 @@ export default async function NewNotePage({
     typeof params.template === "string" ? params.template : undefined,
   );
   const filled = renderTemplate(template, new Date());
-  const [projects, courses, trackFocus] = await Promise.all([
+  const [projects, courses, focusSwitches] = await Promise.all([
     listProjectOptions(userId),
     listCourseOptions(userId),
-    isTrackingEnabled(userId),
+    getSettings(userId),
   ]);
 
   return (
@@ -59,7 +59,13 @@ export default async function NewNotePage({
         }}
       />
 
-      {trackFocus && <FocusTracker selector='textarea[name="content"]' />}
+      {focusSwitches.tracking && (
+        <FocusTracker
+          selector='textarea[name="content"]'
+          includeCourse={focusSwitches.includeCourse}
+          courseSelector='select[name="courseId"]'
+        />
+      )}
     </div>
   );
 }

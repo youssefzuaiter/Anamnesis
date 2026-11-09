@@ -89,6 +89,17 @@ export const tables = {
       }),
     (row) => row.recordedAt,
   ),
+  // Ordered by recordedAt for the same reason: it has no createdAt.
+  studySessions: tableBy(
+    LIGHT_PAGE,
+    (userId, page) =>
+      prisma.studySession.findMany({
+        where: { AND: [{ userId }, afterRecorded(page.after)] },
+        orderBy: [{ recordedAt: "asc" }, { id: "asc" }],
+        take: page.take,
+      }),
+    (row) => row.recordedAt,
+  ),
   auditEvents: table(LIGHT_PAGE, (userId, page) =>
     prisma.auditEvent.findMany({ where: { AND: [{ userId }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
@@ -175,6 +186,7 @@ export async function buildFullExport(userId: string) {
     events,
     links,
     focusTelemetry,
+    studySessions,
     auditEvents,
     courses,
     assessments,
@@ -195,6 +207,7 @@ export async function buildFullExport(userId: string) {
     readAll(tables.events, userId),
     readAll(tables.links, userId),
     readAll(tables.focusTelemetry, userId),
+    readAll(tables.studySessions, userId),
     readAll(tables.auditEvents, userId),
     readAll(tables.courses, userId),
     readAll(tables.assessments, userId),
@@ -220,6 +233,7 @@ export async function buildFullExport(userId: string) {
     events,
     links,
     focusTelemetry,
+    studySessions,
     auditEvents,
     courses,
     assessments,

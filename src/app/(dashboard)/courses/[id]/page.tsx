@@ -16,6 +16,8 @@ import { dateLabel } from "@/lib/note-templates";
 import { scopeHref } from "@/lib/assistant-scope";
 import { quizHref } from "@/lib/quiz";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
+import { CourseStudyCard } from "@/components/course-study-card";
+import { getCourseStudyTime } from "@/services/focus-service";
 import { deleteCourseAction } from "@/actions/courses";
 
 export const metadata = { title: "Course · Anamnesis" };
@@ -45,10 +47,11 @@ export default async function CoursePage({
   if (!course) notFound();
 
   const now = new Date();
-  const [contents, decks, overview] = await Promise.all([
+  const [contents, decks, overview, studyTime] = await Promise.all([
     listCourseContents(userId, course.id),
     listDecks(userId, now),
     getGpaOverview(userId, courses),
+    getCourseStudyTime(userId, course.id, now),
   ]);
   const deck = decks.find((candidate) => candidate.id === course.id);
   // Every other counted course, so the card can say what this one does to the CGPA.
@@ -122,6 +125,8 @@ export default async function CoursePage({
           </>
         )}
       </section>
+
+      <CourseStudyCard view={studyTime} />
 
       <CourseGrade
         courseId={course.id}

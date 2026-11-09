@@ -72,8 +72,10 @@ services. Nothing may need a paid API key.
 - [x] **17. Repeating items: edit this and future** (M, migration?). Today a series is
   materialised rows with a shared `recurrenceId`; keep that model. No migration; see
   "Editing this and later occurrences" in `CLAUDE.md`.
-- [ ] **18. Study time per course** (S to M, demo). From the existing timer and opt-in focus
-  data. Present it as an observation, never a claim about the person.
+- [x] **18. Study time per course** (S to M, demo). From the existing timer and opt-in focus
+  data. Present it as an observation, never a claim about the person. The existing data could
+  not be grouped by course, so it records two kinds of time, each opt-in; see "Study time per
+  course" in `CLAUDE.md`.
 
 ## E. Reach beyond the open tab
 

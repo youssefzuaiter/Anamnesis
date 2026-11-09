@@ -32,6 +32,7 @@ import { parseCapture } from "@/services/parse-service";
 import { toProposal } from "@/lib/ai-tools";
 import * as actionService from "@/services/action-service";
 import * as focusRepository from "@/repositories/focus-repository";
+import * as focusService from "@/services/focus-service";
 import { wordsPerMinute, classifyLoad, summarise } from "@/lib/focus";
 import {
   isRateLimited,
@@ -1663,33 +1664,34 @@ async function main() {
     try {
       check(
         "tracking is off for a new account",
-        (await focusRepository.isTrackingEnabled(focusUser.id)) === false,
+        (await focusRepository.getSettings(focusUser.id)).tracking === false,
       );
       check(
         "it is off even with no profile row at all",
         (await prisma.userProfile.count({ where: { userId: focusUser.id } })) === 0,
       );
 
-      await focusRepository.setTrackingEnabled(focusUser.id, true);
+      await focusService.setTracking(focusUser.id, true);
       check(
         "enabling creates the profile row and sticks",
-        (await focusRepository.isTrackingEnabled(focusUser.id)) === true,
+        (await focusRepository.getSettings(focusUser.id)).tracking === true,
       );
 
       await focusRepository.recordSession(focusUser.id, {
         sessionDuration: 600,
         typingSpeedWpm: 42,
         cognitiveLoad: "steady",
+        courseId: null,
       });
       check(
         "a session is stored once enabled",
         (await focusRepository.listSessions(focusUser.id)).length === 1,
       );
 
-      await focusRepository.setTrackingEnabled(focusUser.id, false);
+      await focusService.setTracking(focusUser.id, false);
       check(
         "disabling sticks",
-        (await focusRepository.isTrackingEnabled(focusUser.id)) === false,
+        (await focusRepository.getSettings(focusUser.id)).tracking === false,
       );
       check(
         "disabling keeps what was already recorded",

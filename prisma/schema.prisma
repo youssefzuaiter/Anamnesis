@@ -36,6 +36,7 @@ model User {
   attachments  Attachment[]
   taskChecklistItems TaskChecklistItem[]
   goals        Goal[]
+  studySessions StudySession[]
 }
 
 model UserProfile {
@@ -52,6 +53,11 @@ model UserProfile {
   // Focus tracking is behavioural data, so it is off unless explicitly enabled
   // and the server refuses to record anything while this is false.
   focusTrackingEnabled Boolean @default(false)
+  // Two more switches, each its own consent and each off until the person turns it on: keeping which
+  // course a written note belongs to (only ever honoured while tracking is on), and remembering how
+  // long the study timer ran. Optional for an older release, which does not know them.
+  focusIncludeCourse   Boolean @default(false)
+  timerSessionsEnabled Boolean @default(false)
 
   // The GPA tracker. A target cumulative GPA, and the letter-to-points table as
   // JSON ([{ letter, points }]); a null scale means the built-in preset. Both are
@@ -302,6 +308,8 @@ model Course {
   tasks       Task[]
   events      Event[]
   assessments Assessment[]
+  focusSessions FocusTelemetry[]
+  studySessions StudySession[]
 
   @@index([userId])
 }
@@ -430,14 +438,34 @@ model WorkspaceEmbedding {
 model FocusTelemetry {
   id              String   @id @default(uuid())
   userId          String
+  // The course the note belonged to, kept only while both "Record focus sessions" and "Include the
+  // course" are on. Null for every session recorded before the switch existed. A deleted course
+  // leaves the session behind, as "No course".
+  courseId        String?
   sessionDuration Int
   typingSpeedWpm  Int
   cognitiveLoad   String
   recordedAt      DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course? @relation(fields: [courseId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+}
+
+/// How long the study timer ran on one task, kept only while "Remember timer sessions" is on. Deliberately
+/// nothing else: no task id and no title, so the row says how long and for which course, never what on.
+model StudySession {
+  id         String   @id @default(uuid())
+  userId     String
+  courseId   String?
+  seconds    Int
+  recordedAt DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course? @relation(fields: [courseId], references: [id], onDelete: SetNull)
+
+  @@index([userId, recordedAt])
 }
 
 model AuditEvent {
