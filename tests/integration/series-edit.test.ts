@@ -200,6 +200,19 @@ test("the count is of rows that changed: a later row that already has the new va
   assert.deepEqual(await prisma.event.findUniqueOrThrow({ where: { id: series[2].id } }), alreadyThere, "its updatedAt did not move: it was not written");
 });
 
+test("not atomic: a later occurrence that cannot be saved stops the run, with this one and the rows before it already changed", async () => {
+  const user = await newUser();
+  const series = await eventSeries(user.id);
+  // The fourth was stored with an end that is not after its start; it cannot take any edit.
+  await prisma.event.update({ where: { id: series[3].id }, data: { endTime: at(30, 9) } });
+  const fourthBefore = await prisma.event.findUniqueOrThrow({ where: { id: series[3].id } });
+
+  await assert.rejects(() => eventService.updateEventSeriesFrom(user.id, series[1].id, asEventInput(series[1], { title: "ML seminar" })), invalid);
+  const rows = await eventRows(series.map((e) => e.id));
+  assert.deepEqual(rows.map((e) => e.title), ["ML lecture", "ML seminar", "ML seminar", "ML lecture"], "this row first, then the later ones in order, until one fails");
+  assert.deepEqual(rows[3], fourthBefore);
+});
+
 test("another account's event and a missing one are the same refusal, and the series is unchanged", async () => {
   const alice = await newUser();
   const bob = await newUser();
@@ -366,6 +379,18 @@ test("moving the series to another project recalculates both projects' progress"
   await taskService.updateTaskSeriesFrom(user.id, series[0].id, asTaskInput(series[0], { projectId: to.id }));
   assert.equal((await prisma.project.findUniqueOrThrow({ where: { id: from.id } })).progress, 0, "nothing is left in the old project");
   assert.equal((await prisma.project.findUniqueOrThrow({ where: { id: to.id } })).progress, 33, "one of three is done in the new one");
+});
+
+test("not atomic: a later task that cannot be saved stops the run, with this one and the rows before it already changed", async () => {
+  const user = await newUser();
+  const series = await taskSeries(user.id);
+  await prisma.task.update({ where: { id: series[3].id }, data: { scheduledEnd: at(30, 8) } });
+  const fourthBefore = await prisma.task.findUniqueOrThrow({ where: { id: series[3].id } });
+
+  await assert.rejects(() => taskService.updateTaskSeriesFrom(user.id, series[1].id, asTaskInput(series[1], { title: "Review the notes" })), invalid);
+  const rows = await taskRows(series.map((t) => t.id));
+  assert.deepEqual(rows.map((t) => t.title), ["Review notes", "Review the notes", "Review the notes", "Review notes"]);
+  assert.deepEqual(rows[3], fourthBefore);
 });
 
 test("a task's later set is worked out from its old due date, and a missing or foreign id is one refusal", async () => {
