@@ -69,8 +69,9 @@ services. Nothing may need a paid API key.
 - [x] **16. Hourly week and day grid** (L, demo). Drag to move, drag the edge to resize a time
   block, a task dropped on the grid lands where it is let go (Month still lands at 09:00); no
   migration; see "Hourly calendar grid" in `CLAUDE.md`.
-- [ ] **17. Repeating items: edit this and future** (M, migration?). Today a series is
-  materialised rows with a shared `recurrenceId`; keep that model.
+- [x] **17. Repeating items: edit this and future** (M, migration?). Today a series is
+  materialised rows with a shared `recurrenceId`; keep that model. No migration; see
+  "Editing this and later occurrences" in `CLAUDE.md`.
 - [ ] **18. Study time per course** (S to M, demo). From the existing timer and opt-in focus
   data. Present it as an observation, never a claim about the person.
 
