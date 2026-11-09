@@ -9,7 +9,7 @@ import { assertGoalOwned, recalculateGoalProgress } from "@/services/goal-servic
 import { generateOccurrences, type RecurrenceFrequency } from "@/lib/recurrence";
 import { bucketOf, type TaskBucket } from "@/lib/task-bucket";
 import { checkRange } from "@/lib/time-grid";
-import { applyTaskChange, diffTask, isEmptyChange, sameTask, type TaskFields } from "@/lib/series-edit";
+import { applyTaskChange, diffTask, isEmptyChange, sameTask } from "@/lib/series-edit";
 import { embeddableTextFor } from "@/services/embeddable-text";
 import type { TaskInput, TaskStatus, TaskPriority } from "@/repositories/task-repository";
 import type { TaskModel as Task } from "@/generated/prisma/models";
@@ -235,17 +235,6 @@ export async function createRecurringTasks(
   return tasks;
 }
 
-const taskFields = (task: TaskFields): TaskFields => ({
-  title: task.title,
-  description: task.description,
-  priority: task.priority,
-  tags: task.tags,
-  estimatedMinutes: task.estimatedMinutes,
-  projectId: task.projectId,
-  courseId: task.courseId,
-  goalId: task.goalId,
-});
-
 /**
  * Saves this occurrence and carries what the person changed (title, description, priority, tags, estimate, project,
  * course, goal) to every later occurrence of its series that is still live. Due dates, time blocks, status and
@@ -266,15 +255,14 @@ export async function updateTaskSeriesFrom(
     before.recurrenceId && before.dueDate
       ? await taskRepository.listLaterSeriesTasks(userId, before.recurrenceId, before.dueDate, before.id)
       : [];
-  const change = diffTask(taskFields(before), taskFields(input));
+  const change = diffTask(before, input);
 
   await updateTask(userId, taskId, input);
   let changed = 1;
   if (isEmptyChange(change)) return { changed };
 
   for (const row of later) {
-    const current = taskFields(row);
-    if (sameTask(applyTaskChange(current, change), current)) continue;
+    if (sameTask(applyTaskChange(row, change), row)) continue;
     await patchTask(userId, row.id, change as Partial<TaskInput>);
     changed += 1;
   }

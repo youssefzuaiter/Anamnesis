@@ -78,6 +78,8 @@ export async function updateEvent(
   return event;
 }
 
+// Picks the six fields explicitly. `updateEvent` writes whatever keys it is given, so a later row's own `id`, `userId`
+// and `createdAt` must never travel with it: this copy is what keeps the write to exactly these fields.
 const eventFields = (event: EventFields): EventFields => ({
   title: event.title,
   description: event.description,
@@ -106,16 +108,15 @@ export async function updateEventSeriesFrom(
   const later = before.recurrenceId
     ? await eventRepository.listLaterSeriesEvents(userId, before.recurrenceId, before.startTime, before.id)
     : [];
-  const change = diffEvent(eventFields(before), eventFields(input));
+  const change = diffEvent(before, input);
 
   await updateEvent(userId, eventId, input);
   let changed = 1;
   if (isEmptyChange(change)) return { changed };
 
   for (const row of later) {
-    const current = eventFields(row);
-    const next = applyEventChange(current, change);
-    if (sameEvent(next, current)) continue;
+    const next = applyEventChange(eventFields(row), change);
+    if (sameEvent(next, row)) continue;
     await updateEvent(userId, row.id, next);
     changed += 1;
   }

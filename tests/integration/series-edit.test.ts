@@ -67,7 +67,11 @@ test("a title change reaches this and the later occurrences and leaves the earli
   const after = await eventRows(ids);
   assert.deepEqual(after[0], before[0], "an earlier occurrence is history");
   assert.deepEqual(after.map((e) => e.title), ["ML lecture", "ML seminar", "ML seminar", "ML seminar"]);
-  for (const i of [1, 2, 3]) assert.deepEqual(without(after[i], "title", "updatedAt"), without(before[i], "title", "updatedAt"), `row ${i}: only the title changed`);
+  for (const i of [1, 2, 3]) {
+    assert.deepEqual(without(after[i], "title", "updatedAt"), without(before[i], "title", "updatedAt"), `row ${i}: only the title changed`);
+    // Written as exactly the picked fields, not as the row it was read as: the row's own updatedAt is not written back.
+    assert.ok(after[i].updatedAt.getTime() > before[i].updatedAt.getTime(), `row ${i}: its updatedAt moved`);
+  }
 });
 
 test("a new time of day is set on each later occurrence's own date, with its own length", async () => {
@@ -299,6 +303,7 @@ test("the eight fields reach the later tasks; due dates, blocks and done marks s
     for (const key of SCHEDULE) assert.deepEqual(after[i][key as keyof Task], before[i][key as keyof Task], `row ${i}: ${key} is its own`);
   }
   assert.equal(after[2].status, "done", "a later task that was done changes and stays done");
+  for (const i of [1, 2, 3]) assert.ok(after[i].updatedAt.getTime() > before[i].updatedAt.getTime(), `row ${i}: its updatedAt moved`);
 });
 
 test("a trashed later task, another account's row and an earlier task that share the series id are never touched", async () => {
