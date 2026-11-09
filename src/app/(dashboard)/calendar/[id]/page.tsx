@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUserId } from "@/lib/session";
-import { getEvent } from "@/repositories/event-repository";
+import { getEvent, listLaterSeriesEvents } from "@/repositories/event-repository";
 import { EventForm } from "@/components/event-form";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { updateEventAction, deleteEventAction, deleteEventSeriesAction } from "@/actions/events";
@@ -22,7 +22,12 @@ export default async function EventPage({ params }: PageProps<"/calendar/[id]">)
   const event = await getEvent(userId, id);
   if (!event) notFound();
 
-  const projects = await listProjectOptions(userId);
+  const [projects, later] = await Promise.all([
+    listProjectOptions(userId),
+    event.recurrenceId
+      ? listLaterSeriesEvents(userId, event.recurrenceId, event.startTime, event.id)
+      : Promise.resolve([]),
+  ]);
 
   const monthParam = `${event.startTime.getFullYear()}-${String(
     event.startTime.getMonth() + 1,
@@ -48,6 +53,7 @@ export default async function EventPage({ params }: PageProps<"/calendar/[id]">)
         action={updateEventAction.bind(null, event.id)}
         submitLabel="Save changes"
         projects={projects}
+        series={{ later: later.length }}
         initial={{
           title: event.title,
           description: event.description,

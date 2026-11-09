@@ -162,6 +162,22 @@ export async function listSeriesTaskIds(
   return rows.map((row) => row.id);
 }
 
+/**
+ * This account's other live occurrences of a series that are due at or after `from`, in order: the rows an edit of
+ * one occurrence may carry to the later ones. A task in the trash is left alone.
+ */
+export async function listLaterSeriesTasks(
+  userId: string,
+  recurrenceId: string,
+  from: Date,
+  exceptId: string,
+): Promise<Task[]> {
+  return prisma.task.findMany({
+    where: { userId, recurrenceId, deletedAt: null, dueDate: { gte: from }, id: { not: exceptId } },
+    orderBy: [{ dueDate: "asc" }, { id: "asc" }],
+  });
+}
+
 /** Open tasks with no time block yet — the calendar's drag-to-schedule tray. */
 export async function listUnscheduled(userId: string, limit = 20): Promise<Task[]> {
   return prisma.task.findMany({

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUserId } from "@/lib/session";
-import { getTask } from "@/repositories/task-repository";
+import { getTask, listLaterSeriesTasks } from "@/repositories/task-repository";
 import { TaskForm } from "@/components/task-form";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import {
@@ -40,11 +40,14 @@ export default async function TaskPage({ params }: PageProps<"/tasks/[id]">) {
   const task = await getTask(userId, id);
   if (!task) notFound();
 
-  const [projects, courses, goals, checklist] = await Promise.all([
+  const [projects, courses, goals, checklist, later] = await Promise.all([
     listProjectOptions(userId),
     listCourseOptions(userId),
     listGoalOptions(userId),
     getChecklist(userId, id),
+    task.recurrenceId && task.dueDate
+      ? listLaterSeriesTasks(userId, task.recurrenceId, task.dueDate, task.id)
+      : Promise.resolve([]),
   ]);
 
   const done = task.status === "done";
@@ -104,6 +107,7 @@ export default async function TaskPage({ params }: PageProps<"/tasks/[id]">) {
         projects={projects}
         courses={courses}
         goals={goals}
+        series={{ later: later.length }}
         initial={{
           title: task.title,
           description: task.description,

@@ -8,6 +8,8 @@ import { assertProjectOwned } from "@/services/project-service";
 import { generateOccurrences, type RecurrenceFrequency } from "@/lib/recurrence";
 import { embeddableTextFor } from "@/services/embeddable-text";
 import { checkRange } from "@/lib/time-grid";
+import { partialFailure } from "@/services/series-failure";
+import { applyEventChange, diffEvent, isEmptyChange, sameEvent, type EventFields } from "@/lib/series-edit";
 import type { EventInput } from "@/repositories/event-repository";
 import type { EventModel as Event } from "@/generated/prisma/models";
 
@@ -75,6 +77,55 @@ export async function updateEvent(
   }
   await syncEventIndex(userId, event);
   return event;
+}
+
+// Picks the six fields explicitly. `updateEvent` writes whatever keys it is given, so a later row's own `id`, `userId`
+// and `createdAt` must never travel with it: this copy is what keeps the write to exactly these fields.
+const eventFields = (event: EventFields): EventFields => ({
+  title: event.title,
+  description: event.description,
+  location: event.location,
+  projectId: event.projectId,
+  startTime: event.startTime,
+  endTime: event.endTime,
+});
+
+/**
+ * Saves this occurrence and carries what the person changed to every later occurrence of its series. The later rows
+ * are worked out from this one's **old** start (so moving it past them does not lose any), this row is written first
+ * (its range and project are checked before anything is), and then each later row whose result differs is written
+ * through `updateEvent`, which re-indexes it. A row that is not part of a series, or has no later ones, or a change
+ * that is only a move to another day, saves just this row. Not atomic: a failure part-way leaves the earlier rows
+ * changed. `changed` counts the rows actually written, this one included.
+ */
+export async function updateEventSeriesFrom(
+  userId: string,
+  eventId: string,
+  input: EventInput,
+): Promise<{ changed: number }> {
+  const before = await eventRepository.getEvent(userId, eventId);
+  if (!before) throw new AppError("RESOURCE_NOT_FOUND", "That event no longer exists.");
+
+  const later = before.recurrenceId
+    ? await eventRepository.listLaterSeriesEvents(userId, before.recurrenceId, before.startTime, before.id)
+    : [];
+  const change = diffEvent(before, input);
+
+  await updateEvent(userId, eventId, input);
+  let changed = 1;
+  if (isEmptyChange(change)) return { changed };
+
+  try {
+    for (const row of later) {
+      const next = applyEventChange(eventFields(row), change);
+      if (sameEvent(next, row)) continue;
+      await updateEvent(userId, row.id, next);
+      changed += 1;
+    }
+  } catch (error) {
+    throw partialFailure(error, changed);
+  }
+  return { changed };
 }
 
 /**

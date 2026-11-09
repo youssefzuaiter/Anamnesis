@@ -7,6 +7,7 @@ import { requireUserId } from "@/lib/session";
 import { type ApiResponse, ok, fail, toApiResponse } from "@/lib/api-response";
 import * as taskService from "@/services/task-service";
 import { NOT_A_TIME, epochMs } from "@/lib/epoch-ms";
+import { parseScope, type SeriesSaved } from "@/lib/series-edit";
 import { TASK_PRIORITIES, TASK_STATUSES, type TaskStatus } from "@/lib/domain";
 import {
   RECURRENCE_FREQUENCIES,
@@ -153,9 +154,9 @@ function revalidateTaskViews(taskId?: string) {
 }
 
 export async function createTaskAction(
-  _prevState: ApiResponse<null> | null,
+  _prevState: ApiResponse<SeriesSaved | null> | null,
   formData: FormData,
-): Promise<ApiResponse<null>> {
+): Promise<ApiResponse<SeriesSaved | null>> {
   const parsed = parseForm(formData);
   if (!parsed.success) return fail("VALIDATION_ERROR", firstIssue(parsed.error));
 
@@ -183,9 +184,9 @@ export async function createTaskAction(
 
 export async function updateTaskAction(
   taskId: string,
-  _prevState: ApiResponse<null> | null,
+  _prevState: ApiResponse<SeriesSaved | null> | null,
   formData: FormData,
-): Promise<ApiResponse<null>> {
+): Promise<ApiResponse<SeriesSaved | null>> {
   const parsed = parseForm(formData);
   if (!parsed.success) return fail("VALIDATION_ERROR", firstIssue(parsed.error));
 
@@ -206,27 +207,40 @@ export async function updateTaskAction(
     goalId,
   } = parsed.data;
 
+  const input = {
+    title,
+    description,
+    priority,
+    tags,
+    courseId,
+    goalId,
+    dueDate,
+    estimatedMinutes,
+    projectId,
+    scheduledStart,
+    scheduledEnd,
+  };
+  // "This and later occurrences" is a scope, not a list: the server finds the rows from the task's own series.
+  const scope = parseScope(formData.get("applyTo"));
+
+  let saved: SeriesSaved;
   try {
     const userId = await requireUserId();
-    await taskService.updateTask(userId, taskId, {
-      title,
-      description,
-      priority,
-      tags,
-      courseId,
-      goalId,
-      dueDate,
-      estimatedMinutes,
-      projectId,
-      scheduledStart,
-      scheduledEnd,
-    });
+    if (scope === "future") {
+      const { changed } = await taskService.updateTaskSeriesFrom(userId, taskId, input);
+      saved = { changed, scope };
+    } else {
+      await taskService.updateTask(userId, taskId, input);
+      saved = { changed: 1, scope };
+    }
   } catch (error) {
     return toApiResponse(error);
   }
 
   revalidateTaskViews(taskId);
-  return ok(null);
+  // The other occurrences' own pages show what was just changed.
+  if (scope === "future") revalidatePath("/tasks/[id]", "page");
+  return ok(saved);
 }
 
 export async function setTaskStatusAction(formData: FormData): Promise<void> {

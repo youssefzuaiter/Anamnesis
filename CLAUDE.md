@@ -338,8 +338,9 @@ clamps a monthly step to the last real day of a short month (Jan 31 → Feb 28,
 not an overflow into March) since `Date.setMonth` on the 31st of a 30-day
 target rolls forward otherwise.
 
-Recurrence is offered only on the create form, never on edit — editing one
-occurrence never turns it into, or updates, a series. "Delete this and future
+Repeating is chosen only on the create form: editing an occurrence never turns a one-off
+into a series or changes the pattern. An edit can be carried to the later occurrences, see
+"Editing this and later occurrences". "Delete this and future
 occurrences" (`deleteEventSeriesFrom` / `deleteTaskSeriesFrom`) removes this
 row and every later one sharing its `recurrenceId`, keeping earlier ones as
 history, and loops the existing single-delete path per row rather than a raw
@@ -2734,6 +2735,92 @@ gone task, one change at a time, the keyboard, a tray drop and the month's 09:00
 and an empty day, an alert not carried over, the phone in light and dark, and 18 with a real mouse: moving, crossing columns,
 both edges, midnight, the 15-minute floor, a press, Escape, a lost release, a cancelled pointer, scrolling while held, a touch, a
 locked event, a failed save, no flash, one at a time, outside the grid, and a second tray drop).
+
+## Editing this and later occurrences
+
+On an event or task that is one occurrence of a repeating series and has later ones, the edit form asks **Apply changes to: Only
+this occurrence | This and N later occurrences** (ROADMAP item 17, tagged *M, migration?*). It is not tagged *demo*, so it was built
+from the plan (`docs/superpowers/plans/2026-11-09-edit-series.md`) and looked at in the browser. The forks were decided by a council
+that I ran inline, not by independent subagents, so it is weaker than four separate voices. **No migration and no new dependency.**
+
+- **No migration, because a series stays what it is.** Real rows sharing a `recurrenceId`, no stored rule. "Later" is the rows whose
+  start (events) or due date (tasks) is at or after this one's, this row excluded: the rule delete-this-and-future already used. A
+  stored rule that re-expands a series would need a column; that is not built.
+- **Only what changed is copied, and the server works it out.** `lib/series-edit.ts` compares the stored row with the submitted form
+  (`diffEvent`, `diffTask`) and `applyEventChange` / `applyTaskChange` put only the differing fields on a later row. A later occurrence
+  someone edited on its own (a different room) keeps that value when only the title changed. The browser sends the occurrence id, the
+  form and a scope, never a list of rows or what changed. An empty description or location is the same as none (the form posts `''`
+  and the action stores null), so an untouched field is never a change.
+- **What is copied.** Events: title, description, location, project, **time of day** (the new start's minutes after local midnight,
+  set on each row's own date) and **length**. Tasks: title, description, priority, tags, estimate, project, course, goal. **Dates are never
+  copied** (an event's day, a task's due date), nor a task's time block, status or checklist. Fork considered: also shift later dates by the
+  same number of days, so a series could move to another weekday. Rejected for now: it needs rules for monthly clamping, daylight saving
+  and a task's block. **Cost accepted:** moving a series to another weekday means deleting this and later and making a new series.
+- **Scope.** By date, so earlier occurrences are history and are never touched. A trashed task, an imported event and another account's
+  row that shares the series id are never touched (the queries filter on `userId`, `deletedAt` and `subscriptionId`). A later task that is
+  already done is changed and stays done. An occurrence with no later ones, a one-off and a series task with no due date are saved as only
+  themselves. Rows are found from this row's **old** date, so moving it past the later ones loses none. A row with the same start as this one
+  counts as later (the same rule as delete).
+- **The result is said, from the server.** The actions return `{ changed, scope }` and the form says "Saved.", or how many later occurrences
+  got the change, or "No later occurrence needed changing (dates are not copied)", so a date-only edit is not a silent no-op. `changed`
+  counts rows actually written, this one included; a later row that already has the value is not rewritten.
+- **Not atomic, and it says so.** This row is written first (its range and ownership checks come before any write), then each later row
+  through the existing `updateEvent` / `patchTask` (re-index, progress), one after another. If a later row cannot be saved the run stops, the
+  rows before it stay changed, and the refusal says what was saved ("... This occurrence and 1 later occurrence were saved, but the rest were
+  not."), with its own code kept. A database failure part-way becomes `INTEGRATION_ERROR` with the same sentence and is logged, not shown.
+- **The write is the picked fields.** `updateEvent` writes whatever keys it is given, so a later event is passed as exactly six fields
+  (`eventFields`); a row spread into it would write its own `id`, `userId` and `updatedAt` back (a mutant that did survived until a test
+  asserted `updatedAt` moves).
+- **The choice** (`components/series-choice.tsx`, a `fieldset` with a legend, radios in 44px labels, described by the sentence that says what
+  is copied and what stays) is shown only for a series with later occurrences. The scope is read by `parseScope`: exactly `"future"`, anything
+  else is this occurrence. **After any save, a refused one included, React resets the form, so the radio goes back to "Only this
+  occurrence"** (so does every other field: measured; the existing forms already did this, and it works in the safe direction).
+
+**Measured, on this machine.**
+- *Security, by replaying the real update actions by their `Next-Action` id from a captured form:* 38 probes, signed in, each compared against
+  a snapshot of every row of both accounts. A forged scope ("FUTURE", "future ", empty, "all", missing) changes only this row. **The occurrence id
+  is sent in the clear in the form (Next does not encrypt `bind` arguments), so it is client input:** another account's event or task id, one that
+  shares the series id, a uuid that does not exist, a non-uuid and my own trashed task all gave `RESOURCE_NOT_FOUND` and changed nothing. Another
+  account's project, course or goal is refused with nothing written to any row; an end before the start and a 100,000-character title are refused;
+  extra fields (`userId`, `recurrenceId`, `subscriptionId`, `id`, `status`, `completedAt`, `deletedAt`) are ignored; a forged due date on this task
+  does not move a later one; years 0000 and 9999 do not crash. Another account's row, an imported event and an earlier row sharing the series id
+  were byte for byte unchanged (`updatedAt` included) in every probe. Signed out (a context proven signed out first: `GET /calendar` gave 307 to
+  `/login`), the action answered `AUTH_REQUIRED` and changed nothing.
+- *Cost at the cap, Ollama off:* a series of 52, through the real page, a new title for this and 51 later: events 329 ms, tasks 837 ms. Through the
+  services, 52 tasks renamed 343 ms and moved to another project 518 ms (each later task recalculates both projects' progress). **With Ollama
+  running every row is re-embedded one after another; not measured** (predicted 1.5 to 4 s from the 30 to 75 ms an embed took in earlier work).
+
+**What testing, the look and the reviews turned up.**
+- *The plan's "validate before the first write" mutant cannot be seen through bad input:* every later write validates itself, so the order only
+  shows when a later row fails after this one passed. Two "not atomic" tests pin that. Other mutants that survived the first run and
+  asked for tests: a one-off with another one-off after it (an unguarded query matches every row with a null series id), a task that already has
+  the value, and a later row's `updatedAt`.
+- *A harness race in my own replay:* the capture returned when the request was sent, so my restore raced the real save and the first control read
+  `changed=1`. Waiting for the response fixed the script, not the app.
+- *The edit form pins a due date to local end of day on every save*, so a task seeded at 23:59:00 looked changed by the save; the fixtures use
+  23:59:59.999. That is old behaviour.
+- *Looking:* a red Next "1 Issue" badge in the first task screenshot was the screenshot racing hydration (no console error or warning on
+  any hydrated page, series task, one-off and event).
+- *The review (inline, at the highest effort, 11 findings; 4 fixed, the fourth being these docs):* a part-way failure was not announced although the plan
+  said it would be; an empty description compared unequal to null and would have cleared later descriptions; the "what is copied" sentence was not
+  tied to the options for a screen reader. Skipped with reasons below: per-row progress recalculation, a re-read per later task, the untested
+  revalidation of other occurrences' pages, the repeated event and task function shape, the "(dates are not copied)" wording and the same-start rule.
+
+**Tests.** 21 unit tests (`series-edit`: each field of both diffs, a day-only move, time of day and length, a later row's own date and length,
+the two clock-change days in Europe/London, hostile scope values, the messages), 23 integration tests (`series-edit`: every field, the earlier
+rows, another account's row, an imported event, the trash, a one-off, the last occurrence, bad input writing nothing, counts, the old date, two
+part-way failures, progress after a project move) and 11 browser tests (`series-edit.spec.ts`: a location and a time on later rows' own dates,
+the default, an individually edited row, no choice on the last occurrence or a one-off, a date-only change, a series made with Repeat weekly, an
+end before the start, a task series with a done and a trashed occurrence, the phone in light and dark). 67 mutants were checked and killed.
+
+**Not done / known limits:** changing the repeat pattern or the count; shifting a series to another day; copying a task's time block; an undo;
+offering it from the calendar grid (a drag still moves one occurrence); a refused save loses the typed edits and the scope (old behaviour of these
+forms); the form can still edit an imported event (the next sync puts it back; an imported event has no series id, so "this and later" changes only
+it); the revalidation of the other occurrences' own pages after a "this and later" save has no test (it needs a client-side navigation between two
+occurrence pages, which do not link to each other). **Not verified:** Ollama running; a real touch device; a screen reader (only the accessible name
+and description were read, by Playwright); Firefox and Safari. **Not run locally:** the rest of the browser suite beyond the neighbours of the two
+detail pages, the `evals` job and the container rehearsal; CI runs them. One `pnpm build` was run before the review fixes and none after (`tsc`,
+`pnpm lint`, unit, integration and the browser spec ran).
 
 ## Auth and route protection
 
