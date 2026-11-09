@@ -136,6 +136,30 @@ export function measuresShown(input: {
   };
 }
 
+/**
+ * The line under the By course list: what each shown measure came to, side by side. Two measures get
+ * the reminder that they are different things; one does not need it. Nothing shown, nothing said.
+ */
+export function totalsSentence(input: {
+  range: StudyRange;
+  shown: { writing: boolean; timer: boolean };
+  writing: Measure;
+  timer: Measure;
+}): string {
+  const parts: string[] = [];
+  if (input.shown.writing) {
+    parts.push(`writing ${formatDuration(input.writing.seconds)} across ${sessionsLabel(input.writing.sessions)}`);
+  }
+  if (input.shown.timer) {
+    parts.push(`timer ${formatDuration(input.timer.seconds)} across ${sessionsLabel(input.timer.sessions)}`);
+  }
+  if (parts.length === 0) return "";
+
+  const lead = input.range === "all" ? "Over everything recorded:" : `In these ${input.range} days:`;
+  const reminder = parts.length === 2 ? " They measure different things, so they are not added together." : "";
+  return `${lead} ${parts.join(", ")}.${reminder}`;
+}
+
 export type RecentEntry = {
   kind: "writing" | "timer";
   id: string;

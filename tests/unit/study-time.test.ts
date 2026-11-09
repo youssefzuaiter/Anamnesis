@@ -12,6 +12,7 @@ import {
   rangeHeading,
   rangeStart,
   sessionsLabel,
+  totalsSentence,
   unsavedTimerSeconds,
   type Grouped,
   type RecentEntry,
@@ -215,4 +216,25 @@ test("unsaved timer seconds never count a second twice", () => {
   }
   assert.equal(left(0, 0, 0), 0);
   assert.equal(left(-10, 0, 0), 0);
+});
+
+test("the totals sentence names each shown measure, never adds them, and says so only when there are two", () => {
+  const writing = { seconds: 9 * 3600 + 40 * 60, sessions: 30 };
+  const timer = { seconds: 13 * 3600 + 20 * 60, sessions: 32 };
+  const both = { writing: true, timer: true };
+  assert.equal(
+    totalsSentence({ range: "28", shown: both, writing, timer }),
+    "In these 28 days: writing 9 h 40 m across 30 sessions, timer 13 h 20 m across 32 sessions. They measure different things, so they are not added together.",
+  );
+  assert.ok(totalsSentence({ range: "7", shown: both, writing, timer }).startsWith("In these 7 days: writing"));
+  assert.ok(totalsSentence({ range: "all", shown: both, writing, timer }).startsWith("Over everything recorded: writing"));
+  assert.equal(
+    totalsSentence({ range: "28", shown: { writing: true, timer: false }, writing, timer }),
+    "In these 28 days: writing 9 h 40 m across 30 sessions.",
+  );
+  assert.equal(
+    totalsSentence({ range: "28", shown: { writing: false, timer: true }, writing, timer: { seconds: 1800, sessions: 1 } }),
+    "In these 28 days: timer 30 m across 1 session.",
+  );
+  assert.equal(totalsSentence({ range: "28", shown: { writing: false, timer: false }, writing, timer }), "");
 });

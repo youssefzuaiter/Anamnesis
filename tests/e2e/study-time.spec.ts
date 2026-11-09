@@ -70,3 +70,96 @@ test("the course switch waits for tracking, each switch sticks, and turning trac
   await tracking(page).check();
   await expect(includeCourse(page)).not.toBeChecked();
 });
+
+/** Makes a course through the form and returns its id (read from the address of its page). */
+async function makeCourse(page: Page, code: string): Promise<string> {
+  await page.goto("/courses");
+  await page.fill('input[name="code"]', code);
+  await page.fill('input[name="title"]', `Title of ${code}`);
+  await main(page).getByRole("button", { name: /add course/i }).click();
+  await main(page).getByRole("link").filter({ hasText: code }).first().click();
+  await page.waitForURL(/\/courses\/[0-9a-f-]{36}$/);
+  return page.url().split("/").pop()!;
+}
+
+const seedFlags = (tracking: boolean, course: boolean, timerOn: boolean) =>
+  sql(
+    `INSERT INTO "UserProfile" (id, "userId", "focusTrackingEnabled", "focusIncludeCourse", "timerSessionsEnabled")
+     VALUES (gen_random_uuid()::text, ${ME}, $1, $2, $3)
+     ON CONFLICT ("userId") DO UPDATE SET "focusTrackingEnabled" = $1, "focusIncludeCourse" = $2, "timerSessionsEnabled" = $3`,
+    [tracking, course, timerOn],
+  );
+
+const seedWriting = (courseId: string | null, seconds: number) =>
+  sql(
+    `INSERT INTO "FocusTelemetry" (id, "userId", "courseId", "sessionDuration", "typingSpeedWpm", "cognitiveLoad", "recordedAt")
+     VALUES (gen_random_uuid()::text, ${ME}, $1, $2, 30, 'light', now() - interval '1 day')`,
+    [courseId, seconds],
+  );
+
+const seedTimer = (courseId: string | null, seconds: number) =>
+  sql(
+    `INSERT INTO "StudySession" (id, "userId", "courseId", seconds, "recordedAt")
+     VALUES (gen_random_uuid()::text, ${ME}, $1, $2, now() - interval '1 day')`,
+    [courseId, seconds],
+  );
+
+test("Focus lists recorded time by course, with the two measures side by side and a range that survives garbage", async ({ page }) => {
+  const code = `STD ${Date.now() % 100000}`;
+  const courseId = await makeCourse(page, code);
+  await seedFlags(true, true, true);
+  await seedWriting(courseId, 1500);
+  await seedWriting(courseId, 600);
+  await seedWriting(null, 120);
+  await seedTimer(courseId, 3000);
+
+  await page.goto("/focus");
+  const byCourse = main(page).getByRole("region", { name: /By course/ });
+  await expect(byCourse).toContainText("last 28 days");
+  const row = byCourse.getByRole("listitem").filter({ hasText: code });
+  await expect(row).toContainText("Writing");
+  await expect(row).toContainText("35 m");
+  await expect(row).toContainText("2 sessions");
+  await expect(row).toContainText("Timer");
+  await expect(row).toContainText("50 m");
+  await expect(row).toContainText("1 session");
+  await expect(row.getByRole("link", { name: new RegExp(code) })).toHaveAttribute("href", `/courses/${courseId}`);
+  await expect(byCourse.getByRole("listitem").filter({ hasText: "No course" })).toContainText("2 m");
+  await expect(byCourse).toContainText("They measure different things, so they are not added together.");
+  await expect(byCourse.getByRole("link", { name: "28 days" })).toHaveAttribute("aria-current", "true");
+
+  await byCourse.getByRole("link", { name: "7 days" }).click();
+  await expect(page).toHaveURL(/range=7$/);
+  await expect(main(page).getByRole("region", { name: /By course/ })).toContainText("last 7 days");
+
+  await page.goto("/focus?range=abc");
+  await expect(main(page).getByRole("region", { name: /By course/ })).toContainText("last 28 days");
+  await page.goto("/focus?range=7&range=all");
+  await expect(main(page).getByRole("region", { name: /By course/ })).toContainText("last 28 days");
+});
+
+test("the course page shows the same time, and no card at all when nothing is recorded or being recorded", async ({ page }) => {
+  const code = `STC ${Date.now() % 100000}`;
+  const courseId = await makeCourse(page, code);
+  const card = () => main(page).getByRole("region", { name: "Time on this course" });
+
+  await page.goto(`/courses/${courseId}`);
+  await expect(card()).toHaveCount(0);
+
+  await seedFlags(true, true, true);
+  await page.reload();
+  await expect(card()).toContainText("Nothing recorded for this course in the last 28 days.");
+
+  await seedWriting(courseId, 1500);
+  await seedTimer(courseId, 3000);
+  await page.reload();
+  await expect(card()).toContainText("Last 28 days");
+  await expect(card()).toContainText("25 m");
+  await expect(card()).toContainText("50 m");
+  await expect(card().getByRole("link", { name: "Every course, side by side" })).toHaveAttribute("href", "/focus#by-course");
+
+  // Switched off, the history stays and so does the card.
+  await seedFlags(false, false, false);
+  await page.reload();
+  await expect(card()).toContainText("25 m");
+});

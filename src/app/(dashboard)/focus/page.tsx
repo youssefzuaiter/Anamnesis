@@ -1,8 +1,9 @@
 import { requireUserId } from "@/lib/session";
-import { listSessions } from "@/repositories/focus-repository";
-import { getSettings } from "@/services/focus-service";
-import { summarise, type CognitiveLoad } from "@/lib/focus";
+import { getStudyTime } from "@/services/focus-service";
+import { parseRange } from "@/lib/study-time";
+import type { CognitiveLoad } from "@/lib/focus";
 import { FocusSettings } from "@/components/focus-settings";
+import { StudyByCourse } from "@/components/study-by-course";
 
 export const metadata = { title: "Focus · Anamnesis" };
 
@@ -29,80 +30,87 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default async function FocusPage() {
+export default async function FocusPage({ searchParams }: PageProps<"/focus">) {
   const userId = await requireUserId();
-  const [sessions, settings] = await Promise.all([
-    listSessions(userId),
-    getSettings(userId),
-  ]);
-  const enabled = settings.tracking;
+  const params = await searchParams;
+  // The range is a query string, so it is only ever one of three known values.
+  const view = await getStudyTime(userId, parseRange(params.range), new Date());
 
-  const summary = summarise(sessions);
+  const codeOf = new Map(view.courses.map((course) => [course.id, course.code]));
+  const { stats } = view;
 
   return (
     <div className="mx-auto max-w-3xl">
       <header className="mb-5">
         <h1 className="text-2xl font-semibold tracking-tight text-text">Focus</h1>
         <p className="mt-1 text-sm text-text-muted">
-          How long your writing sessions run, and how quickly you write.
+          How long your writing and timer sessions run, and which course the time went to.
         </p>
       </header>
 
-      <FocusSettings settings={settings} hasHistory={sessions.length > 0} />
+      <FocusSettings settings={view.settings} hasHistory={view.hasHistory} />
 
-      {sessions.length === 0 ? (
-        <p className="mt-6 rounded-xl border border-dashed border-border-strong px-4 py-10 text-center text-sm text-text-muted">
-          {enabled
-            ? "Nothing recorded yet. Write a note for a minute or so and it will appear here."
-            : "Recording is off, so nothing has been collected."}
-        </p>
-      ) : (
-        <>
-          <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="Sessions" value={String(summary.sessions)} />
-            <Stat label="Minutes written" value={String(summary.totalMinutes)} />
-            <Stat label="Average WPM" value={String(summary.averageWpm)} />
-            <Stat label="Longest session" value={`${summary.longestMinutes}m`} />
-          </section>
+      {stats.sessions > 0 && (
+        <section aria-label="Writing summary" className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Stat label="Writing sessions" value={String(stats.sessions)} />
+          <Stat label="Minutes written" value={String(stats.totalMinutes)} />
+          <Stat label="Average WPM" value={String(stats.averageWpm)} />
+          <Stat label="Longest session" value={`${stats.longestMinutes}m`} />
+        </section>
+      )}
 
-          <section className="mt-6">
-            <h2 className="mb-2 text-xs font-semibold text-text-faint">
-              Recent sessions · {sessions.length}
-            </h2>
-            <ul className="flex flex-col gap-2">
-              {sessions.map((session) => (
+      <StudyByCourse view={view} />
+
+      {view.recent.length > 0 && (
+        <section className="mt-7">
+          <h2 className="mb-2 text-xs font-semibold text-text-faint">
+            Recent sessions · {view.recent.length}
+          </h2>
+          <ul className="flex flex-col gap-2">
+            {view.recent.map((entry) => {
+              const code = entry.courseId ? codeOf.get(entry.courseId) : undefined;
+              return (
                 <li
-                  key={session.id}
-                  className="flex items-center gap-3 rounded-xl border border-border-subtle bg-surface px-4 py-2.5 text-sm"
+                  key={`${entry.kind}-${entry.id}`}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border-subtle bg-surface px-4 py-2.5 text-sm"
                 >
-                  <span className="w-40 shrink-0 text-xs text-text-faint">
-                    {WHEN.format(session.recordedAt)}
+                  <span className="w-36 shrink-0 text-xs text-text-faint">
+                    {WHEN.format(entry.at)}
+                  </span>
+                  <span className="w-12 shrink-0 text-xs text-text-muted">
+                    {entry.kind === "writing" ? "Writing" : "Timer"}
                   </span>
                   <span className="tabular-nums text-text">
-                    {Math.max(1, Math.round(session.sessionDuration / 60))}m
+                    {Math.max(1, Math.round(entry.seconds / 60))}m
                   </span>
-                  <span className="tabular-nums text-text-muted">
-                    {session.typingSpeedWpm} wpm
-                  </span>
-                  <span
-                    className={`ml-auto text-xs ${
-                      LOAD_STYLE[session.cognitiveLoad as CognitiveLoad] ??
-                      "text-text-muted"
-                    }`}
-                  >
-                    {session.cognitiveLoad}
-                  </span>
+                  {code && <span className="font-mono text-[13px] text-accent-ink">{code}</span>}
+                  {entry.kind === "writing" && (
+                    <span className="ml-auto text-xs text-text-muted">
+                      <span className="tabular-nums">{entry.wpm} wpm</span>
+                      {" · "}
+                      <span
+                        className={
+                          LOAD_STYLE[entry.load as CognitiveLoad] ?? "text-text-muted"
+                        }
+                      >
+                        {entry.load}
+                      </span>
+                    </span>
+                  )}
                 </li>
-              ))}
-            </ul>
-          </section>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
-          <p className="mt-5 text-xs text-text-faint">
-            The session label is a rough heuristic over two crude signals — how
-            long you wrote and how fast you typed. It is an observation about the
-            session, not a measure of you, and nothing in Anamnesis acts on it.
-          </p>
-        </>
+      {view.hasHistory && (
+        <p className="mt-5 max-w-prose text-xs text-text-faint">
+          The session label is a rough heuristic over two crude signals — how long you
+          wrote and how fast you typed. It is an observation about the session, not a
+          measure of you, and nothing in Anamnesis acts on it. A timer session is only how
+          long the clock ran.
+        </p>
       )}
     </div>
   );
