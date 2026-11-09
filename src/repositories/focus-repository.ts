@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import type { FocusTelemetryModel as FocusTelemetry } from "@/generated/prisma/models";
+import type { FocusTelemetryModel as FocusTelemetry, StudySessionModel as StudySession } from "@/generated/prisma/models";
+import type { Grouped } from "@/lib/study-time";
 
 /** The three switches, each its own consent and each off until the person turns it on. */
 export type FocusSwitches = { tracking: boolean; includeCourse: boolean; timer: boolean };
@@ -106,6 +107,65 @@ export async function listSessions(
     orderBy: { recordedAt: "desc" },
     take,
   });
+}
+
+type Window = { since: Date | null; courseId?: string };
+
+const inWindow = (userId: string, { since, courseId }: Window) => ({
+  userId,
+  ...(since ? { recordedAt: { gte: since } } : {}),
+  ...(courseId ? { courseId } : {}),
+});
+
+/** Writing time recorded since `since` (null: ever), summed per course, in the database. */
+export async function groupWritingByCourse(userId: string, window: Window): Promise<Grouped[]> {
+  const rows = await prisma.focusTelemetry.groupBy({
+    by: ["courseId"],
+    where: inWindow(userId, window),
+    _sum: { sessionDuration: true },
+    _count: { _all: true },
+  });
+  return rows.map((row) => ({
+    courseId: row.courseId,
+    seconds: row._sum.sessionDuration ?? 0,
+    sessions: row._count._all,
+  }));
+}
+
+/** The same for timer sessions. */
+export async function groupTimerByCourse(userId: string, window: Window): Promise<Grouped[]> {
+  const rows = await prisma.studySession.groupBy({
+    by: ["courseId"],
+    where: inWindow(userId, window),
+    _sum: { seconds: true },
+    _count: { _all: true },
+  });
+  return rows.map((row) => ({
+    courseId: row.courseId,
+    seconds: row._sum.seconds ?? 0,
+    sessions: row._count._all,
+  }));
+}
+
+export async function listTimerSessions(userId: string, take = 30): Promise<StudySession[]> {
+  return prisma.studySession.findMany({
+    where: { userId },
+    orderBy: [{ recordedAt: "desc" }, { id: "asc" }],
+    take,
+  });
+}
+
+/** How many sessions of each kind exist, ever, optionally for one course. */
+export async function countSessions(
+  userId: string,
+  courseId?: string,
+): Promise<{ writing: number; timer: number }> {
+  const where = { userId, ...(courseId ? { courseId } : {}) };
+  const [writing, timer] = await Promise.all([
+    prisma.focusTelemetry.count({ where }),
+    prisma.studySession.count({ where }),
+  ]);
+  return { writing, timer };
 }
 
 /** Both kinds, in one transaction, so a failure part-way cannot leave half a history behind. */

@@ -221,3 +221,155 @@ test("deleting a course keeps its sessions as no course", async () => {
   assert.deepEqual((await written(user.id)).map((row) => row.courseId), [null]);
   assert.deepEqual((await timed(user.id)).map((row) => row.courseId), [null]);
 });
+
+// --- Reading it back ----------------------------------------------------------------------------------
+
+const NOW = new Date("2026-11-09T12:00:00.000Z");
+const DAY = 86_400_000;
+const ago = (days: number, extraMs = 0) => new Date(NOW.getTime() - days * DAY - extraMs);
+const writeAt = (userId: string, at: Date, seconds: number, courseId: string | null = null) =>
+  prisma.focusTelemetry.create({ data: { userId, courseId, sessionDuration: seconds, typingSpeedWpm: 30, cognitiveLoad: "light", recordedAt: at } });
+const timeAt = (userId: string, at: Date, seconds: number, courseId: string | null = null) =>
+  prisma.studySession.create({ data: { userId, courseId, seconds, recordedAt: at } });
+
+test("an account with nothing recorded reads back empty, with no NaN anywhere", async () => {
+  const user = await newUser();
+  const view = await focus.getStudyTime(user.id, "28", NOW);
+  assert.deepEqual(view.lines, []);
+  assert.equal(view.scaleSeconds, 0);
+  assert.deepEqual([view.writing, view.timer], [{ seconds: 0, sessions: 0 }, { seconds: 0, sessions: 0 }]);
+  assert.deepEqual(view.recent, []);
+  assert.deepEqual(view.shown, { writing: false, timer: false });
+  assert.equal(view.hasHistory, false);
+  assert.equal(view.courseHint, false);
+  assert.deepEqual([view.stats.sessions, view.stats.totalMinutes, view.stats.averageWpm, view.stats.longestMinutes], [0, 0, 0, 0]);
+  assert.equal(view.range, "28");
+});
+
+test("time is grouped by course, a trashed course folds into no course, and restoring it brings the time back", async () => {
+  const user = await newUser();
+  const cs = await makeCourse(user.id, "CS 301");
+  const eng = await makeCourse(user.id, "ENG 102");
+  const old = await makeCourse(user.id, "OLD 1", { deletedAt: new Date() });
+  await writeAt(user.id, ago(1), 600, cs.id);
+  await writeAt(user.id, ago(2), 300, cs.id);
+  await writeAt(user.id, ago(3), 120, old.id);
+  await writeAt(user.id, ago(4), 60, null);
+  await timeAt(user.id, ago(1), 1500, cs.id);
+  await timeAt(user.id, ago(2), 900, eng.id);
+  await timeAt(user.id, ago(3), 300, old.id);
+
+  const view = await focus.getStudyTime(user.id, "28", NOW);
+  assert.deepEqual(view.lines.map((l) => l.code), ["CS 301", "ENG 102", null]);
+  const [csLine, engLine, noCourse] = view.lines;
+  assert.deepEqual([csLine.writing, csLine.timer], [{ seconds: 900, sessions: 2 }, { seconds: 1500, sessions: 1 }]);
+  assert.deepEqual([engLine.writing, engLine.timer], [{ seconds: 0, sessions: 0 }, { seconds: 900, sessions: 1 }]);
+  assert.deepEqual([noCourse.writing, noCourse.timer], [{ seconds: 180, sessions: 2 }, { seconds: 300, sessions: 1 }]);
+  assert.deepEqual(view.writing, { seconds: 1080, sessions: 4 }, "the totals are the table sums, nothing lost to the trash");
+  assert.deepEqual(view.timer, { seconds: 2700, sessions: 3 });
+  assert.equal(view.scaleSeconds, 1500);
+
+  await prisma.course.update({ where: { id: old.id }, data: { deletedAt: null } });
+  const restored = await focus.getStudyTime(user.id, "28", NOW);
+  assert.deepEqual(restored.lines.map((l) => l.code), ["CS 301", "ENG 102", "OLD 1", null]);
+  assert.deepEqual(restored.lines[2].writing, { seconds: 120, sessions: 1 });
+  assert.deepEqual(restored.writing, view.writing);
+});
+
+test("the window includes its first instant and excludes the one before, for each range", async () => {
+  const user = await newUser();
+  const course = await makeCourse(user.id, "CS 301");
+  await writeAt(user.id, ago(28), 100, course.id);
+  await writeAt(user.id, ago(28, 1), 1000, course.id);
+  await writeAt(user.id, ago(7), 10, course.id);
+  await writeAt(user.id, ago(7, 1), 20, course.id);
+  await writeAt(user.id, ago(400), 5, course.id);
+  await timeAt(user.id, ago(28), 200, course.id);
+  await timeAt(user.id, ago(28, 1), 2000, course.id);
+
+  const seconds = async (range: "7" | "28" | "all") => {
+    const view = await focus.getStudyTime(user.id, range, NOW);
+    return [view.writing.seconds, view.timer.seconds];
+  };
+  assert.deepEqual(await seconds("28"), [100 + 10 + 20, 200]);
+  assert.deepEqual(await seconds("7"), [10, 0]);
+  assert.deepEqual(await seconds("all"), [100 + 1000 + 10 + 20 + 5, 200 + 2000]);
+});
+
+test("another account's time never appears, in the lines, the totals or the recent list", async () => {
+  const mine = await newUser();
+  const theirs = await newUser();
+  const course = await makeCourse(theirs.id, "THEIRS 1");
+  await writeAt(theirs.id, ago(1), 9999, course.id);
+  await timeAt(theirs.id, ago(1), 8888, course.id);
+  const view = await focus.getStudyTime(mine.id, "all", NOW);
+  assert.deepEqual([view.lines, view.recent, view.hasHistory], [[], [], false]);
+  assert.deepEqual([view.writing.seconds, view.timer.seconds], [0, 0]);
+  const card = await focus.getCourseStudyTime(mine.id, course.id, NOW);
+  assert.deepEqual([card.writing.seconds, card.timer.seconds, card.visible], [0, 0, false]);
+});
+
+test("a measure with its switch off still shows while it has history, and not otherwise", async () => {
+  const user = await newUser();
+  await writeAt(user.id, ago(1), 100);
+  assert.deepEqual((await focus.getStudyTime(user.id, "28", NOW)).shown, { writing: true, timer: false });
+  await timeAt(user.id, ago(400), 100);
+  assert.deepEqual((await focus.getStudyTime(user.id, "7", NOW)).shown, { writing: true, timer: true }, "history is all time, not just the window");
+  await focus.setTracking(user.id, true);
+  await focus.setTimerSessions(user.id, true);
+  assert.equal((await focus.getStudyTime(user.id, "28", NOW)).hasHistory, true);
+  const fresh = await newUser();
+  await focus.setTracking(fresh.id, true);
+  assert.deepEqual((await focus.getStudyTime(fresh.id, "28", NOW)).shown, { writing: true, timer: false });
+});
+
+test("the hint appears only when writing is recorded without a course and sits under no course", async () => {
+  const user = await newUser();
+  await focus.setTracking(user.id, true);
+  assert.equal((await focus.getStudyTime(user.id, "28", NOW)).courseHint, false, "nothing recorded yet");
+  await writeAt(user.id, ago(1), 100);
+  assert.equal((await focus.getStudyTime(user.id, "28", NOW)).courseHint, true);
+  await focus.setIncludeCourse(user.id, true);
+  assert.equal((await focus.getStudyTime(user.id, "28", NOW)).courseHint, false, "the course is being kept now");
+  const off = await newUser();
+  await writeAt(off.id, ago(1), 100);
+  assert.equal((await focus.getStudyTime(off.id, "28", NOW)).courseHint, false, "tracking off: nothing to suggest");
+});
+
+test("recent sessions mix both kinds, newest first, thirty at most, and timer entries carry no typing figures", async () => {
+  const user = await newUser();
+  const course = await makeCourse(user.id, "CS 301");
+  for (let i = 0; i < 20; i++) await writeAt(user.id, new Date(NOW.getTime() - (2 * i) * 60_000), 100 + i, course.id);
+  for (let i = 0; i < 20; i++) await timeAt(user.id, new Date(NOW.getTime() - (2 * i + 1) * 60_000), 200 + i, course.id);
+  const view = await focus.getStudyTime(user.id, "28", NOW);
+  assert.equal(view.recent.length, 30);
+  assert.deepEqual(view.recent.slice(0, 4).map((e) => e.kind), ["writing", "timer", "writing", "timer"]);
+  assert.ok(view.recent.every((e, i, all) => i === 0 || all[i - 1].at.getTime() >= e.at.getTime()));
+  const timerEntry = view.recent.find((e) => e.kind === "timer")!;
+  assert.deepEqual([timerEntry.wpm, timerEntry.load, timerEntry.courseId], [null, null, course.id]);
+  const writingEntry = view.recent.find((e) => e.kind === "writing")!;
+  assert.deepEqual([writingEntry.wpm, writingEntry.load], [30, "light"]);
+  assert.equal(view.stats.sessions, 20, "the typing figures come from writing sessions only");
+});
+
+test("the course card reads one course over 28 days, and is hidden only when it would say nothing at all", async () => {
+  const user = await newUser();
+  const cs = await makeCourse(user.id, "CS 301");
+  const eng = await makeCourse(user.id, "ENG 102");
+  await writeAt(user.id, ago(1), 600, cs.id);
+  await writeAt(user.id, ago(40), 6000, cs.id);
+  await writeAt(user.id, ago(1), 77, eng.id);
+  await timeAt(user.id, ago(2), 1500, cs.id);
+
+  const card = await focus.getCourseStudyTime(user.id, cs.id, NOW);
+  assert.deepEqual([card.writing, card.timer], [{ seconds: 600, sessions: 1 }, { seconds: 1500, sessions: 1 }]);
+  assert.equal(card.visible, true, "it has history for this course");
+  assert.deepEqual(card.shown, { writing: true, timer: true });
+
+  const empty = await makeCourse(user.id, "NONE 1");
+  const quiet = await focus.getCourseStudyTime(user.id, empty.id, NOW);
+  assert.deepEqual([quiet.writing.seconds, quiet.timer.seconds, quiet.visible], [0, 0, false], "both switches off, nothing for this course");
+  await focus.setTimerSessions(user.id, true);
+  assert.equal((await focus.getCourseStudyTime(user.id, empty.id, NOW)).visible, true, "a switch is on: say that nothing is recorded yet");
+  assert.deepEqual((await focus.getCourseStudyTime(user.id, empty.id, NOW)).shown, { writing: false, timer: true });
+});

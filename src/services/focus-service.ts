@@ -1,8 +1,20 @@
 import "server-only";
 import { AppError } from "@/lib/api-response";
-import { classifyLoad, MIN_SESSION_SECONDS } from "@/lib/focus";
+import { classifyLoad, MIN_SESSION_SECONDS, summarise, type FocusSummary } from "@/lib/focus";
+import {
+  buildCourseLines,
+  measuresShown,
+  mergeRecent,
+  rangeStart,
+  type CourseLine,
+  type Grouped,
+  type Measure,
+  type RecentEntry,
+  type StudyRange,
+} from "@/lib/study-time";
 import * as focusRepository from "@/repositories/focus-repository";
 import type { FocusSwitches } from "@/repositories/focus-repository";
+import { listCourseOptions } from "@/repositories/course-repository";
 
 export type { FocusSwitches };
 
@@ -94,4 +106,125 @@ export async function recordTimerSession(
 
 export function clearHistory(userId: string): Promise<number> {
   return focusRepository.deleteAllSessions(userId);
+}
+
+// --- Reading it back ----------------------------------------------------------------------------------
+
+const RECENT = 30;
+
+const total = (rows: Grouped[]): Measure =>
+  rows.reduce(
+    (sum, row) => ({ seconds: sum.seconds + row.seconds, sessions: sum.sessions + row.sessions }),
+    { seconds: 0, sessions: 0 },
+  );
+
+export type StudyTimeView = {
+  settings: FocusSwitches;
+  range: StudyRange;
+  lines: CourseLine[];
+  scaleSeconds: number;
+  writing: Measure;
+  timer: Measure;
+  shown: { writing: boolean; timer: boolean };
+  recent: RecentEntry[];
+  courses: { id: string; code: string; title: string }[];
+  stats: FocusSummary;
+  hasHistory: boolean;
+  courseHint: boolean;
+};
+
+/**
+ * Everything the Focus page shows: the switches, time per course over a window, the newest sessions
+ * and the typing figures. Totals are the table sums, so a course in the trash moves its time to "No
+ * course" and nothing is lost.
+ */
+export async function getStudyTime(userId: string, range: StudyRange, now: Date): Promise<StudyTimeView> {
+  const window = { since: rangeStart(range, now) };
+  const [settings, courses, writingRows, timerRows, writingRecent, timerRecent, counts] = await Promise.all([
+    focusRepository.getSettings(userId),
+    listCourseOptions(userId),
+    focusRepository.groupWritingByCourse(userId, window),
+    focusRepository.groupTimerByCourse(userId, window),
+    focusRepository.listSessions(userId, RECENT),
+    focusRepository.listTimerSessions(userId, RECENT),
+    focusRepository.countSessions(userId),
+  ]);
+
+  const { lines, scaleSeconds } = buildCourseLines(courses, writingRows, timerRows);
+  const noCourse = lines.find((line) => line.courseId === null);
+
+  return {
+    settings,
+    range,
+    lines,
+    scaleSeconds,
+    writing: total(writingRows),
+    timer: total(timerRows),
+    shown: measuresShown({
+      writingOn: settings.tracking,
+      timerOn: settings.timer,
+      writingSessions: counts.writing,
+      timerSessions: counts.timer,
+    }),
+    recent: mergeRecent(
+      writingRecent.map((row) => ({
+        kind: "writing" as const,
+        id: row.id,
+        at: row.recordedAt,
+        seconds: row.sessionDuration,
+        courseId: row.courseId,
+        wpm: row.typingSpeedWpm,
+        load: row.cognitiveLoad,
+      })),
+      timerRecent.map((row) => ({
+        kind: "timer" as const,
+        id: row.id,
+        at: row.recordedAt,
+        seconds: row.seconds,
+        courseId: row.courseId,
+        wpm: null,
+        load: null,
+      })),
+      RECENT,
+    ),
+    courses,
+    stats: summarise(writingRecent),
+    hasHistory: counts.writing + counts.timer > 0,
+    // Writing is being kept but not its course, so it all sits under "No course": say how to split it.
+    courseHint: settings.tracking && !settings.includeCourse && (noCourse?.writing.sessions ?? 0) > 0,
+  };
+}
+
+export type CourseStudyTime = {
+  settings: FocusSwitches;
+  writing: Measure;
+  timer: Measure;
+  shown: { writing: boolean; timer: boolean };
+  visible: boolean;
+};
+
+/** What the course page's card shows: this course over the last 28 days. */
+export async function getCourseStudyTime(userId: string, courseId: string, now: Date): Promise<CourseStudyTime> {
+  const window = { since: rangeStart("28", now), courseId };
+  const [settings, writingRows, timerRows, counts] = await Promise.all([
+    focusRepository.getSettings(userId),
+    focusRepository.groupWritingByCourse(userId, window),
+    focusRepository.groupTimerByCourse(userId, window),
+    focusRepository.countSessions(userId, courseId),
+  ]);
+
+  return {
+    settings,
+    writing: total(writingRows),
+    timer: total(timerRows),
+    shown: measuresShown({
+      writingOn: settings.tracking,
+      timerOn: settings.timer,
+      writingSessions: counts.writing,
+      timerSessions: counts.timer,
+    }),
+    // A card that would say nothing and ask for nothing is not drawn: only while something is being
+    // recorded, or there is something recorded for this course, does it appear.
+    visible: settings.tracking || settings.timer || counts.writing + counts.timer > 0,
+  };
 }
