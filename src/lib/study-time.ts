@@ -155,8 +155,8 @@ export function mergeRecent(writing: RecentEntry[], timer: RecentEntry[], take: 
 }
 
 /**
- * The seconds a timer has run that have not been saved yet: what ran (`total − remaining`, with
- * `remaining` kept inside the timer) minus what an earlier save already took. Saving this and then
+ * The seconds a timer has run that have not been saved yet: what ran (`total − remaining`) minus
+ * what an earlier save already took. Saving this and then
  * remembering it as `savedSeconds` is what stops a finish followed by a reset from counting twice.
  */
 export function unsavedTimerSeconds(input: {
@@ -168,7 +168,7 @@ export function unsavedTimerSeconds(input: {
   if (![totalSeconds, remainingSeconds, savedSeconds].every(Number.isFinite) || totalSeconds <= 0) {
     return 0;
   }
-  const remaining = Math.min(Math.max(remainingSeconds, 0), totalSeconds);
-  const ran = Math.floor(totalSeconds - remaining);
+  // A remaining time above the total cannot make a negative run: the last `max` turns it into zero.
+  const ran = Math.floor(totalSeconds - Math.max(remainingSeconds, 0));
   return Math.max(0, ran - Math.floor(Math.max(savedSeconds, 0)));
 }
