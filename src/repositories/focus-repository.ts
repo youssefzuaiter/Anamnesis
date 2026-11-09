@@ -18,10 +18,6 @@ export async function getSettings(userId: string): Promise<FocusSwitches> {
   };
 }
 
-export async function isTrackingEnabled(userId: string): Promise<boolean> {
-  return (await getSettings(userId)).tracking;
-}
-
 export async function setFlags(
   userId: string,
   patch: {

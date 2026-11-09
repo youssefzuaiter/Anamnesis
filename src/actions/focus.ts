@@ -1,28 +1,16 @@
 "use server";
 
-import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireUserId } from "@/lib/session";
 import { type ApiResponse, ok, fail, toApiResponse } from "@/lib/api-response";
-import { MAX_SESSION_SECONDS } from "@/lib/focus";
+import { switchSchema, timerSessionSchema, writingSessionSchema } from "@/lib/focus-input";
 import * as focusService from "@/services/focus-service";
 import type { FocusSwitches } from "@/services/focus-service";
-
-const sessionSchema = z.object({
-  // Clamped rather than unbounded: these numbers come from a browser timer and
-  // a keystroke counter, both of which a client could report as anything.
-  activeSeconds: z.coerce.number().int().min(0).max(MAX_SESSION_SECONDS),
-  charactersTyped: z.coerce.number().int().min(0).max(1_000_000),
-  typingSpeedWpm: z.coerce.number().int().min(0).max(400),
-  // The note's course, as the browser saw it. The server keeps it only if the person switched the
-  // course on and the course is theirs.
-  courseId: z.uuid().nullish(),
-});
 
 export async function recordFocusSessionAction(
   raw: unknown,
 ): Promise<ApiResponse<null>> {
-  const parsed = sessionSchema.safeParse(raw);
+  const parsed = writingSessionSchema.safeParse(raw);
   if (!parsed.success) return fail("VALIDATION_ERROR", "Invalid session.");
 
   try {
@@ -35,15 +23,10 @@ export async function recordFocusSessionAction(
   }
 }
 
-const timerSchema = z.object({
-  taskId: z.uuid(),
-  seconds: z.coerce.number().int().min(0).max(MAX_SESSION_SECONDS),
-});
-
 export async function recordTimerSessionAction(
   raw: unknown,
 ): Promise<ApiResponse<{ saved: boolean; seconds: number; courseCode: string | null }>> {
-  const parsed = timerSchema.safeParse(raw);
+  const parsed = timerSessionSchema.safeParse(raw);
   if (!parsed.success) return fail("VALIDATION_ERROR", "Invalid session.");
 
   try {
@@ -60,7 +43,7 @@ async function changeSwitch(
   enabled: unknown,
   change: (userId: string, enabled: boolean) => Promise<FocusSwitches>,
 ): Promise<ApiResponse<FocusSwitches>> {
-  const parsed = z.boolean().safeParse(enabled);
+  const parsed = switchSchema.safeParse(enabled);
   if (!parsed.success) return fail("VALIDATION_ERROR", "Invalid setting.");
 
   try {

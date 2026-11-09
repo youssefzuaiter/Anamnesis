@@ -56,6 +56,9 @@ export default async function FocusPage({ searchParams }: PageProps<"/focus">) {
           <Stat label="Minutes written" value={String(stats.totalMinutes)} />
           <Stat label="Average WPM" value={String(stats.averageWpm)} />
           <Stat label="Longest session" value={`${stats.longestMinutes}m`} />
+          <p className="col-span-full text-xs text-text-faint">
+            From your most recent writing sessions, at most 30, whatever range is chosen below.
+          </p>
         </section>
       )}
 

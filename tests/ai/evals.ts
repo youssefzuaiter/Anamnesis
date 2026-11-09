@@ -1664,7 +1664,7 @@ async function main() {
     try {
       check(
         "tracking is off for a new account",
-        (await focusRepository.isTrackingEnabled(focusUser.id)) === false,
+        (await focusRepository.getSettings(focusUser.id)).tracking === false,
       );
       check(
         "it is off even with no profile row at all",
@@ -1674,7 +1674,7 @@ async function main() {
       await focusService.setTracking(focusUser.id, true);
       check(
         "enabling creates the profile row and sticks",
-        (await focusRepository.isTrackingEnabled(focusUser.id)) === true,
+        (await focusRepository.getSettings(focusUser.id)).tracking === true,
       );
 
       await focusRepository.recordSession(focusUser.id, {
@@ -1691,7 +1691,7 @@ async function main() {
       await focusService.setTracking(focusUser.id, false);
       check(
         "disabling sticks",
-        (await focusRepository.isTrackingEnabled(focusUser.id)) === false,
+        (await focusRepository.getSettings(focusUser.id)).tracking === false,
       );
       check(
         "disabling keeps what was already recorded",

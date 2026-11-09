@@ -23,7 +23,7 @@ export function FocusTracker({
   selector: string;
   /** Whether the person asked for the course to be kept. The server checks this too; this only avoids sending it. */
   includeCourse: boolean;
-  /** The note form's course `<select>`: its value when the session ends is the course the note is under. */
+  /** The course `<select>` in the same form as the text being written: its value when the session ends is the note's course. */
   courseSelector?: string;
 }) {
   const activeMs = useRef(0);
@@ -38,7 +38,7 @@ export function FocusTracker({
     // torn down and the field is gone from the document, but the detached field still has its value.
     const courseField =
       includeCourse && courseSelector
-        ? document.querySelector<HTMLSelectElement>(courseSelector)
+        ? (element.closest("form") ?? document).querySelector<HTMLSelectElement>(courseSelector)
         : null;
 
     function settle(now: number) {
