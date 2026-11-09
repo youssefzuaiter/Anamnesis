@@ -49,6 +49,11 @@ test("the course switch cannot be turned on while tracking is off, and says why"
   await focus.setTracking(user.id, true);
   assert.deepEqual(await focus.setIncludeCourse(user.id, true), { tracking: true, includeCourse: true, timer: false });
   assert.deepEqual(await focus.setIncludeCourse(user.id, false), { tracking: true, includeCourse: false, timer: false });
+  // The same when a profile row already exists (the timer switch makes one) and tracking is off in it.
+  const withProfile = await newUser();
+  await focus.setTimerSessions(withProfile.id, true);
+  await assert.rejects(() => focus.setIncludeCourse(withProfile.id, true), refused("FORBIDDEN", "Turn on Record focus sessions first."));
+  assert.deepEqual(await focus.getSettings(withProfile.id), { tracking: false, includeCourse: false, timer: true });
   // Turning something off is always allowed.
   const other = await newUser();
   assert.deepEqual(await focus.setIncludeCourse(other.id, false), { tracking: false, includeCourse: false, timer: false });
