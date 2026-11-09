@@ -156,7 +156,7 @@ export function StudyTimer({
   }
 
   return (
-    <section className="rounded-xl border border-border-subtle bg-surface p-4">
+    <section aria-label="Study timer" className="rounded-xl border border-border-subtle bg-surface p-4">
       <div className="flex flex-wrap items-center gap-3">
         <span className="font-mono text-2xl tabular-nums text-text">
           {format(remaining)}

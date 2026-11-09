@@ -163,3 +163,121 @@ test("the course page shows the same time, and no card at all when nothing is re
   await page.reload();
   await expect(card()).toContainText("25 m");
 });
+
+// --- The writing and timer paths, end to end ----------------------------------------------------------
+
+const rows = <T,>(table: string, columns: string) =>
+  sql<T>(`SELECT ${columns} FROM "${table}" WHERE "userId" IN ${ME} ORDER BY "recordedAt"`);
+
+/** Writes in a new note under `courseId`: a key, forty seconds of the clock, another key, then saves (which leaves the page). */
+async function writeForFortySeconds(page: Page, courseId: string, title: string) {
+  await page.clock.install({ time: new Date() });
+  await page.goto("/notes/new");
+  await main(page).getByLabel("Course", { exact: true }).selectOption(courseId);
+  await page.fill('input[name="title"]', title);
+  const body = page.locator('textarea[name="content"]');
+  await body.click();
+  await page.keyboard.type("a");
+  await page.clock.fastForward(40_000);
+  await page.keyboard.type("b");
+  await main(page).getByRole("button", { name: "Create note" }).click();
+  await page.waitForURL(/\/notes\/[0-9a-f-]{36}$/);
+}
+
+test("a note written with the course switch on is recorded under its course", async ({ page }) => {
+  const courseId = await makeCourse(page, `STW ${Date.now() % 100000}`);
+  await seedFlags(true, true, false);
+  await writeForFortySeconds(page, courseId, `Written ${Date.now()}`);
+
+  await expect
+    .poll(async () => (await rows<{ courseId: string | null; sessionDuration: number }>("FocusTelemetry", `"courseId", "sessionDuration"`)).length)
+    .toBe(1);
+  const [row] = await rows<{ courseId: string | null; sessionDuration: number }>("FocusTelemetry", `"courseId", "sessionDuration"`);
+  expect(row.courseId).toBe(courseId);
+  expect(row.sessionDuration).toBeGreaterThanOrEqual(40);
+  expect(row.sessionDuration).toBeLessThan(50);
+});
+
+test("with the course switch off the same note is recorded without its course", async ({ page }) => {
+  const courseId = await makeCourse(page, `STN ${Date.now() % 100000}`);
+  await seedFlags(true, false, false);
+  await writeForFortySeconds(page, courseId, `Written ${Date.now()}`);
+
+  await expect
+    .poll(async () => (await rows("FocusTelemetry", `"courseId"`)).length)
+    .toBe(1);
+  const [row] = await rows<{ courseId: string | null }>("FocusTelemetry", `"courseId"`);
+  expect(row.courseId).toBeNull();
+});
+
+/** Makes a task in a course through the form and opens it. */
+async function makeTaskIn(page: Page, courseId: string, title: string) {
+  await page.goto("/tasks");
+  await page.fill('input[name="title"]', title);
+  await page.locator('select[name="courseId"]').first().selectOption(courseId);
+  await main(page).getByRole("button", { name: /add task|create task/i }).click();
+  await main(page).getByRole("link", { name: title }).first().click();
+  await page.waitForURL(/\/tasks\/[0-9a-f-]{36}$/);
+}
+
+const clock = (page: Page) => main(page).getByRole("region", { name: "Study timer" });
+const timerSessions = () => rows<{ courseId: string | null; seconds: number }>("StudySession", `"courseId", seconds`);
+
+test("a remembered timer saves once when it finishes, and a reset afterwards adds nothing", async ({ page }) => {
+  const code = `STT ${Date.now() % 100000}`;
+  const courseId = await makeCourse(page, code);
+  await seedFlags(false, false, true);
+  await makeTaskIn(page, courseId, `Timed ${Date.now()}`);
+
+  await page.clock.install({ time: new Date() });
+  await page.reload();
+  await expect(clock(page)).toContainText(`Remembered under ${code}`);
+  await clock(page).getByRole("button", { name: "Start" }).click();
+  await page.clock.fastForward("26:00");
+
+  await expect(clock(page).getByRole("status").filter({ hasText: "Done" })).toContainText(`Saved 25 min under ${code}.`);
+  await expect.poll(async () => (await timerSessions()).length).toBe(1);
+  expect((await timerSessions())[0]).toEqual({ courseId, seconds: 1500 });
+
+  await clock(page).getByRole("button", { name: "Reset" }).click();
+  await clock(page).getByRole("button", { name: "Start" }).click();
+  await clock(page).getByRole("button", { name: "Pause" }).click();
+  await page.waitForTimeout(500);
+  expect(await timerSessions()).toHaveLength(1);
+});
+
+test("a timer reset part way saves what ran, once", async ({ page }) => {
+  const code = `STP ${Date.now() % 100000}`;
+  const courseId = await makeCourse(page, code);
+  await seedFlags(false, false, true);
+  await makeTaskIn(page, courseId, `Part ${Date.now()}`);
+
+  await page.clock.install({ time: new Date() });
+  await page.reload();
+  await clock(page).getByRole("button", { name: "Start" }).click();
+  await page.clock.fastForward("10:00");
+  await clock(page).getByRole("button", { name: "Pause" }).click();
+  await clock(page).getByRole("button", { name: "50m" }).click();
+
+  await expect(clock(page).getByRole("status")).toContainText(`Saved 10 min under ${code}.`);
+  await expect.poll(async () => (await timerSessions()).length).toBe(1);
+  const [row] = await timerSessions();
+  expect(row.courseId).toBe(courseId);
+  expect(row.seconds).toBeGreaterThanOrEqual(599);
+  expect(row.seconds).toBeLessThanOrEqual(601);
+});
+
+test("with remembering off the timer says so and stores nothing", async ({ page }) => {
+  const courseId = await makeCourse(page, `STO ${Date.now() % 100000}`);
+  await makeTaskIn(page, courseId, `Off ${Date.now()}`);
+
+  await page.clock.install({ time: new Date() });
+  await page.reload();
+  await expect(clock(page)).toContainText("Not remembered. This is just a clock.");
+  await expect(clock(page).getByRole("link", { name: "Focus page" })).toHaveAttribute("href", "/focus");
+  await clock(page).getByRole("button", { name: "Start" }).click();
+  await page.clock.fastForward("26:00");
+  await expect(clock(page).getByRole("status").filter({ hasText: "Done" })).not.toContainText("Saved");
+  await page.waitForTimeout(500);
+  expect(await timerSessions()).toHaveLength(0);
+});
