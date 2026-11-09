@@ -74,7 +74,7 @@ export default async function FocusPage({ searchParams }: PageProps<"/focus">) {
                   key={`${entry.kind}-${entry.id}`}
                   className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border-subtle bg-surface px-4 py-2.5 text-sm"
                 >
-                  <span className="w-36 shrink-0 text-xs text-text-faint">
+                  <span className="w-full shrink-0 text-xs text-text-faint sm:w-36">
                     {WHEN.format(entry.at)}
                   </span>
                   <span className="w-12 shrink-0 text-xs text-text-muted">
