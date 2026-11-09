@@ -1808,8 +1808,10 @@ the user's data on a settings change is worse than keeping it.
 an observation about a session, never as a claim about the person, and nothing
 in the app reads it back or acts on it. Keep it that way.
 
-`UserProfile.focusTrackingEnabled` is the one column added beyond the spec's
-schema; the spec had nowhere to record consent.
+`UserProfile.focusTrackingEnabled` was the first column added beyond the spec's
+schema; the spec had nowhere to record consent. Item 18 added two more switches
+and a course link (see "Study time per course"): this section's rules, off by
+default and enforced on the server, hold for each of them.
 
 ### Tool calling: the model proposes, it never acts
 
@@ -2821,6 +2823,83 @@ occurrence pages, which do not link to each other). **Not verified:** Ollama run
 and description were read, by Playwright); Firefox and Safari. **Not run locally:** the rest of the browser suite beyond the neighbours of the two
 detail pages, the `evals` job and the container rehearsal; CI runs them. One `pnpm build` was run before the review fixes and none after (`tsc`,
 `pnpm lint`, unit, integration and the browser spec ran).
+
+## Study time per course
+
+Recorded time per course, shown as an observation (ROADMAP item 18, tagged *S to M, demo*). It was shown first as a Design canvas
+(<https://claude.ai/artifact/JNFH84a4wGRRCpKqXL8K33>: light, dark, phone) and built after the owner's "yes", from the plan
+`docs/superpowers/plans/2026-11-09-study-time.md`. The forks were decided inline against the demo, not by a council.
+
+- **The roadmap's premise was false.** It said "from the existing timer and opt-in focus data". The timer wrote nothing, on purpose
+  (recording sitting time as typing would make the focus figures mean something else), and `FocusTelemetry` had no note or course link and
+  was only fed from the note editor. Nothing existing could be grouped by course, so the item needed new data.
+- **Two measures, never added.** *Writing* is `FocusTelemetry` with a nullable `courseId`. *Timer* is a new table, `StudySession`
+  (`userId`, `courseId`, `seconds`, `recordedAt`: no task id, no title, so a row says how long and for which course, never what on). The
+  page shows them side by side with the sentence "They measure different things, so they are not added together". The alternative
+  considered and not built: derive time from planned task blocks. It needs no migration, but it measures what was planned, not what
+  happened, and does not use the data the roadmap names.
+- **Three switches, each its own consent, all off by default, all enforced in `services/focus-service.ts`** (the actions only parse,
+  find the session's account and delegate, so the rules are tested without a session): *Record focus sessions* (existing, unchanged
+  meaning: duration and typing speed), *Include the course* (nested, new) and *Remember timer sessions* (new). **Why a third switch
+  instead of widening the old one:** the owner chose to re-ask at the demo. Storing the course is a new thing; a person who ticked the
+  old box agreed to duration and speed. Turning tracking off also turns the course off, and turning the course on while tracking is off is
+  refused (one `updateMany ... where focusTrackingEnabled`, so a race cannot leave it on).
+- **The browser is never trusted for a course.** Writing: the note form's course `<select>` (read from the form the text is in, as an
+  element, because the page is already torn down when a save leaves it) is sent as `courseId`, and kept only if both switches are on and
+  the course is the caller's; a foreign or unknown id is stored as no course and the call answers exactly as if none had been sent.
+  Timer: the browser sends a **task id** and the server finds the task's own course (the task must be the caller's and not in the trash;
+  a foreign, trashed and unknown task all get the same `RESOURCE_NOT_FOUND`, and the off switch answers before the task is looked at,
+  so a refusal never says whether a task exists). A task whose course is in the trash is still remembered, without naming the course.
+- **An observation, not a claim.** Courses are listed by code (numbers inside a code compared as numbers), never ranked by time; "No
+  course" is last; there are no targets, trends or good/bad colours; the lead sentence says the numbers leave out everything done
+  elsewhere and say nothing about how well it went. Windows are rolling (now minus 7 or 28 × 24 h, or all), so there is no time zone
+  question; the range is a query string and only the three exact values are believed (`?range=abc`, `?range=7&range=28` give 28). Bars
+  share one scale, are `aria-hidden`, and sit beside the numbers they draw. A course in the trash or deleted folds into "No course" in every
+  total (totals reconcile) and comes back on restore; sessions recorded before the release have no course and stay under "No course".
+- **Where.** `/focus`: the three switches, the writing stats (they describe the latest 30 writing sessions whatever the range, and a line
+  says so), **By course** with 7 days / 28 days / All recorded, recent sessions of both kinds, and the existing footnote extended. The
+  course page: a "Time on this course" card under the summary strip, absent when no switch is on and nothing was ever recorded for the
+  course. A measure shows while its switch is on and afterwards while there is history, so turning a switch off never hides what was kept.
+- **The timer saves what ran, once.** On finish, on reset (and a change of length), and on `pagehide`/unmount, never on a tab switch.
+  `savedSecondsRef` remembers how much of the run was saved and `unsavedTimerSeconds` (pure, unit tested) is what is left, so finish
+  followed by reset, or pause followed by leave, never counts a second twice; the share is claimed before the request and given back if
+  it fails. Under 30 s is dropped. The timer region has an accessible name, "Study timer".
+- **Migration `20261109120000_study_time`, additive and hand-written** (`prisma migrate diff` against the database is empty after it):
+  two `UserProfile` booleans default false, a nullable `FocusTelemetry.courseId` (FK, `ON DELETE SET NULL`), the `StudySession` table
+  (index on `userId, recordedAt`, both FKs). The previous release keeps working: nothing is dropped or renamed and every new column is
+  nullable or defaulted. The JSON export carries `studySessions` and the new columns (`EXPORTED_MODELS` is 19 entries; the guards in
+  `export-shape.test.ts` and `export.test.ts` caught the model until it was listed); delete-all removes both kinds in one transaction.
+
+**Measured.** *Security review (replaying the real actions with only the sign-in stubbed):* with no session all six actions answer
+`AUTH_REQUIRED` and write nothing; with a switch off they answer `FORBIDDEN`; forged input (another account's course and task, a random
+uuid, non-uuids, SQL in an id, an object as an id, 5 h, negative, `NaN`, 99,999,999 s, 1500.5 s, the string `"true"` as a switch, a smuggled
+`userId` and `courseId`) is rejected or stored as no course, never as someone else's; the other account's rows and switches were untouched
+and no row of the caller pointed at the other account's course. *Cost:* `getStudyTime` at 40,000 sessions and 51 courses took 14 to 36 ms.
+*Mutants:* about 120 were applied, in the pure maths, the service, the repository, the read side, the totals sentence, the action schemas and the
+timer's saving (through the browser tests); every one was killed after a few added tests (the survivors showed the profile-row case, a
+timer-only history, the newest thirty timer sessions and the 28 day card window), and one was equivalent (a clamp the final `max` made
+redundant) and removed from the code.
+*Looking* (Playwright screenshots of a seeded throwaway account, desktop and 375 px, light and dark): the Focus page, the course card and the
+timer matched the demo. One thing found and fixed: recent-session rows wrapped unevenly on a phone, so the date now has its own line.
+*The review (inline, at the highest effort, 8 findings; 4 fixed, 2 recorded here, 2 accepted):* the action schemas had no committed test
+(now in `lib/focus-input.ts` with 5 tests, 18 mutants killed); the course `<select>` was found document-wide (now the tracker's own form);
+the stats row said nothing about ignoring the range (a line now says so); this section was missing and the focus section above was stale.
+
+**Tests.** 15 unit (`study-time`: ranges and a window across clock changes, durations, folding, ordering, bars, which measures show,
+merging, the totals sentence, the timer's unsaved seconds), 5 unit (`focus-input`: every bound of both schemas), 26 integration
+(`study-time`: the switches, each rule of both recorders, foreign and trashed ids, the window edges, trash folding and restore, the hint, the
+recent list, the card, delete-all, a deleted course) and 8 browser tests (`study-time.spec.ts`: the switches, By course and the range,
+the card and its absence, a note written with and without the course switch, a timer that finishes, one reset part way, one that is not
+remembered; `page.clock` drove the 40 s of writing and the 26 minutes of timer). The export tests now cover `studySessions`.
+
+**Not done / known limits:** the last session before a tab is closed can be lost (the request is sent on `pagehide` without keep-alive, as
+the focus tracker already did); a refused timer save (the switch was turned off in another tab) says nothing and is retried on the next
+reset; the course is the form's value at the end of the session, including an unsaved change to it; sessions are still recorded against a
+course in the trash (they show under "No course" until it is restored); no per-day or per-week breakdown, no target, no export of the
+By course view on its own (the JSON export has the rows); no way to correct or delete one session (only all of them). **Not verified:**
+Ollama running (the evals use the focus API and were only type-checked); a real touch device; a screen reader; Firefox and Safari.
+**Not run locally:** the rest of the browser suite beyond this spec and the neighbours of the two pages (`task-checklist`, `gpa`,
+`exam-prep`), the `evals` job and the container rehearsal; CI runs them. One `pnpm build` ran after the last code change.
 
 ## Auth and route protection
 
