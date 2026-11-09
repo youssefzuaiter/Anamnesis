@@ -17,6 +17,7 @@ import { listGoalOptions } from "@/repositories/goal-repository";
 import { StudyTimer } from "@/components/study-timer";
 import { TaskChecklist } from "@/components/task-checklist";
 import { getChecklist } from "@/services/task-checklist-service";
+import { getSettings } from "@/services/focus-service";
 
 
 export const metadata = { title: "Task · Anamnesis" };
@@ -40,7 +41,7 @@ export default async function TaskPage({ params }: PageProps<"/tasks/[id]">) {
   const task = await getTask(userId, id);
   if (!task) notFound();
 
-  const [projects, courses, goals, checklist, later] = await Promise.all([
+  const [projects, courses, goals, checklist, later, focusSwitches] = await Promise.all([
     listProjectOptions(userId),
     listCourseOptions(userId),
     listGoalOptions(userId),
@@ -48,9 +49,11 @@ export default async function TaskPage({ params }: PageProps<"/tasks/[id]">) {
     task.recurrenceId && task.dueDate
       ? listLaterSeriesTasks(userId, task.recurrenceId, task.dueDate, task.id)
       : Promise.resolve([]),
+    getSettings(userId),
   ]);
 
   const done = task.status === "done";
+  const courseCode = courses.find((course) => course.id === task.courseId)?.code ?? null;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -94,7 +97,11 @@ export default async function TaskPage({ params }: PageProps<"/tasks/[id]">) {
       )}
 
       <div className="mb-4">
-        <StudyTimer taskTitle={task.title} />
+        <StudyTimer
+          taskId={task.id}
+          taskTitle={task.title}
+          remember={{ enabled: focusSwitches.timer, courseCode }}
+        />
       </div>
 
       <div className="mb-4">

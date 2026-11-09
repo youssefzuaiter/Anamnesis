@@ -8,7 +8,7 @@ import { listProjectOptions } from "@/repositories/project-repository";
 import { listCourseOptions } from "@/repositories/course-repository";
 import { scopeHref } from "@/lib/assistant-scope";
 import { quizHref } from "@/lib/quiz";
-import { isTrackingEnabled } from "@/repositories/focus-repository";
+import { getSettings } from "@/services/focus-service";
 import { FocusTracker } from "@/components/focus-tracker";
 import {
   getOutgoingLinks,
@@ -62,14 +62,14 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
   const note = await getNote(userId, id);
   if (!note) notFound();
 
-  const [projects, courses, outgoing, backlinks, titles, trackFocus, cards, attachments] =
+  const [projects, courses, outgoing, backlinks, titles, focusSwitches, cards, attachments] =
     await Promise.all([
       listProjectOptions(userId),
       listCourseOptions(userId),
       getOutgoingLinks(userId, note.id),
       getBacklinks(userId, note.id),
       Promise.resolve(parseWikiLinks(note.content)),
-      isTrackingEnabled(userId),
+      getSettings(userId),
       listForNote(userId, note.id),
       listAttachments(userId, note.id),
     ]);
@@ -184,7 +184,13 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
           }
         />
 
-        {trackFocus && <FocusTracker selector='textarea[name="content"]' />}
+        {focusSwitches.tracking && (
+          <FocusTracker
+            selector='textarea[name="content"]'
+            includeCourse={focusSwitches.includeCourse}
+            courseSelector='select[name="courseId"]'
+          />
+        )}
 
         <section className="mt-10 flex flex-col gap-3 border-t border-border-subtle pt-6">
           <GenerateCards noteId={note.id} existing={cards.length} />

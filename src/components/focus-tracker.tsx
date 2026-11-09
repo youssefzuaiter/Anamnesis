@@ -15,7 +15,17 @@ const IDLE_TIMEOUT_MS = 60_000;
  *
  * Rendered only when the user has switched tracking on.
  */
-export function FocusTracker({ selector }: { selector: string }) {
+export function FocusTracker({
+  selector,
+  includeCourse,
+  courseSelector,
+}: {
+  selector: string;
+  /** Whether the person asked for the course to be kept. The server checks this too; this only avoids sending it. */
+  includeCourse: boolean;
+  /** The note form's course `<select>`: its value when the session ends is the course the note is under. */
+  courseSelector?: string;
+}) {
   const activeMs = useRef(0);
   const characters = useRef(0);
   const lastKeyAt = useRef<number | null>(null);
@@ -24,6 +34,12 @@ export function FocusTracker({ selector }: { selector: string }) {
   useEffect(() => {
     const element = document.querySelector(selector);
     if (!element) return;
+    // Held as an element, not looked up again at the end: when the form is submitted the page is being
+    // torn down and the field is gone from the document, but the detached field still has its value.
+    const courseField =
+      includeCourse && courseSelector
+        ? document.querySelector<HTMLSelectElement>(courseSelector)
+        : null;
 
     function settle(now: number) {
       if (lastKeyAt.current === null) return;
@@ -53,10 +69,13 @@ export function FocusTracker({ selector }: { selector: string }) {
       flushed.current = true;
       const charactersTyped = characters.current;
 
+      const courseId = courseField?.value || undefined;
+
       void recordFocusSessionAction({
         activeSeconds,
         charactersTyped,
         typingSpeedWpm: wordsPerMinute(charactersTyped, activeSeconds),
+        ...(courseId ? { courseId } : {}),
       });
 
       activeMs.current = 0;
@@ -78,7 +97,7 @@ export function FocusTracker({ selector }: { selector: string }) {
       window.removeEventListener("pagehide", flush);
       flush();
     };
-  }, [selector]);
+  }, [selector, includeCourse, courseSelector]);
 
   return null;
 }

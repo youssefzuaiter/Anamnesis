@@ -1,5 +1,6 @@
 import { requireUserId } from "@/lib/session";
-import { listSessions, isTrackingEnabled } from "@/repositories/focus-repository";
+import { listSessions } from "@/repositories/focus-repository";
+import { getSettings } from "@/services/focus-service";
 import { summarise, type CognitiveLoad } from "@/lib/focus";
 import { FocusSettings } from "@/components/focus-settings";
 
@@ -30,10 +31,11 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 export default async function FocusPage() {
   const userId = await requireUserId();
-  const [sessions, enabled] = await Promise.all([
+  const [sessions, settings] = await Promise.all([
     listSessions(userId),
-    isTrackingEnabled(userId),
+    getSettings(userId),
   ]);
+  const enabled = settings.tracking;
 
   const summary = summarise(sessions);
 
@@ -46,7 +48,7 @@ export default async function FocusPage() {
         </p>
       </header>
 
-      <FocusSettings enabled={enabled} hasHistory={sessions.length > 0} />
+      <FocusSettings settings={settings} hasHistory={sessions.length > 0} />
 
       {sessions.length === 0 ? (
         <p className="mt-6 rounded-xl border border-dashed border-border-strong px-4 py-10 text-center text-sm text-text-muted">
