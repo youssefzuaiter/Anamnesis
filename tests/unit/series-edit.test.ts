@@ -103,6 +103,18 @@ test("text changes are copied and the times are left alone", () => {
   assert.equal(later.title, "ML lecture");
 });
 
+test("a description and a location are copied, a description can be cleared, and the other fields are left alone", () => {
+  const later = event(at(2026, 11, 23, 9), 45, { title: "Own title", projectId: "p1" });
+  const next = applyEventChange(later, { description: "Room changed", location: "Hall D" });
+  assert.equal(next.description, "Room changed");
+  assert.equal(next.location, "Hall D");
+  assert.equal(next.title, "Own title");
+  assert.equal(next.projectId, "p1");
+  const cleared = applyEventChange(later, { description: null, location: null });
+  assert.equal(cleared.description, null, "a change to nothing is a change");
+  assert.equal(cleared.location, null);
+});
+
 test("an empty change gives an equal event", () => {
   const later = event(at(2026, 11, 23, 9));
   assert.ok(sameEvent(applyEventChange(later, {}), later));
