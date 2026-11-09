@@ -91,7 +91,8 @@ async function populate(userId: string, label: string) {
     },
   });
   const link = await prisma.entityLink.create({ data: { userId, sourceType: "note", sourceId: note.id, targetType: "note", targetId: note.id } });
-  const telemetry = await prisma.focusTelemetry.create({ data: { userId, sessionDuration: 60, typingSpeedWpm: 40, cognitiveLoad: "low" } });
+  const telemetry = await prisma.focusTelemetry.create({ data: { userId, courseId: course.id, sessionDuration: 60, typingSpeedWpm: 40, cognitiveLoad: "low" } });
+  const studySession = await prisma.studySession.create({ data: { userId, courseId: course.id, seconds: 1500 } });
   const audit = await prisma.auditEvent.create({
     data: { userId, actorType: "USER", action: "NOTE_CREATED", entityType: "Note", entityId: note.id, metadata: { label } },
   });
@@ -100,10 +101,13 @@ async function populate(userId: string, label: string) {
     data: { userId, conversationId: conversation.id, role: "user", content: `Hello ${label}`, citations: [{ index: 1, title: `Cited ${label}` }] },
   });
   const profile = await prisma.userProfile.create({
-    data: { userId, university: `Uni ${label}`, program: "AI", studentId: "123", targetGpa: 3.25, gpaScale: [{ letter: "AA", points: 4 }] },
+    data: {
+      userId, university: `Uni ${label}`, program: "AI", studentId: "123", targetGpa: 3.25, gpaScale: [{ letter: "AA", points: 4 }],
+      focusTrackingEnabled: true, focusIncludeCourse: true, timerSessionsEnabled: true,
+    },
   });
   return {
-    ids: [goal, project, course, assessment, note, version, attachment, card, task, checklistItem, subscription, event, link, telemetry, audit, conversation, message, profile].map((row) => row.id),
+    ids: [goal, project, course, assessment, note, version, attachment, card, task, checklistItem, subscription, event, link, telemetry, studySession, audit, conversation, message, profile].map((row) => row.id),
     note, course, conversation,
   };
 }
@@ -142,6 +146,12 @@ test("every exported model arrives whole: every column, minus the stated omissio
   const profile = rowsOf(payload, "profile")[0];
   assert.equal(profile.targetGpa, 3.25, "the GPA target the old export dropped");
   assert.deepEqual(profile.gpaScale, [{ letter: "AA", points: 4 }]);
+  // The three focus switches are the person's own consent record: they travel with the data they govern.
+  assert.deepEqual([profile.focusTrackingEnabled, profile.focusIncludeCourse, profile.timerSessionsEnabled], [true, true, true]);
+  const [reading] = rowsOf(payload, "focusTelemetry");
+  const [timed] = rowsOf(payload, "studySessions");
+  assert.equal(reading.courseId, rowsOf(payload, "courses")[0].id, "a writing session keeps its course");
+  assert.deepEqual([timed.courseId, timed.seconds], [rowsOf(payload, "courses")[0].id, 1500]);
 });
 
 test("the file says what version it is and what it leaves out", async () => {
@@ -285,6 +295,7 @@ test("the streamed file is valid JSON and the same data as the in-memory one, at
   await prisma.flashcard.createMany({ data: Array.from({ length: 7 }, (_, i) => ({ userId: user.id, question: `Same time ${i}?`, answer: "a" })) });
   // The one table ordered by another column has the same hazard.
   await prisma.focusTelemetry.createMany({ data: Array.from({ length: 7 }, (_, i) => ({ userId: user.id, sessionDuration: 60 + i, typingSpeedWpm: 40, cognitiveLoad: "low" })) });
+  await prisma.studySession.createMany({ data: Array.from({ length: 7 }, (_, i) => ({ userId: user.id, seconds: 60 + i })) });
 
   const withoutTime = (file: Payload) => {
     const copy = { ...file };
@@ -403,7 +414,9 @@ test("a row deleted between two pages does not end its table early", async () =>
   const base = Date.parse("2026-11-03T10:00:00.000Z");
   const events: { id: string }[] = [];
   const readings: { id: string }[] = [];
+  const timed: { id: string }[] = [];
   for (let i = 0; i < 6; i++) {
+    timed.push(await prisma.studySession.create({ data: { userId: user.id, seconds: 60 + i, recordedAt: new Date(base + i * 1000) } }));
     events.push(await prisma.event.create({
       data: { userId: user.id, title: `E${i}`, startTime: new Date(base), endTime: new Date(base + 1000), createdAt: new Date(base + i * 1000) },
     }));
@@ -419,4 +432,7 @@ test("a row deleted between two pages does not end its table early", async () =>
   // The same for a table ordered by another column (focus telemetry is ordered by recordedAt).
   const withReadings = await streamDeletingAfterItIsSent(user.id, readings[1].id, () => prisma.focusTelemetry.delete({ where: { id: readings[1].id } }));
   assert.deepEqual(rowsOf(withReadings, "focusTelemetry").map((row) => row.id), readings.map((reading) => reading.id), "focus telemetry: every row, in order");
+
+  const withTimed = await streamDeletingAfterItIsSent(user.id, timed[1].id, () => prisma.studySession.delete({ where: { id: timed[1].id } }));
+  assert.deepEqual(rowsOf(withTimed, "studySessions").map((row) => row.id), timed.map((session) => session.id), "timer sessions: every row, in order");
 });

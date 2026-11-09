@@ -17,6 +17,7 @@ export const EXPORTED_MODELS: Readonly<Record<string, string>> = {
   Event: "events",
   EntityLink: "links",
   FocusTelemetry: "focusTelemetry",
+  StudySession: "studySessions",
   AuditEvent: "auditEvents",
   Course: "courses",
   Assessment: "assessments",
