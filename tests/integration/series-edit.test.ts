@@ -143,9 +143,13 @@ test("the last occurrence and a one-off are saved as only themselves", async () 
   assert.equal(after[3].title, "Last one");
   for (const i of [0, 1, 2]) assert.deepEqual(after[i], before[i]);
 
-  const oneOff = await eventService.createEvent(user.id, eventInput({ title: "Dentist" }));
+  // A one-off has no series id: another one-off later in the calendar is not "later in its series".
+  const oneOff = await eventService.createEvent(user.id, eventInput({ title: "Dentist", startTime: at(2, 9), endTime: at(2, 10) }));
+  const otherOneOff = await eventService.createEvent(user.id, eventInput({ title: "Haircut", startTime: at(3, 9), endTime: at(3, 10) }));
+  const otherBefore = await prisma.event.findUniqueOrThrow({ where: { id: otherOneOff.id } });
   assert.deepEqual(await eventService.updateEventSeriesFrom(user.id, oneOff.id, asEventInput(oneOff, { title: "Dentist, moved" })), { changed: 1 });
   assert.equal((await prisma.event.findUniqueOrThrow({ where: { id: oneOff.id } })).title, "Dentist, moved");
+  assert.deepEqual(await prisma.event.findUniqueOrThrow({ where: { id: otherOneOff.id } }), otherBefore);
 });
 
 test("another account's row, an imported event and an earlier occurrence that share the series id are never touched", async () => {
@@ -311,6 +315,16 @@ test("the count is of tasks that changed: a later task that already has the new 
   const saved = await taskService.updateTaskSeriesFrom(user.id, series[1].id, asTaskInput(series[1], { title: "Review the notes" }));
   assert.deepEqual(saved, { changed: 2 }, "this task and the fourth, not the third");
   assert.deepEqual(await prisma.task.findUniqueOrThrow({ where: { id: series[2].id } }), alreadyThere, "its updatedAt did not move: it was not written");
+});
+
+test("a one-off task is saved as only itself, and another one-off due later is not touched", async () => {
+  const user = await newUser();
+  const one = await taskService.createTask(user.id, taskInput({ title: "Hand in form", dueDate: at(2, 23, 59), scheduledStart: null, scheduledEnd: null }));
+  const other = await taskService.createTask(user.id, taskInput({ title: "Pay fees", dueDate: at(3, 23, 59), scheduledStart: null, scheduledEnd: null }));
+  const otherBefore = await prisma.task.findUniqueOrThrow({ where: { id: other.id } });
+  assert.deepEqual(await taskService.updateTaskSeriesFrom(user.id, one.id, asTaskInput(one, { title: "Hand in the form" })), { changed: 1 });
+  assert.equal((await prisma.task.findUniqueOrThrow({ where: { id: one.id } })).title, "Hand in the form");
+  assert.deepEqual(await prisma.task.findUniqueOrThrow({ where: { id: other.id } }), otherBefore);
 });
 
 test("a series task with no due date, and a change that changes nothing, are saved as only themselves", async () => {
