@@ -9,6 +9,7 @@ import { assertGoalOwned, recalculateGoalProgress } from "@/services/goal-servic
 import { generateOccurrences, type RecurrenceFrequency } from "@/lib/recurrence";
 import { bucketOf, type TaskBucket } from "@/lib/task-bucket";
 import { checkRange } from "@/lib/time-grid";
+import { applyTaskChange, diffTask, isEmptyChange, sameTask, type TaskFields } from "@/lib/series-edit";
 import { embeddableTextFor } from "@/services/embeddable-text";
 import type { TaskInput, TaskStatus, TaskPriority } from "@/repositories/task-repository";
 import type { TaskModel as Task } from "@/generated/prisma/models";
@@ -232,6 +233,52 @@ export async function createRecurringTasks(
     );
   }
   return tasks;
+}
+
+const taskFields = (task: TaskFields): TaskFields => ({
+  title: task.title,
+  description: task.description,
+  priority: task.priority,
+  tags: task.tags,
+  estimatedMinutes: task.estimatedMinutes,
+  projectId: task.projectId,
+  courseId: task.courseId,
+  goalId: task.goalId,
+});
+
+/**
+ * Saves this occurrence and carries what the person changed (title, description, priority, tags, estimate, project,
+ * course, goal) to every later occurrence of its series that is still live. Due dates, time blocks, status and
+ * checklists are never copied: each occurrence keeps its own. The later rows are worked out from this one's **old**
+ * due date; a task with no due date, or that is not in a series, saves just this row. This row is written first (its
+ * ownership checks come before any write), then each later row whose result differs, through `patchTask`, which
+ * recalculates progress. Not atomic. `changed` counts the rows actually written, this one included.
+ */
+export async function updateTaskSeriesFrom(
+  userId: string,
+  taskId: string,
+  input: TaskInput,
+): Promise<{ changed: number }> {
+  const before = await taskRepository.getTask(userId, taskId);
+  if (!before) throw new AppError("RESOURCE_NOT_FOUND", "That task no longer exists.");
+
+  const later =
+    before.recurrenceId && before.dueDate
+      ? await taskRepository.listLaterSeriesTasks(userId, before.recurrenceId, before.dueDate, before.id)
+      : [];
+  const change = diffTask(taskFields(before), taskFields(input));
+
+  await updateTask(userId, taskId, input);
+  let changed = 1;
+  if (isEmptyChange(change)) return { changed };
+
+  for (const row of later) {
+    const current = taskFields(row);
+    if (sameTask(applyTaskChange(current, change), current)) continue;
+    await patchTask(userId, row.id, change as Partial<TaskInput>);
+    changed += 1;
+  }
+  return { changed };
 }
 
 /** Deletes this occurrence and every later one in its series, keeping past ones as history. */

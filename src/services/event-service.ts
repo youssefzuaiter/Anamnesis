@@ -8,6 +8,7 @@ import { assertProjectOwned } from "@/services/project-service";
 import { generateOccurrences, type RecurrenceFrequency } from "@/lib/recurrence";
 import { embeddableTextFor } from "@/services/embeddable-text";
 import { checkRange } from "@/lib/time-grid";
+import { applyEventChange, diffEvent, isEmptyChange, sameEvent, type EventFields } from "@/lib/series-edit";
 import type { EventInput } from "@/repositories/event-repository";
 import type { EventModel as Event } from "@/generated/prisma/models";
 
@@ -75,6 +76,50 @@ export async function updateEvent(
   }
   await syncEventIndex(userId, event);
   return event;
+}
+
+const eventFields = (event: EventFields): EventFields => ({
+  title: event.title,
+  description: event.description,
+  location: event.location,
+  projectId: event.projectId,
+  startTime: event.startTime,
+  endTime: event.endTime,
+});
+
+/**
+ * Saves this occurrence and carries what the person changed to every later occurrence of its series. The later rows
+ * are worked out from this one's **old** start (so moving it past them does not lose any), this row is written first
+ * (its range and project are checked before anything is), and then each later row whose result differs is written
+ * through `updateEvent`, which re-indexes it. A row that is not part of a series, or has no later ones, or a change
+ * that is only a move to another day, saves just this row. Not atomic: a failure part-way leaves the earlier rows
+ * changed. `changed` counts the rows actually written, this one included.
+ */
+export async function updateEventSeriesFrom(
+  userId: string,
+  eventId: string,
+  input: EventInput,
+): Promise<{ changed: number }> {
+  const before = await eventRepository.getEvent(userId, eventId);
+  if (!before) throw new AppError("RESOURCE_NOT_FOUND", "That event no longer exists.");
+
+  const later = before.recurrenceId
+    ? await eventRepository.listLaterSeriesEvents(userId, before.recurrenceId, before.startTime, before.id)
+    : [];
+  const change = diffEvent(eventFields(before), eventFields(input));
+
+  await updateEvent(userId, eventId, input);
+  let changed = 1;
+  if (isEmptyChange(change)) return { changed };
+
+  for (const row of later) {
+    const current = eventFields(row);
+    const next = applyEventChange(current, change);
+    if (sameEvent(next, current)) continue;
+    await updateEvent(userId, row.id, next);
+    changed += 1;
+  }
+  return { changed };
 }
 
 /**

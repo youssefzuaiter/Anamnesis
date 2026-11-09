@@ -108,6 +108,22 @@ export async function listSeriesEventIds(
 }
 
 /**
+ * This account's other occurrences of a series that start at or after `from`, in order: the rows an edit of one
+ * occurrence may carry to the later ones. An imported event is never part of a series and is left out here too.
+ */
+export async function listLaterSeriesEvents(
+  userId: string,
+  recurrenceId: string,
+  from: Date,
+  exceptId: string,
+): Promise<Event[]> {
+  return prisma.event.findMany({
+    where: { userId, recurrenceId, subscriptionId: null, startTime: { gte: from }, id: { not: exceptId } },
+    orderBy: [{ startTime: "asc" }, { id: "asc" }],
+  });
+}
+
+/**
  * The caller's own events that overlap the window, for the calendar feed. Events imported from a
  * subscription are left out (they are already in the phone, from their source), and only the columns
  * the feed shows are read: a description never leaves the database for it.
