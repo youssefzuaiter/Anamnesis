@@ -87,7 +87,7 @@ export async function runReminderTick(now: Date, publish: Publish): Promise<{ se
         reminderRepository.listStarting(account.userId, now, horizon),
       ]);
       for (const planned of planReminders({ now, prefs: account.prefs, dueToday, starting })) {
-        const claim = await reminderRepository.claimDelivery(account.userId, planned.key);
+        const claim = await reminderRepository.claimDelivery(account.userId, planned.key, now);
         if (!claim) continue;
         try {
           await publish({ topic: account.topic, title: planned.title, body: planned.body });

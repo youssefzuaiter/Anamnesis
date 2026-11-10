@@ -95,9 +95,10 @@ export const MAX_ATTEMPTS = 3;
  * one conditional update that clears `lastError`: a failed row has an error, a row in flight has none, so
  * two schedulers can never retry the same reminder at once.
  */
-export async function claimDelivery(userId: string, key: string): Promise<{ id: string } | null> {
+export async function claimDelivery(userId: string, key: string, now: Date): Promise<{ id: string } | null> {
   try {
-    return await prisma.reminderDelivery.create({ data: { userId, key, attempts: 1 }, select: { id: true } });
+    // Dated by the tick's clock, the same one pruning compares against.
+    return await prisma.reminderDelivery.create({ data: { userId, key, attempts: 1, createdAt: now }, select: { id: true } });
   } catch (error) {
     if ((error as { code?: string }).code !== "P2002") throw error;
   }
