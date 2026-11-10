@@ -1942,21 +1942,71 @@ gets. Confirming goes through the same `executeProposal` as the other kinds:
 ownership from the session, idempotent on `proposalId`, audited as
 `GOAL_CREATED` on a `Goal`, and indexed exactly like a goal made by hand.
 
-## Reminders are polled, not pushed
+## Reminders when the app is closed
 
-`dueRemindersAction` has no new schema behind it — it reads tasks due today
-that are still open and events starting within the hour directly off `Task`
-and `Event`. There is no `Reminder` model, no job runner, and no server
-process outside a request in this app, so a real scheduler would be a whole
-piece of infrastructure for one feature; a reminder is also only useful while
-the dashboard is open anyway, since nothing else in this app could deliver
-one. `components/reminders.tsx` polls every 5 minutes and, if the browser has
-granted permission, raises a `Notification` for anything not already
-announced. Permission is requested on a click, never on mount — an unsolicited
-permission prompt on page load is the kind of thing that gets a site's
-notifications blocked outright. Which reminders have already fired is kept in
-`localStorage`, not on the server: it's this browser's own notification
-history, not state another device should inherit.
+ROADMAP item 19 (tagged *M, ops, security*; plan `docs/superpowers/plans/2026-11-10-reminders-push.md`). The roadmap asked for a
+`council` between self-hosted ntfy and Web Push and "say what fires this"; I ran the four voices inline (weaker than independent ones)
+and three answers were the owner's: an **iPhone**, reached over **Tailscale**, and **running production** as part of the item.
+
+- **The premise had two holes, and both are now on the record.** "When the app is closed" needs something running: no deploy had
+  ever completed (every promote waited for approval and was cancelled by the next merge). And no phone can reach this Mac: the app and
+  ntfy are bound to localhost on purpose. Tailscale Serve answers the second without exposing anything to the internet.
+- **Transport: self-hosted ntfy**, a compose service (`binwiederhier/ntfy:v2.34.0`, the newest at least two weeks old) beside the app,
+  in a compose profile that `ops/lib.sh` turns on only when `.env.production` has `NTFY_APP_TOKEN`. Chosen over Web Push because item
+  29 (error and uptime alerts) needs server-to-human alerts with no browser, ntfy needs no service worker or push crypto in the app
+  (one JSON `POST`, `lib/ntfy.ts`), and the text stays on this machine. **Access:** `deny-all` by default, declarative users (the app may
+  only publish, only to `anamnesis-*`; the `phone` account may only read). **What leaves the machine:** for iOS, ntfy forwards a poll
+  request to ntfy.sh with only a message id and a hash of the topic (`upstream-base-url`), never the text; measured publish latency
+  3–10 ms, so the forward does not hold a send up.
+- **Trigger: a scheduler inside the app server**, started once from `src/instrumentation.ts` (Node runtime only, and only when both
+  `NTFY_URL` and `NTFY_TOKEN` are set), ticking every minute (first tick after 10 s), ticks never overlapping. No job runner, no extra
+  process, no endpoint. The deep health check reports `reminders: { configured, lastTickSecondsAgo }`; the deploy smoke check publishes
+  to a topic nobody reads with the app's token and waits for a tick.
+- **Once, however many schedulers run.** Each reminder is claimed in `ReminderDelivery` (unique `[userId, key]`; keys
+  `digest:YYYY-MM-DD`, `event:<id>:<start>`, `task:<id>:<start>`, so a moved start is a new reminder). The first claim is the row's
+  creation; a retry is claimed by one conditional update that clears `lastError` (a failed row has an error, a row in flight has none),
+  so two schedulers (a dev reload; the old and new containers during a deploy) never send twice. Three attempts in all. A process killed
+  mid-send leaves that one reminder unsent, never doubled. Rows older than 30 days are deleted by the tick.
+- **What is sent** (`lib/reminder-schedule.ts`, pure): the morning list of open tasks due today or overdue, once a local day, at or after
+  the chosen hour (06:00–12:00, default 08:00) and for the rest of that day (a Mac that slept through 08:00 sends it on waking); and
+  "Starts in N min" for each event (imported ones too) and open planned task starting within the lead time (5–60 minutes, default 15).
+  **Never late:** a start that has passed is never announced. Titles can be hidden (`N tasks due today`, `An event`), and the card points
+  at iOS's own "Show Previews" for the lock screen.
+- **Time zone.** Day boundaries are the container's local time: `TZ` is now set on the app (`ops/ntfy-setup.sh` copies the host's;
+  without it the container is UTC). Checked: `node:24-bookworm-slim` honours `TZ` (06:30Z read as 09:30 in Istanbul).
+- **Settings.** A "Reminders on your phone" card: the switch (off by default, the topic made by the server on first use, kept if it is
+  turned off and on), the two times, "Show titles", "Send a test", and the newest send failure, if the newest reminder failed (an older
+  failure stops showing once a later reminder goes through). Without ntfy on the server it says so and offers nothing.
+- **Migration `20261110120000_reminders_push`, additive:** five defaulted or nullable `UserProfile` columns (`ntfyTopic` unique) and
+  `ReminderDelivery`, which the JSON export excuses (a send log that means nothing to another server). The previous release keeps working.
+- **The dashboard's own polling stays** (`components/reminders.tsx`): while a tab is open it still raises browser notifications, and
+  which ones fired is per-browser state in `localStorage`. The phone and the tab are separate channels.
+
+**Measured.** *Against a real ntfy* (a throwaway compose project from `compose.prod.yml`): anonymous publish and read 403, the app token
+publishes only to `anamnesis-*` and cannot read, the phone account reads and cannot publish, a wrong password 401, `ops/ntfy-setup.sh`
+idempotent, the bcrypt hashes survive Compose (single-quoted, proved by the phone signing in), the app's publisher delivers a Turkish
+title exactly, a wrong token says `ntfy answered 401` and a foreign topic `403`. *In a real Next dev server* with ntfy configured: the
+scheduler reports itself configured and ticks; a test send and a scheduler-sent morning list both arrived in ntfy. **Not explained:** in
+2 of 6 such runs (both right after a fresh compile) the scheduler's sends failed with "ntfy did not answer" three times while the
+request-scoped test send worked; it did not happen again in four runs, and the message now says why (`timed out`, a system error code
+such as `ECONNREFUSED`, or `network error`), so a repeat in production can be read from Settings. *Security review* (the real actions,
+sign-in stubbed): no session refused and nothing written or sent; forged times, strings for numbers and booleans, `null` and arrays
+refused; a smuggled `ntfyTopic` or `userId` ignored; failure messages never carry the token. *Mutants:* about 100 across the planner,
+the publisher, the repository, the service, the scheduler and the export guard; the survivors exposed real gaps (foreign starts, races
+that did not overlap, a global busy flag that let a stopped scheduler block a new one, `sentAt` never asserted) and were fixed with tests;
+what is left is two clauses guarded by a second layer and the account-level catch, which needs a database fault to trigger.
+
+**Tests.** 10 unit (`reminder-schedule`, with London's October clock change), 6 integration (`ntfy`, a real HTTP server), 17 integration
+(`reminders-push`: settings, the digest once, three ticks racing with a slow transport, a retry race, starts and the lead window, foreign,
+trashed, done and imported items, push off, a deleted account, retries capped at three, a failure mid-account, a stale failure, retention,
+the test button), 7 integration (`reminder-scheduler`), the deep health line, export coverage, and 1 browser test (the card on a server
+without ntfy).
+
+**Not done / known limits:** the send that is under way when the process is killed is lost (never doubled); a Mac that is asleep sends
+nothing; no per-user time zone; no snooze, no "done" from the notification, no per-course or per-project choice; the test button has no
+rate limit of its own (self only; ntfy limits visitors); Android and Web Push are not offered. **Not verified:** a notification on the
+owner's iPhone over Tailscale (that is the production step, with him); the full `ops/rehearse.sh` with ntfy (it needs the app image; CI's
+container job runs it); the account-level catch in the tick.
 
 ## File attachments
 

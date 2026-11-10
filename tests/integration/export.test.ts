@@ -104,6 +104,7 @@ async function populate(userId: string, label: string) {
     data: {
       userId, university: `Uni ${label}`, program: "AI", studentId: "123", targetGpa: 3.25, gpaScale: [{ letter: "AA", points: 4 }],
       focusTrackingEnabled: true, focusIncludeCourse: true, timerSessionsEnabled: true,
+      pushEnabled: true, pushLeadMinutes: 30, pushDigestHour: 7, pushShowTitles: false, ntfyTopic: `anamnesis-${label}-${randomUUID()}`,
     },
   });
   return {
@@ -148,6 +149,8 @@ test("every exported model arrives whole: every column, minus the stated omissio
   assert.deepEqual(profile.gpaScale, [{ letter: "AA", points: 4 }]);
   // The three focus switches are the person's own consent record: they travel with the data they govern.
   assert.deepEqual([profile.focusTrackingEnabled, profile.focusIncludeCourse, profile.timerSessionsEnabled], [true, true, true]);
+  assert.deepEqual([profile.pushEnabled, profile.pushLeadMinutes, profile.pushDigestHour, profile.pushShowTitles], [true, 30, 7, false]);
+  assert.match(String(profile.ntfyTopic), /^anamnesis-whole-/);
   const [reading] = rowsOf(payload, "focusTelemetry");
   const [timed] = rowsOf(payload, "studySessions");
   assert.equal(reading.courseId, rowsOf(payload, "courses")[0].id, "a writing session keeps its course");

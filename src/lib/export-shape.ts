@@ -33,6 +33,8 @@ export const EXPORTED_MODELS: Readonly<Record<string, string>> = {
 export const NOT_EXPORTED: Readonly<Record<string, string>> = {
   WorkspaceEmbedding:
     "Derived from the exported text and rebuilt on request (Settings, Rebuild search index); its vector column cannot be written as JSON.",
+  ReminderDelivery:
+    "A log of which reminders this server already sent, kept only so a restart does not send them twice; it means nothing to another server and is deleted after 30 days.",
 };
 
 /** Columns of an exported model that are deliberately left out, and why. */

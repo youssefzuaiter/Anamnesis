@@ -77,6 +77,7 @@ test("the table of exported models is one key each and never collides with a top
   assert.equal(EXPORTED_MODELS.CalendarSubscription, "calendarSubscriptions");
   assert.equal(EXPORTED_MODELS.StudySession, "studySessions");
   assert.ok(!("WorkspaceEmbedding" in EXPORTED_MODELS) && NOT_EXPORTED.WorkspaceEmbedding.trim().length > 20);
+  assert.ok(!("ReminderDelivery" in EXPORTED_MODELS) && NOT_EXPORTED.ReminderDelivery.trim().length > 20);
 });
 
 test("every deliberate omission of a column has a stated reason", () => {

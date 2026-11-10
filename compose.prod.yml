@@ -50,6 +50,14 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.2:3b}
       OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      # The owner's time zone (ops/ntfy-setup.sh copies the host's). "Due today" and the morning
+      # reminder follow it; without it the container is on UTC.
+      TZ: ${TZ:-UTC}
+      # Phone reminders (see "Phone reminders" in ops/README.md). Empty unless ops/ntfy-setup.sh has
+      # run, and then the scheduler inside the app starts; empty, it stays off.
+      NTFY_URL: ${NTFY_APP_TOKEN:+http://ntfy:80}
+      NTFY_TOKEN: ${NTFY_APP_TOKEN:-}
+      NTFY_PUBLIC_URL: ${NTFY_PUBLIC_URL:-}
     extra_hosts:
       # Docker Desktop defines host.docker.internal itself; Linux needs this.
       - "host.docker.internal:host-gateway"
@@ -63,6 +71,39 @@ services:
       postgres:
         condition: service_healthy
 
+  # The self-hosted ntfy server that delivers reminders to the phone. Only started when phone reminders
+  # are set up (ops/lib.sh adds the "ntfy" profile when .env.production has NTFY_APP_TOKEN). Private by
+  # default: nobody may read or write without an account; the app may only publish to anamnesis-* topics
+  # and the phone may only read them. iOS needs ntfy.sh to wake the app: only a message id and a hash of
+  # the topic go there, never the text. Bound to localhost; the phone reaches it through `tailscale serve`.
+  ntfy:
+    image: binwiederhier/ntfy:v2.34.0
+    profiles: ["ntfy"]
+    command: ["serve"]
+    restart: unless-stopped
+    environment:
+      NTFY_BASE_URL: ${NTFY_PUBLIC_URL:-http://localhost:2586}
+      NTFY_LISTEN_HTTP: ":80"
+      NTFY_CACHE_FILE: /var/lib/ntfy/cache.db
+      NTFY_AUTH_FILE: /var/lib/ntfy/auth.db
+      NTFY_AUTH_DEFAULT_ACCESS: deny-all
+      NTFY_AUTH_USERS: "anamnesis:${NTFY_APP_PASSWORD_HASH:-}:user,phone:${NTFY_PHONE_PASSWORD_HASH:-}:user"
+      NTFY_AUTH_ACCESS: "anamnesis:anamnesis-*:wo,phone:anamnesis-*:ro"
+      NTFY_AUTH_TOKENS: "anamnesis:${NTFY_APP_TOKEN:-}:app"
+      NTFY_ENABLE_LOGIN: "true"
+      NTFY_BEHIND_PROXY: "true"
+      NTFY_UPSTREAM_BASE_URL: https://ntfy.sh
+    ports:
+      - "127.0.0.1:${NTFY_PORT:-2586}:80"
+    volumes:
+      - ntfy:/var/lib/ntfy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/v1/health | grep -q '\"healthy\":true'"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
 volumes:
   pgdata:
   attachments:
+  ntfy:
