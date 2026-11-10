@@ -71,6 +71,9 @@ test("health: Ollama is reported but never decides whether the app is healthy", 
 
   assert.equal(typeof body.checks.ollama.ok, "boolean");
   assert.equal(typeof body.checks.ollama.models, "boolean");
+  // The reminder scheduler is reported the same way: set up or not, and seconds since its last tick.
+  // Nothing starts it in this test, so it is not set up and has never ticked; it never decides the status.
+  assert.deepEqual(body.checks.reminders, { configured: false, lastTickSecondsAgo: null });
   // Whatever Ollama said, a healthy database and schema still means HTTP 200 —
   // the app falls back to keyword search rather than failing without it.
   assert.equal(response.status, 200);

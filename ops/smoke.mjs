@@ -150,6 +150,28 @@ if (expectVersion) {
   report(deep.version === expectVersion, "the running release is the one that was deployed", `running ${deep.version}, expected ${expectVersion}`);
 }
 
+// 1b. Phone reminders, when this release has them set up: the app's token is accepted by ntfy, and
+// the scheduler inside the app has ticked. The test message goes to a topic no phone subscribes to.
+if (process.env.NTFY_URL && process.env.NTFY_TOKEN) {
+  const published = await fetch(`${process.env.NTFY_URL.replace(/\/+$/, "")}/`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.NTFY_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ topic: "anamnesis-smoke", title: "Smoke check", message: "A deploy smoke check; nobody subscribes to this topic." }),
+    signal: AbortSignal.timeout(5_000),
+  }).catch(() => null);
+  report(published?.ok === true, "ntfy accepts the app's token", published ? `HTTP ${published.status}` : "no answer");
+
+  let ticked = false;
+  for (let attempt = 0; attempt < 30 && !ticked; attempt++) {
+    const health = await (await request("/api/health?deep=1")).json();
+    ticked = health.checks?.reminders?.configured === true && health.checks?.reminders?.lastTickSecondsAgo !== null;
+    if (!ticked) await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  report(ticked, "the reminder scheduler is running");
+} else {
+  console.log("SKIP  phone reminders (not set up in this release's environment)");
+}
+
 // 2. The app serves pages and assets.
 const login = await request("/login");
 const loginHtml = login.status === 200 ? await login.text() : "";

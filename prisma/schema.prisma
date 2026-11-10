@@ -37,6 +37,7 @@ model User {
   taskChecklistItems TaskChecklistItem[]
   goals        Goal[]
   studySessions StudySession[]
+  reminderDeliveries ReminderDelivery[]
 }
 
 model UserProfile {
@@ -58,6 +59,15 @@ model UserProfile {
   // long the study timer ran. Optional for an older release, which does not know them.
   focusIncludeCourse   Boolean @default(false)
   timerSessionsEnabled Boolean @default(false)
+
+  // Reminders sent to the person's phone through the self-hosted ntfy server while no tab is open
+  // (see "Reminders when the app is closed" in CLAUDE.md). Off until turned on. The topic is made by the
+  // server when push is first turned on and never chosen by the browser.
+  pushEnabled     Boolean @default(false)
+  pushLeadMinutes Int     @default(15)
+  pushDigestHour  Int     @default(8)
+  pushShowTitles  Boolean @default(true)
+  ntfyTopic       String? @unique
 
   // The GPA tracker. A target cumulative GPA, and the letter-to-points table as
   // JSON ([{ letter, points }]); a null scale means the built-in preset. Both are
@@ -481,4 +491,22 @@ model AuditEvent {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/// One reminder this server has claimed for an account: the digest of a day, or one start of an event or a
+/// planned task. The unique key is what makes a reminder go out once, however many schedulers tick and
+/// however often the app restarts. A failed send leaves sentAt null and is retried, three attempts in all.
+model ReminderDelivery {
+  id        String    @id @default(uuid())
+  userId    String
+  key       String
+  attempts  Int       @default(0)
+  sentAt    DateTime?
+  lastError String?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([createdAt])
 }
