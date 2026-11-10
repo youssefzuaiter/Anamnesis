@@ -130,6 +130,48 @@ token in the address is the credential (ROADMAP item 13). Three things follow fo
 Only a SHA-256 of the token is in the database (and so in a backup), so a stolen dump cannot rebuild an address. The migration
 that added the two columns is additive and nullable, so the rule under "The migration rule" holds.
 
+## Phone reminders
+
+While no Anamnesis tab is open, reminders reach the phone through a self-hosted [ntfy](https://ntfy.sh)
+server that runs beside the app (the `ntfy` service in `compose.prod.yml`). What fires them is a timer
+inside the app itself, started when the server starts; it ticks once a minute and sends each reminder
+once, however often the app restarts. Nothing is sent until someone turns it on in Settings.
+
+**What it costs and what leaves the machine.** Nothing to pay. The reminder text stays on this Mac. The
+iPhone app is woken through ntfy.sh, which receives only a message id and a hash of the topic, never the
+text; that is how iOS delivers notifications instantly for a self-hosted server.
+
+**Set it up once** (on the production Mac; `ops/bootstrap.sh` runs the first step for a new install):
+
+```bash
+ops/ntfy-setup.sh            # token, ntfy accounts, the phone's password and TZ into .env.production
+ops/update.sh --force        # redeploys with ntfy beside the app
+```
+
+Then make it reachable from the phone, but only from your own devices, with Tailscale (free):
+
+1. Install Tailscale on the Mac and the iPhone and sign in to the same account. In the Tailscale admin
+   console, under DNS, enable MagicDNS and HTTPS certificates.
+2. On the Mac: `tailscale serve --bg --https=443 http://127.0.0.1:2586` (check the flags with
+   `tailscale serve --help` if your version differs). ntfy stays bound to localhost; Tailscale serves it
+   over HTTPS to the tailnet only, never to the internet.
+3. Put the address it prints (`https://<this-mac>.<tailnet>.ts.net`) in `.env.production` as
+   `NTFY_PUBLIC_URL`, then `ops/update.sh --force`.
+4. In the ntfy app on the iPhone: Settings, add the server `NTFY_PUBLIC_URL`, user `phone`, password
+   `NTFY_PHONE_PASSWORD` from `.env.production`. Then subscribe to the topic shown under Settings, Reminders
+   on your phone, on that server.
+5. In Anamnesis, Settings, turn on **Send reminders to my phone** and press **Send a test**.
+
+**Access control.** ntfy refuses everyone by default. The app may only publish, and only to `anamnesis-*`
+topics; the `phone` account may only read them. The hashes in `.env.production` are single-quoted because
+they contain `$`.
+
+**When reminders do not arrive.** `curl -s 'http://127.0.0.1:3200/api/health?deep=1'` shows
+`reminders.configured` and how many seconds ago the scheduler last ran; Settings shows the last error, if a
+send failed (it is tried three times). `docker compose ... logs ntfy` shows what ntfy received. A Mac that
+is asleep sends nothing; on waking it sends that day's list of what is due, but never a heads-up for an
+event that has already started.
+
 ## Before exposing it to the internet
 
 It is bound to localhost on purpose. Before it is reachable from anywhere else:

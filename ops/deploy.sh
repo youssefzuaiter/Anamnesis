@@ -82,6 +82,12 @@ if ! compose run --rm migrate; then
   fail "migrations failed. The previous release is still serving. ${backup_path:+Backup taken first: $backup_path}"
 fi
 
+if [ -n "$(env_value NTFY_APP_TOKEN)" ]; then
+  log "starting ntfy (phone reminders)"
+  # Not a reason to refuse a release: the app works without it, and the deep health check says so.
+  compose up -d --no-deps --wait ntfy >/dev/null || log "WARNING: ntfy did not start; phone reminders will fail until it does"
+fi
+
 log "starting the new release"
 compose up -d --no-deps --wait app >/dev/null || true
 

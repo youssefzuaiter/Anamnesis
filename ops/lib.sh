@@ -56,7 +56,12 @@ die() { log "ERROR: $*"; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required but was not found in PATH"; }
 
 compose() {
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+  # Phone reminders are optional: the ntfy service joins only once ops/ntfy-setup.sh has run.
+  if [ -n "$(env_value NTFY_APP_TOKEN)" ]; then
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile ntfy "$@"
+  else
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+  fi
 }
 
 require_env_file() {

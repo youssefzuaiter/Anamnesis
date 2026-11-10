@@ -34,6 +34,9 @@ else
   log "wrote $ENV_FILE with freshly generated secrets (mode 600)"
 fi
 
+# Phone reminders: a token for the app, the phone's password and the host's time zone (never overwritten).
+"$(dirname "${BASH_SOURCE[0]}")/ntfy-setup.sh"
+
 umask 077
 mkdir -p "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR"
