@@ -112,6 +112,19 @@ test("the real tick runs against the database and posts to the configured server
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
-  running = startReminderScheduler({ env: { NTFY_URL: `http://127.0.0.1:${port}`, NTFY_TOKEN: configured.NTFY_TOKEN }, intervalMs: 50, firstDelayMs: 0 });
-  await until(() => (reminderSchedulerStatus().lastTickSecondsAgo ?? 99) <= 1, 10_000);
+  const logged: string[] = [];
+  const original = console.error;
+  console.error = (...parts: unknown[]) => void logged.push(parts.map(String).join(" "));
+  try {
+    const before = Date.now();
+    running = startReminderScheduler({ env: { NTFY_URL: `http://127.0.0.1:${port}`, NTFY_TOKEN: configured.NTFY_TOKEN }, intervalMs: 50, firstDelayMs: 0 });
+    await until(() => {
+      const ago = reminderSchedulerStatus().lastTickSecondsAgo;
+      return ago !== null && Date.now() - ago * 1000 >= before - 1000;
+    }, 10_000);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  } finally {
+    console.error = original;
+  }
+  assert.deepEqual(logged.filter((line) => line.includes("[reminders]")), [], "the real tick ran without failing");
 });

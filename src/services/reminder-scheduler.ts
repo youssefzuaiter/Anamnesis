@@ -14,12 +14,12 @@ import { runReminderTick } from "@/services/reminder-push-service";
 
 type Run = (now: Date, publish: Publish) => Promise<unknown>;
 type Handle = { stop(): void };
-type State = { handle: Handle | null; configured: boolean; busy: boolean; lastTickAt: number | null };
+type State = { handle: Handle | null; configured: boolean; lastTickAt: number | null };
 
 // On globalThis so a development reload, which re-evaluates this module, finds the running one.
 const shared = globalThis as unknown as { __anamnesisReminders?: State };
 function state(): State {
-  shared.__anamnesisReminders ??= { handle: null, configured: false, busy: false, lastTickAt: null };
+  shared.__anamnesisReminders ??= { handle: null, configured: false, lastTickAt: null };
   return shared.__anamnesisReminders;
 }
 
@@ -46,11 +46,12 @@ export function startReminderScheduler(
   current.configured = true;
   const publish = ntfyPublisher(url, token);
   const run = options.run ?? runReminderTick;
+  let busy = false;
 
   const tick = async () => {
     // One at a time: a slow tick (a slow ntfy, a slow database) makes the next one skip, not pile up.
-    if (current.busy) return;
-    current.busy = true;
+    if (busy) return;
+    busy = true;
     try {
       await run(new Date(), publish);
     } catch (error) {
@@ -58,7 +59,7 @@ export function startReminderScheduler(
       const message = error instanceof Error ? error.message.replaceAll(token, "[token]") : "unknown error";
       console.error("[reminders] tick failed:", message);
     } finally {
-      current.busy = false;
+      busy = false;
       current.lastTickAt = Date.now();
     }
   };
