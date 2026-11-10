@@ -1140,6 +1140,18 @@ scope to `ul > li`.
 Client-side `<Link>` navigation does not reliably settle `waitForLoadState
 ("networkidle")`; wait for the URL to change instead.
 
+**A spec deletes what it makes.** The account is shared by every spec in a run, and "rebuilding
+the search index" re-embeds everything it owns within 30 s on CI's CPU-only Ollama. After #42 the
+study-time spec left seven courses, two notes and three tasks behind, and that test (with the one
+below) failed on every push to `main` until the spec recorded its ids and deleted them after each
+test.
+
+**Wait for hydration before a click that needs React.** A click on a grid block before hydration
+selects nothing. CI's slower runners lost that race on the imported-event test after #42 made the
+page a little heavier; with the CPU throttled six times (`Emulation.setCPUThrottlingRate`) it failed
+2 of 2 without `hydrated(page)` and passed 2 of 2 with it. Throttling is how to reproduce a CI-only
+race locally.
+
 ## Layout gotcha
 
 `main` in the dashboard shell carries `min-w-0`. It is a flex item, and a flex

@@ -344,6 +344,8 @@ test("an imported event is locked: the buttons say no, the reason is in the stat
   const subscription = await addSubscription();
   const id = await addEvent(title, at(d, 10), at(d, 11, 30), subscription);
   await page.goto(weekUrl(18));
+  // A click before React hydrates selects nothing and leaves the default status.
+  await hydrated(page);
 
   await expect(item(page, title)).toHaveAccessibleName(`${title}, ${label(d)} 10:00 to 11:30, imported, read-only`);
   await item(page, title).click();
