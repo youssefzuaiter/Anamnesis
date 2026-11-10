@@ -10,12 +10,14 @@ test("private, local and special addresses are blocked, in both families", () =>
     "224.0.0.1", "239.255.255.255", "240.0.0.1", "255.255.255.255",
     "::", "::1", "fc00::1", "fd12:3456::1", "fe80::1", "febf::1", "ff02::1", "::ffff:127.0.0.1", "::ffff:10.0.0.1",
     "::ffff:8.8.8.8", "64:ff9b::7f00:1", "2002:7f00:1::1",
+    // IPv4-compatible (deprecated, still IPv4 inside), site-local, local NAT64, Teredo, discard.
+    "::7f00:1", "::a00:1", "fec0::1", "feff::1", "64:ff9b:1::7f00:1", "2001::7f00:1", "2001:0:ffff::1", "100::1",
   ];
   for (const ip of blocked) assert.equal(isBlockedAddress(ip), true, ip);
 });
 
 test("ordinary public addresses pass, including the ones next to private ranges", () => {
-  for (const ip of ["8.8.8.8", "1.1.1.1", "100.63.255.255", "100.128.0.1", "172.15.255.255", "172.32.0.1", "192.167.1.1", "198.17.255.255", "198.20.0.1", "223.255.255.255", "2606:4700:4700::1111", "2a00:1450:4001::64"]) {
+  for (const ip of ["8.8.8.8", "1.1.1.1", "100.63.255.255", "100.128.0.1", "172.15.255.255", "172.32.0.1", "192.167.1.1", "198.17.255.255", "198.20.0.1", "223.255.255.255", "2606:4700:4700::1111", "2a00:1450:4001::64", "2001:4860:4860::8888", "2001:1::1"]) {
     assert.equal(isBlockedAddress(ip), false, ip);
   }
   for (const bad of ["", "not-an-ip", "999.1.1.1", "localhost"]) assert.equal(isBlockedAddress(bad), true, `unparseable ${bad} counts as blocked`);

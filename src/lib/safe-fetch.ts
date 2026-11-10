@@ -17,7 +17,7 @@ import http, { type IncomingMessage } from "node:http";
 import https from "node:https";
 import { BlockList, isIP, type LookupFunction } from "node:net";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
-import type { Readable } from "node:stream";
+import { pipeline, type Readable } from "node:stream";
 import { AppError } from "@/lib/api-response";
 
 // One list per family: a BlockList holding the IPv4-mapped IPv6 range below would also match every
@@ -31,9 +31,11 @@ for (const [network, prefix] of [
   BLOCKED_V4.addSubnet(network, prefix, "ipv4");
 }
 for (const [network, prefix] of [
-  ["::", 128], ["::1", 128], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8],
-  // IPv4 written inside IPv6 (mapped, NAT64, 6to4): blocked whole, there is no legitimate need here.
-  ["::ffff:0:0", 96], ["64:ff9b::", 96], ["2002::", 16],
+  // ::/96 holds the unspecified address, loopback and the deprecated IPv4-compatible form.
+  ["::", 96], ["fc00::", 7], ["fe80::", 10], ["fec0::", 10], ["ff00::", 8], ["100::", 64],
+  // IPv4 written inside IPv6 (mapped, NAT64 global and local, 6to4, Teredo): blocked whole, there is no
+  // legitimate need here.
+  ["::ffff:0:0", 96], ["64:ff9b::", 96], ["64:ff9b:1::", 48], ["2002::", 16], ["2001::", 32],
 ] as const) {
   BLOCKED_V6.addSubnet(network, prefix, "ipv6");
 }
@@ -143,16 +145,38 @@ function request(url: URL, headers: Record<string, string>, lookup: LookupFuncti
   });
 }
 
+/**
+ * The body as the page meant it. `pipeline`, not `pipe`: a deadline abort or a dropped connection must
+ * reach the decompressor too, or reading from it waits for ever (measured: still pending 6 s after a
+ * 1 s deadline with `pipe`).
+ */
 function decoded(response: IncomingMessage): Readable {
   const encoding = String(response.headers["content-encoding"] ?? "").toLowerCase().trim();
-  if (encoding === "gzip" || encoding === "x-gzip") return response.pipe(createGunzip());
-  if (encoding === "deflate") return response.pipe(createInflate());
-  if (encoding === "br") return response.pipe(createBrotliDecompress());
-  return response;
+  const decoder =
+    encoding === "gzip" || encoding === "x-gzip"
+      ? createGunzip()
+      : encoding === "deflate"
+        ? createInflate()
+        : encoding === "br"
+          ? createBrotliDecompress()
+          : null;
+  if (!decoder) return response;
+  // The error reaches the reader through the destroyed decoder; this callback only keeps it handled.
+  return pipeline(response, decoder, () => {});
 }
 
+const CHARSET = /charset\s*=\s*["']?([^;"'\s/>]+)/i;
+
+/**
+ * The header's charset, else the one a page declares in a <meta> tag within its first 1,024 bytes (where
+ * HTML requires it), else UTF-8. Many older pages, Turkish ones in windows-1254 among them, declare it
+ * only in the page.
+ */
 function decodeText(bytes: Buffer, contentType: string): string {
-  const label = /charset=["']?([^;"'\s]+)/i.exec(contentType)?.[1];
+  const head = bytes.subarray(0, 1024).toString("latin1");
+  const meta = /<meta\b[^>]*>/gi;
+  let label = CHARSET.exec(contentType)?.[1];
+  for (let tag = meta.exec(head); !label && tag; tag = meta.exec(head)) label = CHARSET.exec(tag[0])?.[1];
   if (label) {
     try {
       return new TextDecoder(label).decode(bytes);

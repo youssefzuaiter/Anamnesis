@@ -133,4 +133,30 @@ test("a page of the wrong type, or an error status, is refused with what happene
 test("the declared charset is honoured", async () => {
   const latin = await serve((_req, res) => res.writeHead(200, { "content-type": "text/html; charset=iso-8859-9" }).end(Buffer.from([0x3c, 0x70, 0x3e, 0xfd, 0xf0, 0x3c, 0x2f, 0x70, 0x3e])));
   assert.equal((await safeFetchText(new URL(latin), { ...base, allowAddress: loopbackOnly })).text, "<p>ığ</p>");
+
+  // Without a charset in the header, the page's own <meta> decides; the header wins when both are given.
+  const body = (meta: string) => Buffer.concat([Buffer.from(`<html><head>${meta}</head><body><p>`), Buffer.from([0xfd, 0xf0, 0xfe]), Buffer.from("</p></body></html>")]);
+  const metaCharset = await serve((_req, res) => res.writeHead(200, { "content-type": "text/html" }).end(body('<meta charset="windows-1254">')));
+  assert.match((await safeFetchText(new URL(metaCharset), { ...base, allowAddress: loopbackOnly })).text, /<p>ığş<\/p>/);
+  const httpEquiv = await serve((_req, res) => res.writeHead(200, { "content-type": "text/html" }).end(body('<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-9">')));
+  assert.match((await safeFetchText(new URL(httpEquiv), { ...base, allowAddress: loopbackOnly })).text, /<p>ığş<\/p>/);
+  const headerWins = await serve((_req, res) => res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(Buffer.from('<meta charset="windows-1254"><p>ığ</p>')));
+  assert.match((await safeFetchText(new URL(headerWins), { ...base, allowAddress: loopbackOnly })).text, /<p>ığ<\/p>/);
+});
+
+test("a compressed body that stalls, or breaks off, still ends at the deadline or as unreachable", async () => {
+  const packed = gzipSync(Buffer.from(`<p>${"x".repeat(200_000)}</p>`));
+  const stalls = await serve((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html", "content-encoding": "gzip" });
+    res.write(packed.subarray(0, 100));
+  });
+  const started = Date.now();
+  await assert.rejects(() => safeFetchText(new URL(stalls), { ...base, timeoutMs: 800, allowAddress: loopbackOnly }), failsWith("timeout"));
+  assert.ok(Date.now() - started < 3_000, `${Date.now() - started} ms`);
+
+  const breaks = await serve((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html", "content-encoding": "gzip" });
+    res.write(packed.subarray(0, 100), () => res.socket?.destroy());
+  });
+  await assert.rejects(() => safeFetchText(new URL(breaks), { ...base, allowAddress: loopbackOnly }), failsWith("unreachable"));
 });

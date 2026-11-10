@@ -11,14 +11,18 @@ const main = (page: Page) => page.locator("main");
 const field = (page: Page) => main(page).getByLabel("Link to a web page");
 const clip = (page: Page) => main(page).getByRole("button", { name: "Clip page" });
 
-test("a link to this machine or its network is refused with a reason, and nothing is created", async ({ page }) => {
+test("a link to this machine or its network is refused with a reason, keeps the link, and creates nothing", async ({ page }) => {
+  const notesBefore = await page.request.get("/api/export").then((r) => r.json()).then((body) => body.notes.length);
   await page.goto("/notes/import");
   for (const url of ["http://127.0.0.1:3100/api/health", "http://localhost:3100/", "http://192.168.1.1/", "http://[::1]/"]) {
     await field(page).fill(url);
     await clip(page).click();
     await expect(main(page).getByRole("alert")).toHaveText("That address is not reachable from this server.");
     await expect(page).toHaveURL(/\/notes\/import$/);
+    await expect(field(page), "the link stays so it can be corrected").toHaveValue(url);
   }
+  const notesAfter = await page.request.get("/api/export").then((r) => r.json()).then((body) => body.notes.length);
+  expect(notesAfter).toBe(notesBefore);
 });
 
 test("a link that is not http(s) is refused by the server", async ({ page }) => {

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extractArticle } from "@/lib/clip";
+import { extractArticle, fitToNote } from "@/lib/clip";
+import { scanFences } from "@/lib/markdown-fences";
 import { AppError } from "@/lib/api-response";
 
 const para = (words: string) => `<p>${words} ${"This paragraph carries enough ordinary prose for a reader view to treat the page as an article worth keeping. ".repeat(3)}</p>`;
@@ -105,5 +106,27 @@ test("a page that leaves out <html>, <head> and <body> still clips, with its tit
     assert.ok(result, html.slice(0, 40));
     assert.equal(result.title, "Bare page");
     assert.match(result.markdown, /Second\./);
+  }
+});
+
+test("dollar signs in prose stay dollars, so the note does not typeset them as maths", () => {
+  const result = extractArticle(page(`${para("Prices.")}<p>It costs $5 and $10, and <code>echo $HOME</code> prints it. ${"Enough words to keep this paragraph. ".repeat(3)}</p>`), url);
+  assert.ok(result);
+  assert.match(result.markdown, /It costs \\\$5 and \\\$10/);
+  assert.match(result.markdown, /`echo \$HOME`/, "code is left as it is");
+});
+
+test("a cut note fits, closes a code block it cut into, and never splits a character", () => {
+  assert.equal(fitToNote("short", 100), "short");
+  const fenced = `Intro\n\n\`\`\`\`python\n${"x = 1\n".repeat(200)}\`\`\`\`\n\nAfter.`;
+  const cut = fitToNote(fenced, 500);
+  assert.ok(cut.length <= 500, `${cut.length}`);
+  assert.match(cut, /The rest is at the source\._$/);
+  assert.equal(scanFences(cut.split("\n")).open, null, "the fence is closed before the marker");
+  assert.ok(!scanFences(cut.split("\n")).inFence.at(-1), "the marker is not inside the code block");
+  for (let max = 120; max < 140; max++) {
+    const emoji = fitToNote("😀".repeat(200), max);
+    assert.ok(emoji.length <= max);
+    assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(emoji), `lone high surrogate at max ${max}`);
   }
 });

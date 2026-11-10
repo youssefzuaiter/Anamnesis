@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { ApiResponse } from "@/lib/api-response";
 import { clipUrlAction } from "@/actions/clip";
@@ -20,6 +20,9 @@ function SubmitButton() {
 
 export function ClipForm() {
   const [state, formAction] = useActionState<ApiResponse<null> | null, FormData>(clipUrlAction, null);
+  // Controlled: React resets a form's uncontrolled fields when its action returns, which would clear
+  // the link under a refusal, just when it needs correcting or retrying.
+  const [url, setUrl] = useState("");
 
   return (
     <form action={formAction} className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
@@ -28,6 +31,8 @@ export function ClipForm() {
         <input
           type="url"
           name="url"
+          value={url}
+          onChange={(event) => setUrl(event.target.value)}
           required
           maxLength={2000}
           inputMode="url"

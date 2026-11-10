@@ -16,6 +16,7 @@ import { toMarkdown } from "mdast-util-to-markdown";
 import { gfmToMarkdown } from "mdast-util-gfm";
 import type { Nodes, Parent, RootContent } from "mdast";
 import { AppError } from "@/lib/api-response";
+import { scanFences } from "@/lib/markdown-fences";
 
 const MAX_TITLE = 200;
 /** Less text than this is a login wall, an error page or a page of links, not an article. */
@@ -121,9 +122,35 @@ export function extractArticle(html: string, url: URL): { title: string; markdow
 
   const mdast = toMdast(fromHtml(article.content, { fragment: true }));
   const [root] = clean(mdast, url) as unknown as Nodes[];
-  const markdown = toMarkdown(root, { extensions: [gfmToMarkdown()] }).trim();
+  // A note typesets $...$ as maths, so a dollar in the page's prose is written \$ (a literal dollar);
+  // code keeps its own.
+  const markdown = toMarkdown(root, {
+    extensions: [gfmToMarkdown()],
+    unsafe: [{ character: "$", inConstruct: "phrasing" }],
+  }).trim();
   if (!markdown) return null;
 
   const title = articleTitle(oneLine(article.title || document.title || ""), heading).slice(0, MAX_TITLE);
   return { title, markdown };
+}
+
+const CUT_NOTE = "\n\n_…cut here: a note holds at most this much. The rest is at the source._";
+
+/**
+ * `text` cut to at most `max` characters when it is longer, ending with a line that says so. A code
+ * block the cut falls inside is closed first, so the line is not shown as code, and a character made of
+ * two UTF-16 units is never split.
+ */
+export function fitToNote(text: string, max: number): string {
+  if (text.length <= max) return text;
+  let reserve = 0;
+  for (;;) {
+    let kept = text.slice(0, Math.max(0, max - CUT_NOTE.length - reserve));
+    if (/[\uD800-\uDBFF]$/.test(kept)) kept = kept.slice(0, -1);
+    const { open } = scanFences(kept.split("\n"));
+    const close = open ? `\n${open}` : "";
+    // Room for the closing fence is taken from the text, which can move the cut out of the block.
+    if (close.length <= reserve) return `${kept}${close}${CUT_NOTE}`;
+    reserve = close.length;
+  }
 }

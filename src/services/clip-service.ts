@@ -1,6 +1,6 @@
 import "server-only";
 import { AppError } from "@/lib/api-response";
-import { extractArticle } from "@/lib/clip";
+import { extractArticle, fitToNote } from "@/lib/clip";
 import { dateLabel } from "@/lib/note-templates";
 import { assertPublicUrl, safeFetchText, SafeFetchError } from "@/lib/safe-fetch";
 import { MAX_NOTE_LENGTH } from "@/lib/see-also";
@@ -15,7 +15,6 @@ import * as noteService from "@/services/note-service";
 
 const MAX_PAGE_BYTES = 5 * 1024 * 1024;
 const TIMEOUT_MS = 15_000;
-const CUT_NOTE = "\n\n_…cut here: a note holds at most this much. The rest is at the source._";
 
 type FetchPage = (url: URL) => Promise<{ text: string; finalUrl: URL }>;
 
@@ -63,8 +62,7 @@ export async function clipUrl(
   const source = page.finalUrl;
   // The link is written in angle brackets so a URL with parentheses stays one link.
   const header = `> Source: [${source.hostname}](<${source.href}>) · clipped ${dateLabel(deps.now ?? new Date())}\n\n`;
-  let content = `${header}${article.markdown}`;
-  if (content.length > MAX_NOTE_LENGTH) content = `${content.slice(0, MAX_NOTE_LENGTH - CUT_NOTE.length)}${CUT_NOTE}`;
+  const content = fitToNote(`${header}${article.markdown}`, MAX_NOTE_LENGTH);
 
   const note = await noteService.createNote(userId, {
     title: (article.title || source.hostname).slice(0, 200),
