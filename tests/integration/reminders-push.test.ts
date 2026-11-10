@@ -301,3 +301,15 @@ test("the repository only lists starts after the moment asked for", async () => 
   const found = await listStarting(user.id, local(2026, 11, 23, 9, 0), local(2026, 11, 23, 9, 30));
   assert.deepEqual(found.map((item) => item.title), ["After"]);
 });
+
+test("an old failure stops being shown once a later reminder goes through", async () => {
+  const user = await newUser();
+  const topic = await pushOn(user.id);
+  await prisma.task.create({ data: { userId: user.id, title: "Due", dueDate: endOfDay(2026, 11, 24) } });
+  const down = capture((message) => message.topic === topic);
+  for (let minute = 0; minute < 4; minute++) await push.runReminderTick(local(2026, 11, 24, 9, minute), down.publish);
+  assert.equal((await push.getPushSettings(user.id)).lastError, "ntfy answered 503", "out of tries: shown");
+  await prisma.event.create({ data: { userId: user.id, title: "Later", startTime: local(2026, 11, 24, 15, 10), endTime: local(2026, 11, 24, 16, 0) } });
+  await push.runReminderTick(local(2026, 11, 24, 15, 0), capture().publish);
+  assert.equal((await push.getPushSettings(user.id)).lastError, null, "a newer reminder was delivered");
+});

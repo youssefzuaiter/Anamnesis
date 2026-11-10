@@ -118,15 +118,17 @@ export async function markFailed(id: string, message: string): Promise<void> {
   await prisma.reminderDelivery.update({ where: { id }, data: { lastError: message.slice(0, 200) } });
 }
 
-/** The newest failure that has not been delivered since, if any. */
+/**
+ * Why the newest reminder failed, if it did: once a later reminder has gone through, an older failure is
+ * history and is not shown. (A delivered row has no error: the retry that delivered it cleared it.)
+ */
 export async function lastFailure(userId: string): Promise<string | null> {
-  const row = await prisma.reminderDelivery.findFirst({
-    // A delivered row has no error: the retry that delivered it cleared it when it was claimed.
-    where: { userId, lastError: { not: null } },
-    orderBy: { createdAt: "desc" },
+  const newest = await prisma.reminderDelivery.findFirst({
+    where: { userId },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     select: { lastError: true },
   });
-  return row?.lastError ?? null;
+  return newest?.lastError ?? null;
 }
 
 export async function pruneDeliveries(before: Date): Promise<number> {
