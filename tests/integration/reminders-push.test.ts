@@ -49,6 +49,9 @@ const refused = (message: RegExp) => (error: unknown) => error instanceof AppErr
 
 test("push is off until turned on, and turning it on makes one private topic that stays", async () => {
   const user = await newUser();
+  const saved = await push.setPushSettings(user.id, { enabled: false, leadMinutes: 30, digestHour: 9, showTitles: true });
+  assert.equal(saved.topic, null, "saving the choices with push off makes no topic");
+  await push.setPushSettings(user.id, { enabled: false, leadMinutes: 15, digestHour: 8, showTitles: true });
   assert.deepEqual(await push.getPushSettings(user.id), {
     enabled: false,
     prefs: { leadMinutes: 15, digestHour: 8, showTitles: true },
@@ -94,6 +97,8 @@ test("the digest waits for its hour, names only open tasks of this account, and 
   assert.deepEqual(mine(calls, topic), []);
   await push.runReminderTick(local(2026, 11, 10, 8, 5), publish);
   assert.deepEqual(mine(calls, topic), [{ topic, title: "Due today", body: "Overdue essay, Problem set" }]);
+  const [row] = await prisma.reminderDelivery.findMany({ where: { userId: user.id } });
+  assert.deepEqual([row.key, row.attempts, row.sentAt?.getTime(), row.lastError], ["digest:2026-11-10", 1, local(2026, 11, 10, 8, 5).getTime(), null]);
   await push.runReminderTick(local(2026, 11, 10, 8, 6), publish);
   await push.runReminderTick(local(2026, 11, 10, 21, 0), publish);
   assert.equal(mine(calls, topic).length, 1, "once a day");
@@ -105,9 +110,14 @@ test("two schedulers ticking at the same moment send the digest once", async () 
   const user = await newUser();
   const topic = await pushOn(user.id);
   await prisma.task.create({ data: { userId: user.id, title: "Race", dueDate: endOfDay(2026, 11, 12) } });
-  const { calls, publish } = capture();
+  // A slow transport keeps the first send in flight while the other ticks try to claim it.
+  const calls: PushMessage[] = [];
+  const slow: Publish = async (message) => {
+    calls.push(message);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  };
   const now = local(2026, 11, 12, 9, 0);
-  await Promise.all([push.runReminderTick(now, publish), push.runReminderTick(now, publish), push.runReminderTick(now, publish)]);
+  await Promise.all([push.runReminderTick(now, slow), push.runReminderTick(now, slow), push.runReminderTick(now, slow)]);
   assert.equal(mine(calls, topic).length, 1);
 });
 
@@ -142,6 +152,9 @@ test("an event or a planned task inside the lead time is announced once; what al
       { userId: user.id, title: "Planned but trashed", scheduledStart: local(2026, 11, 14, 10, 5), deletedAt: new Date() },
     ],
   });
+  const stranger = await newUser();
+  await prisma.event.create({ data: { userId: stranger.id, title: "Someone else's meeting", startTime: local(2026, 11, 14, 10, 8), endTime: local(2026, 11, 14, 11, 0) } });
+  await prisma.task.create({ data: { userId: stranger.id, title: "Someone else's plan", scheduledStart: local(2026, 11, 14, 10, 9) } });
   const { calls, publish } = capture();
   await push.runReminderTick(now, publish);
   assert.deepEqual(mine(calls, topic).map((call) => [call.title, call.body]), [
@@ -238,4 +251,53 @@ test("a test notification goes to this account's topic, and only when push is on
   const topic = await pushOn(user.id);
   await push.sendTestNotification(user.id, publish);
   assert.deepEqual(calls, [{ topic, title: "Anamnesis", body: "Reminders reach this device." }]);
+});
+
+test("a retry in flight is not taken by a second scheduler", async () => {
+  const user = await newUser();
+  const topic = await pushOn(user.id);
+  await prisma.task.create({ data: { userId: user.id, title: "Retry race", dueDate: endOfDay(2026, 11, 21) } });
+  const first = capture((message) => message.topic === topic);
+  await push.runReminderTick(local(2026, 11, 21, 9, 0), first.publish);
+  const calls: PushMessage[] = [];
+  const slow: Publish = async (message) => {
+    calls.push(message);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  };
+  const now = local(2026, 11, 21, 9, 1);
+  await Promise.all([push.runReminderTick(now, slow), push.runReminderTick(now, slow)]);
+  assert.equal(mine(calls, topic).length, 1, "one retry");
+  const [row] = await prisma.reminderDelivery.findMany({ where: { userId: user.id } });
+  assert.deepEqual([row.attempts, row.lastError, row.sentAt !== null], [2, null, true]);
+});
+
+test("a failed send does not stop the account's next reminder", async () => {
+  const user = await newUser();
+  const topic = await pushOn(user.id);
+  await prisma.task.create({ data: { userId: user.id, title: "Due", dueDate: endOfDay(2026, 11, 22) } });
+  await prisma.event.create({ data: { userId: user.id, title: "Seminar", startTime: local(2026, 11, 22, 9, 10), endTime: local(2026, 11, 22, 10, 0) } });
+  const { calls, publish } = capture((message) => message.topic === topic && message.title === "Due today");
+  await push.runReminderTick(local(2026, 11, 22, 9, 0), publish);
+  assert.deepEqual(mine(calls, topic).map((call) => call.title), ["Due today", "Starts in 10 min"]);
+});
+
+test("the test button is refused again once push is turned off", async () => {
+  const user = await newUser();
+  await pushOn(user.id);
+  await push.setPushSettings(user.id, { enabled: false, leadMinutes: 15, digestHour: 8, showTitles: true });
+  await assert.rejects(() => push.sendTestNotification(user.id, capture().publish), refused(/Turn on reminders to your phone first/));
+});
+
+test("the repository only lists starts after the moment asked for", async () => {
+  const { listStarting } = await import("@/repositories/reminder-repository");
+  const user = await newUser();
+  await prisma.event.createMany({
+    data: [
+      { userId: user.id, title: "Before", startTime: local(2026, 11, 23, 8, 0), endTime: local(2026, 11, 23, 9, 0) },
+      { userId: user.id, title: "At", startTime: local(2026, 11, 23, 9, 0), endTime: local(2026, 11, 23, 10, 0) },
+      { userId: user.id, title: "After", startTime: local(2026, 11, 23, 9, 5), endTime: local(2026, 11, 23, 10, 0) },
+    ],
+  });
+  const found = await listStarting(user.id, local(2026, 11, 23, 9, 0), local(2026, 11, 23, 9, 30));
+  assert.deepEqual(found.map((item) => item.title), ["After"]);
 });

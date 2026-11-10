@@ -110,7 +110,8 @@ export async function claimDelivery(userId: string, key: string): Promise<{ id: 
 }
 
 export async function markSent(id: string, at: Date): Promise<void> {
-  await prisma.reminderDelivery.update({ where: { id }, data: { sentAt: at, lastError: null } });
+  // The claim already cleared any earlier error.
+  await prisma.reminderDelivery.update({ where: { id }, data: { sentAt: at } });
 }
 
 export async function markFailed(id: string, message: string): Promise<void> {
@@ -120,7 +121,8 @@ export async function markFailed(id: string, message: string): Promise<void> {
 /** The newest failure that has not been delivered since, if any. */
 export async function lastFailure(userId: string): Promise<string | null> {
   const row = await prisma.reminderDelivery.findFirst({
-    where: { userId, sentAt: null, lastError: { not: null } },
+    // A delivered row has no error: the retry that delivered it cleared it when it was claimed.
+    where: { userId, lastError: { not: null } },
     orderBy: { createdAt: "desc" },
     select: { lastError: true },
   });
