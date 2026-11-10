@@ -128,3 +128,12 @@ test("the real tick runs against the database and posts to the configured server
   }
   assert.deepEqual(logged.filter((line) => line.includes("[reminders]")), [], "the real tick ran without failing");
 });
+
+test("the status counts whole seconds since the last tick", async () => {
+  let ticks = 0;
+  const handle = startReminderScheduler({ env: configured, intervalMs: 60_000, firstDelayMs: 0, run: async () => void ticks++ });
+  await until(() => ticks >= 1);
+  handle!.stop();
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+  assert.equal(reminderSchedulerStatus().lastTickSecondsAgo, 1);
+});
