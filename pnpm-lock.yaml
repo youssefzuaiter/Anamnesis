@@ -26,9 +26,15 @@ importers:
       hast-util-from-html:
         specifier: 2.0.3
         version: 2.0.3
+      hast-util-to-html:
+        specifier: 9.0.6
+        version: 9.0.6
       hast-util-to-mdast:
         specifier: 10.1.2
         version: 10.1.2
+      htmlparser2:
+        specifier: 10.1.0
+        version: 10.1.0
       katex:
         specifier: 0.19.1
         version: 0.19.1

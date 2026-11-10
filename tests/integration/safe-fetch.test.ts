@@ -66,6 +66,13 @@ test("redirects are followed by hand, at most three, and every hop is checked", 
   assert.equal(page.text, "<p>landed</p>");
   assert.equal(page.finalUrl.href, `${final}/`);
 
+  const four = await serve((req, res) => {
+    const n = Number(req.url?.slice(1) || "0");
+    if (n < 3) res.writeHead(302, { location: `/${n + 1}` }).end();
+    else res.writeHead(302, { location: final }).end();
+  });
+  await assert.rejects(() => safeFetchText(new URL(`${four}/0`), { ...base, allowAddress: loopbackOnly }), failsWith("redirects"), "a fourth redirect is refused even when it would land");
+
   const loop = await serve((req, res) => res.writeHead(302, { location: `/x${req.url}` }).end());
   await assert.rejects(() => safeFetchText(new URL(loop), { ...base, allowAddress: loopbackOnly }), failsWith("redirects"));
 

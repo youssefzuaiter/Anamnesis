@@ -8,15 +8,52 @@
 
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
+import { Parser } from "htmlparser2";
 import { fromHtml } from "hast-util-from-html";
+import { toHtml } from "hast-util-to-html";
 import { toMdast } from "hast-util-to-mdast";
 import { toMarkdown } from "mdast-util-to-markdown";
 import { gfmToMarkdown } from "mdast-util-gfm";
 import type { Nodes, Parent, RootContent } from "mdast";
+import { AppError } from "@/lib/api-response";
 
 const MAX_TITLE = 200;
 /** Less text than this is a login wall, an error page or a page of links, not an article. */
 const MIN_ARTICLE_CHARS = 200;
+/*
+ * Limits on the page's shape, checked before the page is parsed. Readability's cost grows with the
+ * number of elements times their depth, on the one Node process that serves every page: measured, 1,000
+ * nested elements took 4.6 s, 4,000 took 105 s, and 5 MB of chains 250 deep took 176 s; building the
+ * document is itself quadratic in depth (3 s at 100,000 levels). Real long pages measured on 2026-11-10:
+ * Wikipedia's "United States" 21,828 elements and 34 deep (1.2 s to clip), Python's built-in types
+ * 19,713 and 21, an arXiv paper 3,255 and 23. Both limits are about twice the largest seen.
+ */
+export const MAX_DEPTH = 64;
+export const MAX_ELEMENTS = 50_000;
+
+/**
+ * Why `html` is refused before parsing, or null. Counted while streaming through htmlparser2, the
+ * parser linkedom builds its document with, so the numbers are the ones the document would have, and
+ * the count stops at the first limit passed.
+ */
+function shapeRefusal(html: string): string | null {
+  let depth = 0;
+  let elements = 0;
+  let why: string | null = null;
+  const parser = new Parser({
+    onopentag() {
+      if (why) return;
+      if (++depth > MAX_DEPTH) why = "That page is nested too deeply to clip.";
+      else if (++elements > MAX_ELEMENTS) why = "That page is too large to clip.";
+      if (why) parser.pause();
+    },
+    onclosetag() {
+      depth--;
+    },
+  });
+  parser.end(html);
+  return why;
+}
 
 function safeHref(raw: string | null | undefined, base: URL): string | null {
   if (!raw) return null;
@@ -53,9 +90,11 @@ function oneLine(text: string): string {
 
 /**
  * Page titles often end with the site's name ("Gradient descent | Example Blog"). When the page's own main
- * heading begins the title and a separator follows it, the heading is the article's title.
+ * heading begins the title and a separator follows it, the heading is the article's title. A page with no
+ * title is named by its heading.
  */
 function articleTitle(title: string, heading: string): string {
+  if (!title) return heading;
   if (heading && title.startsWith(heading) && /^\s*[|\-–—:·•»]/.test(title.slice(heading.length))) return heading;
   return title;
 }
@@ -64,7 +103,12 @@ function articleTitle(title: string, heading: string): string {
 export function extractArticle(html: string, url: URL): { title: string; markdown: string } | null {
   if (!/<[a-z!]/i.test(html)) return null;
 
-  const { document } = parseHTML(html);
+  const refusal = shapeRefusal(html);
+  if (refusal) throw new AppError("VALIDATION_ERROR", refusal);
+
+  // A valid page may leave out <html>, <head> and <body>. linkedom then takes the first element as the
+  // document, so such a page is first given them the way a browser would (parse5, through hast).
+  const { document } = parseHTML(/<html[\s>]/i.test(html) ? html : toHtml(fromHtml(html)));
   // Read before Readability runs: it rewrites the document it is given.
   const heading = oneLine(document.querySelector("article h1, main h1, h1")?.textContent ?? "");
   let article: ReturnType<Readability["parse"]>;
