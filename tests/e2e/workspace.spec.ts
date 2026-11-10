@@ -231,10 +231,13 @@ test("selected notes can be bulk-tagged, then bulk-deleted", async ({
 test("rebuilding the search index reports how many items were indexed", async ({
   page,
 }) => {
+  // A rebuild re-embeds everything the shared account owns, one item at a time, through the local
+  // model; on CI's CPU-only runner that outgrew 30 s as the suite grew (it failed at 31 s on main).
+  test.setTimeout(process.env.CI ? 180_000 : 60_000);
   await page.goto("/settings");
   await main(page).getByRole("button", { name: /rebuild search index/i }).click();
   await expect(main(page)).toContainText(/rebuilt \d+ items/i, {
-    timeout: 30_000,
+    timeout: process.env.CI ? 150_000 : 30_000,
   });
 });
 
