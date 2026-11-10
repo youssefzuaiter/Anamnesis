@@ -12,7 +12,10 @@ import { safeFetchText, SafeFetchError } from "@/lib/safe-fetch";
 
 const servers: Server[] = [];
 after(() => {
-  for (const server of servers) server.closeAllConnections?.(), server.close();
+  for (const server of servers) {
+    server.closeAllConnections?.();
+    server.close();
+  }
 });
 
 async function serve(handler: (req: IncomingMessage, res: ServerResponse) => void) {
