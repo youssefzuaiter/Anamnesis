@@ -27,7 +27,17 @@ async function sql<T = unknown>(statement: string, params: unknown[] = []): Prom
 
 const ME = `(SELECT id FROM "User" WHERE email LIKE 'e2e-%@test.local')`;
 
+// What each test made, deleted after it: the account is shared by every spec in a run, and a later one
+// (rebuilding the search index re-embeds everything the account owns, within 30 s) pays for what is left.
+const made = { courses: [] as string[], tasks: [] as string[], notes: [] as string[] };
+
 test.afterEach(async () => {
+  if (made.tasks.length) await sql(`DELETE FROM "Task" WHERE id = ANY($1)`, [made.tasks]);
+  if (made.notes.length) await sql(`DELETE FROM "Note" WHERE id = ANY($1)`, [made.notes]);
+  if (made.courses.length) await sql(`DELETE FROM "Course" WHERE id = ANY($1)`, [made.courses]);
+  made.courses = [];
+  made.tasks = [];
+  made.notes = [];
   await sql(
     `UPDATE "UserProfile" SET "focusTrackingEnabled" = false, "focusIncludeCourse" = false, "timerSessionsEnabled" = false WHERE "userId" IN ${ME}`,
   );
@@ -79,7 +89,9 @@ async function makeCourse(page: Page, code: string): Promise<string> {
   await main(page).getByRole("button", { name: /add course/i }).click();
   await main(page).getByRole("link").filter({ hasText: code }).first().click();
   await page.waitForURL(/\/courses\/[0-9a-f-]{36}$/);
-  return page.url().split("/").pop()!;
+  const id = page.url().split("/").pop()!;
+  made.courses.push(id);
+  return id;
 }
 
 const seedFlags = (tracking: boolean, course: boolean, timerOn: boolean) =>
@@ -182,6 +194,7 @@ async function writeForFortySeconds(page: Page, courseId: string, title: string)
   await page.keyboard.type("b");
   await main(page).getByRole("button", { name: "Create note" }).click();
   await page.waitForURL(/\/notes\/[0-9a-f-]{36}$/);
+  made.notes.push(page.url().split("/").pop()!);
 }
 
 test("a note written with the course switch on is recorded under its course", async ({ page }) => {
@@ -218,6 +231,7 @@ async function makeTaskIn(page: Page, courseId: string, title: string) {
   await main(page).getByRole("button", { name: /add task|create task/i }).click();
   await main(page).getByRole("link", { name: title }).first().click();
   await page.waitForURL(/\/tasks\/[0-9a-f-]{36}$/);
+  made.tasks.push(page.url().split("/").pop()!);
 }
 
 const clock = (page: Page) => main(page).getByRole("region", { name: "Study timer" });
