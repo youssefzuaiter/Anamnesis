@@ -18,10 +18,16 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@mozilla/readability": "0.6.0",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
     "dotenv": "^18.0.9",
+    "hast-util-from-html": "2.0.3",
+    "hast-util-to-mdast": "10.1.2",
     "katex": "^0.19.1",
+    "linkedom": "^0.18.15",
+    "mdast-util-gfm": "3.1.0",
+    "mdast-util-to-markdown": "2.1.2",
     "next": "16.4.5",
     "next-auth": "5.0.0-beta.32",
     "ollama": "^0.6.4",
