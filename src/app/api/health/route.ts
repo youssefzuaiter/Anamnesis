@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { config } from "@/lib/config";
+import { reminderSchedulerStatus } from "@/services/reminder-scheduler";
 
 // Read at request time. A health endpoint that Next prerendered at build would
 // report the build machine's database, which is the one thing it must not do.
@@ -88,7 +89,8 @@ async function checkOllama(): Promise<Check & { models: boolean }> {
 
 /**
  * GET /api/health — is the app able to serve? Checks the database.
- * GET /api/health?deep=1 — also pgvector, applied migrations and Ollama.
+ * GET /api/health?deep=1 — also pgvector, applied migrations, Ollama, and whether the reminder
+ * scheduler is set up and how many seconds ago it last ran (reported, never fatal).
  *
  * Unauthenticated on purpose (a load balancer or a deploy script has no
  * session), so it answers with booleans and counts only: no hostnames, no
@@ -112,6 +114,7 @@ export async function GET(request: Request) {
     checks.vector = vector;
     checks.migrations = migrations;
     checks.ollama = ollama;
+    checks.reminders = reminderSchedulerStatus();
     healthy = healthy && vector.ok && migrations.ok;
   }
 
