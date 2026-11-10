@@ -6,12 +6,19 @@ import { ProfileForm } from "@/components/profile-form";
 import { CalendarFeedCard } from "@/components/calendar-feed-card";
 import { ReindexButton } from "@/components/reindex-button";
 import { getFeedLinkStatus } from "@/services/calendar-feed-service";
+import { PushRemindersCard } from "@/components/push-reminders-card";
+import { getPushSettings } from "@/services/reminder-push-service";
 
 export const metadata = { title: "Settings · Anamnesis" };
 
 export default async function SettingsPage() {
   const userId = await requireUserId();
-  const [profile, session, feed] = await Promise.all([getProfile(userId), auth(), getFeedLinkStatus(userId)]);
+  const [profile, session, feed, pushSettings] = await Promise.all([
+    getProfile(userId),
+    auth(),
+    getFeedLinkStatus(userId),
+    getPushSettings(userId),
+  ]);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -82,6 +89,12 @@ export default async function SettingsPage() {
       <CalendarFeedCard
         active={feed.active}
         createdLabel={feed.createdAt ? new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(feed.createdAt) : null}
+      />
+
+      <PushRemindersCard
+        configured={Boolean(process.env.NTFY_URL?.trim() && process.env.NTFY_TOKEN?.trim())}
+        serverAddress={process.env.NTFY_PUBLIC_URL?.trim() || null}
+        initial={pushSettings}
       />
 
       <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
