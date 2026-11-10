@@ -54,6 +54,7 @@ test("a start inside the lead time is announced once with the minutes left", () 
   const out = plan("2026-11-10T09:00:00Z", { starting: [soon("event", "e1", "2026-11-10T09:14:00Z", "Lecture")] });
   assert.deepEqual(out, [{ key: "event:e1:2026-11-10T09:14:00.000Z", title: "Starts in 14 min", body: "Lecture" }]);
   assert.equal(plan("2026-11-10T09:00:00Z", { starting: [soon("task", "k", "2026-11-10T09:00:30Z")] })[0].title, "Starts in 1 min");
+  assert.equal(plan("2026-11-10T09:00:00Z", { starting: [soon("task", "k", "2026-11-10T09:14:30Z")] })[0].title, "Starts in 15 min", "rounded up");
 });
 
 test("the lead window includes its end, excludes what is past, and never announces late", () => {

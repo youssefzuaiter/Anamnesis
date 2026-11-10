@@ -66,7 +66,8 @@ export function planReminders(input: {
     .sort((a, b) => a.start.getTime() - b.start.getTime());
 
   for (const item of upcoming) {
-    const minutes = Math.max(1, Math.ceil((item.start.getTime() - nowMs) / 60_000));
+    // Rounded up, so it is never "0 min": the start is strictly ahead.
+    const minutes = Math.ceil((item.start.getTime() - nowMs) / 60_000);
     out.push({
       key: `${item.kind}:${item.id}:${item.start.toISOString()}`,
       title: `Starts in ${minutes} min`,
