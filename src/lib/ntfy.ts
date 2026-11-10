@@ -9,8 +9,20 @@ export type PushMessage = { topic: string; title: string; body: string; tags?: s
 export type Publish = (message: PushMessage) => Promise<void>;
 
 /**
+ * Why a request got no answer, in words that are safe to store and show: "timed out", a system error
+ * code such as ECONNREFUSED, or "network error". Never the address, the token or a stack.
+ */
+function noAnswerReason(error: unknown): string {
+  const failure = error as { name?: string; cause?: { code?: unknown } } | null;
+  if (failure?.name === "TimeoutError" || failure?.name === "AbortError") return "timed out";
+  const code = failure?.cause?.code;
+  return typeof code === "string" && /^[A-Z][A-Z0-9_]{2,40}$/.test(code) ? code : "network error";
+}
+
+/**
  * A publisher for the ntfy server at `baseUrl`, authenticated with `token`. A failure is an Error whose
- * message is safe to show and store: the HTTP status or "did not answer", never the token or the reply.
+ * message is safe to show and store: the HTTP status, or "did not answer" and why, never the token or the
+ * reply.
  */
 export function ntfyPublisher(baseUrl: string, token: string, timeoutMs = 10_000): Publish {
   const url = `${baseUrl.replace(/\/+$/, "")}/`;
@@ -32,8 +44,8 @@ export function ntfyPublisher(baseUrl: string, token: string, timeoutMs = 10_000
         // A redirect would carry the request somewhere else; ntfy never sends one.
         redirect: "error",
       });
-    } catch {
-      throw new Error("ntfy did not answer");
+    } catch (error) {
+      throw new Error(`ntfy did not answer (${noAnswerReason(error)})`);
     }
     // The reply is not needed; reading it frees the connection.
     await response.text().catch(() => "");

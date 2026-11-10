@@ -82,7 +82,7 @@ test("a refusal says the status and never the token", async () => {
 test("a redirect is not followed, so the token never goes to another address", async () => {
   const target = await serve(ok);
   const { base } = await serve((_req, res) => res.writeHead(307, { location: `${target.base}/stolen` }).end());
-  await assert.rejects(() => ntfyPublisher(base, TOKEN)({ topic: "t", title: "x", body: "y" }), /ntfy did not answer/);
+  await assert.rejects(() => ntfyPublisher(base, TOKEN)({ topic: "t", title: "x", body: "y" }), /^Error: ntfy did not answer \(network error\)$/);
   assert.equal(target.seen.length, 0);
 });
 
@@ -92,11 +92,11 @@ test("a server that never answers, or is not there, fails within the time allowe
     /* never answers */
   });
   const started = Date.now();
-  await assert.rejects(() => ntfyPublisher(base, TOKEN, 300)({ topic: "t", title: "x", body: "y" }), /^Error: ntfy did not answer$/);
+  await assert.rejects(() => ntfyPublisher(base, TOKEN, 300)({ topic: "t", title: "x", body: "y" }), /^Error: ntfy did not answer \(timed out\)$/);
   assert.ok(Date.now() - started < 2_000, `took ${Date.now() - started} ms`);
 
   const closed = await serve(ok);
   servers.pop()?.close();
   await new Promise((resolve) => setTimeout(resolve, 50));
-  await assert.rejects(() => ntfyPublisher(closed.base, TOKEN, 1_000)({ topic: "t", title: "x", body: "y" }), /ntfy did not answer/);
+  await assert.rejects(() => ntfyPublisher(closed.base, TOKEN, 1_000)({ topic: "t", title: "x", body: "y" }), /^Error: ntfy did not answer \(ECONNREFUSED\)$/);
 });
