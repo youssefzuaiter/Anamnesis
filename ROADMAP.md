@@ -79,7 +79,9 @@ services. Nothing may need a paid API key.
 
 ## E. Reach beyond the open tab
 
-- [ ] **19. Reminders when the app is closed** (M, ops, security). Reminders are polled only
+- [x] **19. Reminders when the app is closed** (M, ops, security). Done with self-hosted ntfy
+  reached over Tailscale and a scheduler inside the app; see "Reminders when the app is closed" in
+  `CLAUDE.md`. The original note follows. Reminders are polled only
   while the dashboard is open. There is no job runner, so say what fires this. Choose between
   self-hosted ntfy (a container plus a phone app) and Web Push (needs HTTPS and a service
   worker, which the app deliberately does not have); both are free. Use the `council` skill.
@@ -104,7 +106,7 @@ services. Nothing may need a paid API key.
 - [ ] **27. Session list and sign out everywhere** (S to M, security).
 - [ ] **28. Encrypted off-machine backups** (S to M, ops, paid?). Encrypt first, then copy. An
   external drive is free; cloud storage costs money, so say so before building toward it.
-- [ ] **29. Error and uptime alerts** (S, ops). Reuse whatever 19 chose.
+- [ ] **29. Error and uptime alerts** (S, ops). Reuse whatever 19 chose (ntfy: the app token may publish to `anamnesis-*`).
 
 ## G. Added 2026-10-28
 
