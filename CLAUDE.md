@@ -2101,11 +2101,15 @@ caps exist purely to survive a malformed or hostile feed: 120 expanded
 occurrences per `VEVENT` (a class meeting weekly across two semesters is
 ~40 — this is well above that) and 2000 events per feed overall.
 
-Fetching a feed URL goes through `assertFetchableUrl`, which refuses
-`localhost`, loopback, and the private IPv4 ranges — without that check, a
-"calendar" URL is a standing invitation to make this server's own requests
-hit its internal network on the user's behalf (SSRF), which is exactly the
-shape a webhook or subscription URL takes.
+Fetching a feed URL goes through the shared guarded fetcher, `lib/safe-fetch.ts` (see "Web
+clipper"): without that check, a "calendar" URL is a standing invitation to make this server's own
+requests hit its internal network on the user's behalf (SSRF), which is exactly the shape a webhook or
+subscription URL takes. **Until item 20 the guard here was weak:** it read only the host text (no DNS,
+so a public name pointing at 127.0.0.1 passed), followed redirects without checking them, missed
+`0.0.0.0`, every IPv6 private range, `100.64.0.0/10` (Tailscale), `host.docker.internal` and dotless
+compose names such as `ntfy` and `postgres`, read the whole body before measuring it, and its `webcal:`
+rewrite never worked (`url.protocol = "https:"` is silently ignored when the scheme is not a special
+one, so a webcal link was fetched as `webcal:` and failed). Its caps are unchanged: 20 s, 5 MB.
 
 `syncSubscription` is safe to call repeatedly: it's keyed by `(subscriptionId,
 externalUid)`, so re-running it makes the imported events match the feed
@@ -2122,6 +2126,93 @@ pgvector, which lives outside the relation Prisma knows about.
 action doesn't return to the client, so — like several other click-triggered
 (non-`<form>`) mutations in this app — the sync and remove buttons call
 `router.refresh()` themselves after the action resolves.
+
+## Web clipper
+
+`/notes/import` has a **Clip a web page** card (ROADMAP item 20): paste a link, and the page's readable
+article becomes an ordinary note through `noteService.createNote` (indexed, linked and exported like
+any other), titled by the article, tagged `clipped`, and starting with
+`> Source: [host](<final url>) · clipped <date>`. Plan `docs/superpowers/plans/2026-11-10-web-clipper.md`.
+Not tagged *demo*; no migration.
+
+- **"Reuse the SSRF guard" became "replace it with one both features use".** `lib/safe-fetch.ts`:
+  http(s) only, no user name or password in the link, names without a dot and local suffixes
+  (`.localhost`, `.local`, `.internal`, `.lan`, `.home.arpa`, `.localdomain`) refused before DNS. Every
+  address a name resolves to is checked **at connect time**, inside the connection's own `lookup`, so a
+  name that answers private, or changes its answer between a check and the request, is refused; one
+  private answer among public ones is enough. Redirects are followed by hand, at most 3, each hop
+  checked like the first. The body is counted while it streams, **after** decompression (a gzip bomb
+  stops at the cap), and one deadline covers everything, redirects included. Node `http`/`https` with
+  `agent: false`; no new HTTP dependency. Calendar subscriptions use it too (above).
+- **Blocked addresses**, one `BlockList` per family (a list holding the IPv4-mapped range would match
+  every plain IPv4 address): IPv4 `0/8, 10/8, 100.64/10, 127/8, 169.254/16, 172.16/12, 192.0.0/24,
+  192.168/16, 198.18/15, 224/4, 240/4`; IPv6 `::/96` (unspecified, loopback, IPv4-compatible),
+  `fc00::/7, fe80::/10, fec0::/10, ff00::/8, 100::/64`, and everything that carries IPv4 inside
+  (`::ffff:0:0/96`, `64:ff9b::/96`, `64:ff9b:1::/48`, `2002::/16`, `2001::/32` Teredo). Address
+  spellings the URL parser normalises (`2130706433`, `0x7f.1`, `0177.0.0.1`, `127.1`, full-width dots,
+  `local\thost`) were measured as refused.
+- **Caps for a clip:** 5 MB, 15 s, 3 redirects, `text/html` or `application/xhtml+xml` only. Messages
+  say what happened and never echo a resolution ("That address is not reachable from this server.",
+  "That page is too large to clip (over 5 MB).", "That page took too long to answer.", "That link does
+  not lead to a web page.", "The page answered 404.", "Could not find an article on that page.").
+- **Page to Markdown** (`lib/clip.ts`, pure): Mozilla Readability on a linkedom DOM, then the article's
+  HTML through `hast-util-from-html` → `hast-util-to-mdast` → `mdast-util-to-markdown` with GFM. Links
+  and images are kept only as absolute http(s) (a dropped link keeps its words), raw HTML (comments
+  included) never reaches the note, and `$` in prose is written `\$` so the note does not typeset prices
+  as maths. Less than 200 characters of text is not an article. The title is the article's, cut to its
+  main heading when the page title is "Heading | Site", the heading when the page has no title, else the
+  host. Readability rewrites the DOM it is given, so the heading is read first. A page without `<html>`
+  is first given one by parse5 (linkedom otherwise takes the first element, `<title>`, as the document).
+  A note longer than the limit is cut by `fitToNote`, which closes a code block it cut into and never
+  splits a character, and ends "…The rest is at the source."
+- **The page's shape is limited before it is parsed, and this was found by measuring, not reading.**
+  Readability's cost grows with elements times depth on the one Node process that serves every page:
+  100,000 nested `<div>`s took **590 s**; 1,000, 2,000 and 4,000 levels took 4.6, 39 and 105 s; 5 MB of
+  chains 250 deep took 176 s even under a depth cap. Building the linkedom document is itself quadratic
+  in depth (3 s at 100,000 levels), so the count is taken by streaming through htmlparser2 (the parser
+  linkedom uses, so the numbers are the document's) and stops at the first limit: **depth 64, 50,000
+  elements**. Real long pages measured on 2026-11-10: Wikipedia "United States" 21,828 elements, 34
+  deep, 1.2 s to clip; "World War II" 16,789 and 28; Python's built-in types 19,713 and 21; an arXiv HTML
+  paper 3,255 and 23; MDN's Array 2,324 and 18. All still clip. **Within the limits the worst shape
+  measured blocks the server for about 3.5 s** (chains 60 deep up to 50,000 elements, at nice 19 on a
+  loaded machine).
+- **The review found and fixed (each test-first):** a compressed page that stalled or broke off never
+  settled, because `pipe` does not pass a destroy or an error on to the decompressor (still pending 6 s
+  after a 1 s deadline; `pipeline` now); React 19 cleared the pasted link after a refusal (the field is
+  controlled now; the PDF import's title field has the same reset and was not changed); dollars typeset
+  as maths; `::/96`, site-local, Teredo, local NAT64 and discard ranges missing; the cut splitting an
+  emoji or leaving a fence open; a `<meta charset>` ignored when the header has none (the header still
+  wins; read from the first 1,024 bytes, where HTML requires it).
+- **Security review, by replaying the real action** (session and Next stubbed with Node's module mocks):
+  no session is refused before anything is read; a missing field, a file, two `url` fields (the first
+  is used and refused), a 5,000-character link, a smuggled `userId`, a newline used as user info and an
+  IPv6 zone id are all refused; no note was written. Only a URL crosses from the browser.
+
+**Tests.** Unit: `safe-fetch` (ranges in both families, URL forms) and `clip` (structure, hostile HTML,
+comments, non-articles, the shape limits with timing, pages without `<html>`, dollars, the cut, Turkish
+and Arabic). Integration with real loopback servers through an explicit `allowAddress` the app never
+passes: a lying resolver and mixed answers, a 3-redirect chain, a 4th redirect, a loop, redirects to 10.x
+and `file:`, the byte cap plain and gzipped, a drip, silence, a stalled and a broken gzip body, a PDF, a
+404, charsets from the header and from `<meta>`. `clip` against Postgres with an injected fetcher:
+the note, title fallbacks, every mapped refusal writing nothing, local links refused before any fetch, the
+cut just over and just under the limit. Calendar: local and private links refused, no subscription kept.
+Browser: refusals with their messages, the link kept, no note created, `ftp:` refused by the server, text
+that is not a link stopped by the browser, the phone width. **About 60 mutants**; the five that first
+survived exposed weak tests (the cut's boundary, the comment guard, the 200-character floor hidden by
+Readability's own, the redirect cap hidden by an endless loop) and each now fails a test. The service was
+written in the same step as its tests, so its RED was not watched; the mutants stand in for it.
+
+**Not done / accepted:** extraction runs on the main thread, so a page within the limits can still hold
+the server for a few seconds (a worker with a hard time limit would bound it; not built, since Next's
+server bundling of a worker file is its own piece of work); a page with no Content-Type is refused;
+https to http redirects are followed; a forged request with no `url` gets Zod's own wording; no rate
+limit (as for every action); a page behind a sign-in has no article; pages that build their article in
+JavaScript clip as whatever their HTML holds; images stay links to the source, not copies, so the
+browser loads them from that site each time the note is shown (the source learns the note was opened).
+**A real public page is never fetched in CI** (the browser tests cover refusals only, by design). It
+was checked once by hand on the production build (`next start`, a throwaway `look-` account, deleted
+after): Karpathy's RNN post clipped in 0.4 s and Wikipedia's "Transformer" in 1.3 s, each with its
+source line, title, links and images; no horizontal overflow at 375px; light and dark looked right.
 
 ## Data export
 

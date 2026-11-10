@@ -85,8 +85,10 @@ services. Nothing may need a paid API key.
   while the dashboard is open. There is no job runner, so say what fires this. Choose between
   self-hosted ntfy (a container plus a phone app) and Web Push (needs HTTPS and a service
   worker, which the app deliberately does not have); both are free. Use the `council` skill.
-- [ ] **20. Web clipper** (M, security). Paste a link, save the readable article as a note with
-  its source. Reuse the SSRF guard (`assertFetchableUrl`); cap size and time.
+- [x] **20. Web clipper** (M, security). Paste a link, save the readable article as a note with
+  its source. Reuse the SSRF guard (`assertFetchableUrl`); cap size and time. The guard was
+  replaced by `lib/safe-fetch.ts` (DNS checked at connect time, redirects re-checked), which calendar
+  subscriptions use too; see "Web clipper" in `CLAUDE.md`.
 - [ ] **21. PWA share target** (S to M, ops, depends on HTTPS in F). Share a page from a phone
   into Anamnesis. Needs HTTPS.
 - [ ] **22. References and citations** (M to L, migration). Store papers, cite them in notes

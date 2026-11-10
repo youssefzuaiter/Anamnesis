@@ -1,5 +1,6 @@
 import "server-only";
 import { AppError } from "@/lib/api-response";
+import { assertPublicUrl, safeFetchText, SafeFetchError } from "@/lib/safe-fetch";
 import { parseIcs, MAX_EVENTS_PER_FEED } from "@/lib/ics";
 import { deleteEntityEmbeddings } from "@/lib/vector";
 import { indexEvent } from "@/services/event-service";
@@ -17,71 +18,30 @@ const MAX_FEED_BYTES = 5 * 1024 * 1024;
  */
 const INDEXED_UPCOMING = 25;
 
-/**
- * The server fetches this URL, so it must not be usable to reach things only
- * the server can reach. Blocks non-HTTP schemes and the obvious private
- * targets; a local-only app has no legitimate reason to subscribe to one.
- */
+/** A calendar link is a URL the server fetches: the shared guard decides what it may reach. */
 function assertFetchableUrl(raw: string): URL {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new AppError("VALIDATION_ERROR", "That is not a valid URL.");
-  }
-
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    // webcal:// is what calendar apps hand out; it is plain https underneath.
-    if (url.protocol === "webcal:") {
-      url.protocol = "https:";
-    } else {
-      throw new AppError("VALIDATION_ERROR", "Use an http(s) or webcal URL.");
-    }
-  }
-
-  const host = url.hostname.toLowerCase();
-  const isPrivate =
-    host === "localhost" ||
-    host.endsWith(".localhost") ||
-    host === "[::1]" ||
-    /^127\./.test(host) ||
-    /^10\./.test(host) ||
-    /^192\.168\./.test(host) ||
-    /^169\.254\./.test(host) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(host);
-
-  if (isPrivate) {
-    throw new AppError("VALIDATION_ERROR", "That address is not reachable.");
-  }
-  return url;
+  return assertPublicUrl(raw, ["http:", "https:", "webcal:"]);
 }
 
 async function fetchFeed(url: URL): Promise<string> {
-  let response: Response;
+  let text: string;
   try {
-    response = await fetch(url, {
-      redirect: "follow",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      headers: { Accept: "text/calendar, text/plain;q=0.9, */*;q=0.8" },
-    });
-  } catch {
-    throw new AppError(
-      "INTEGRATION_ERROR",
-      "Could not reach that calendar. Check the link and try again.",
-    );
+    ({ text } = await safeFetchText(url, {
+      maxBytes: MAX_FEED_BYTES,
+      timeoutMs: FETCH_TIMEOUT_MS,
+      accept: "text/calendar, text/plain;q=0.9, */*;q=0.8",
+      // Feeds are served under many types (text/calendar, text/plain, application/octet-stream); what
+      // decides is the BEGIN:VCALENDAR check below.
+      allow: () => true,
+    }));
+  } catch (error) {
+    if (!(error instanceof SafeFetchError)) throw error;
+    if (error.kind === "blocked") throw error;
+    if (error.kind === "too-large") throw new AppError("VALIDATION_ERROR", "That calendar file is too large.");
+    if (error.kind === "status") throw new AppError("INTEGRATION_ERROR", `The calendar returned ${error.status}.`);
+    throw new AppError("INTEGRATION_ERROR", "Could not reach that calendar. Check the link and try again.");
   }
 
-  if (!response.ok) {
-    throw new AppError(
-      "INTEGRATION_ERROR",
-      `The calendar returned ${response.status}.`,
-    );
-  }
-
-  const text = await response.text();
-  if (text.length > MAX_FEED_BYTES) {
-    throw new AppError("VALIDATION_ERROR", "That calendar file is too large.");
-  }
   if (!text.includes("BEGIN:VCALENDAR")) {
     throw new AppError(
       "INTEGRATION_ERROR",
