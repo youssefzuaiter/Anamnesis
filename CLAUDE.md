@@ -2214,6 +2214,44 @@ was checked once by hand on the production build (`next start`, a throwaway `loo
 after): Karpathy's RNN post clipped in 0.4 s and Wikipedia's "Transformer" in 1.3 s, each with its
 source line, title, links and images; no horizontal overflow at 375px; light and dark looked right.
 
+## Sharing a page in
+
+ROADMAP item 21, "PWA share target". Plan `docs/superpowers/plans/2026-11-10-share-target.md`. No migration,
+no dependency.
+
+- **The roadmap's premise did not hold for the owner's phone.** iPhone Safari has never supported the Web Share
+  Target API: WebKit bug 194593 is open and unassigned, with comments through May 2026 saying so. A manifest
+  `share_target` would never appear on his iPhone. Asked, he chose (over a token API that clips without opening
+  Safari, and over the share target alone) **an iOS Shortcut that opens the clip card with the link filled in**:
+  no new credential, his normal sign-in. The manifest target is still declared, for Android and desktop Chrome.
+  And "depends on HTTPS in F" points at nothing in F: the HTTPS here is Tailscale Serve, which arrives with item
+  19's production step (still to do with him); `ops/README.md` has the steps.
+- **`/share?url=&text=&title=` only redirects** (`src/app/share/route.ts`, outside the dashboard layout): signed
+  in to `/notes/import?url=<link>`, signed out to `/login?next=<that>`. **It never fetches and never writes**; the
+  person taps Clip page. Otherwise any site, or a link preview, could make the server fetch pages on his behalf.
+- **The link** (`lib/share.ts`, pure): `url` when it is an http(s) URL, else the first http(s) address in `text`
+  (Android puts it inside the text). Sentence punctuation after it is dropped, and a closing bracket only when the
+  link did not open it (a Wikipedia title with parentheses keeps them). At most 2,000 characters; the text is read
+  100 characters past that, and a match that reaches the end of the read may go on, so it is refused rather than
+  cut into a different, shorter link (found by a mutant that survived; the first version also refused a 2,000-character
+  link that ended a sentence). A parameter given twice counts as absent.
+- **Sign-in follows `next` only as a path on this site** (`safeNext`): one leading slash, no second slash or any
+  backslash (browsers read `//host` and `/\host` as another site), no control characters, at most 2,500 characters,
+  and it must still resolve to this origin. Two layers on purpose: the mutants that remove either one survive, and
+  removing both is caught. Before this, sign-in always went to `/`, and the dashboard layout's redirect to `/login`
+  still drops the address (only `/share` carries one).
+- **The prefilled card** reads `?url=` through the same rule, so `javascript:` or junk opens it empty, and focuses
+  **Clip page** (which also scrolls to it).
+- **Accepted:** anyone can send him a `/share` link that prefills the card with a page of their choosing; it does
+  nothing until he taps Clip page, and the fetch is the clipper's guarded one (public pages only).
+
+**Tests.** 7 unit tests (`share`: url and text, punctuation and brackets, junk and non-strings, speed on 300,000
+hostile characters, the limit at the boundary, the import address, `next`), 6 browser tests (`share.spec.ts`: a
+share with text lands focused and creates nothing; `url` wins; no link and a repeated parameter open an empty card;
+signed out the link survives sign-in; `//evil.example` as `next` lands on `/`; the manifest; a phone width). 20
+mutants, every one caught but the two single layers above. **Not verified:** a real Android share sheet, the iOS
+Shortcut, and the session over Tailscale's `:8443` address (with the production step).
+
 ## Data export
 
 `GET /api/export` (`services/export-service.ts`) dumps what a user owns that can safely leave
