@@ -86,7 +86,8 @@ test("a redirect is not followed, so the token never goes to another address", a
   assert.equal(target.seen.length, 0);
 });
 
-test("a server that never answers, or is not there, fails within the time allowed", async () => {
+// The test's own limit: a publisher without a timeout would otherwise hang the whole run.
+test("a server that never answers, or is not there, fails within the time allowed", { timeout: 10_000 }, async () => {
   const { base } = await serve(() => {
     /* never answers */
   });
