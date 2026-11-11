@@ -1919,9 +1919,15 @@ async function main() {
       })(),
       "the real model output observed in production was the string \"0\", not the number 0",
     );
+    // An unreadable start never becomes an event at an invented time. Since ROADMAP 23 it becomes a
+    // task with no due date instead of nothing (as a dateless event already did in groundDates):
+    // measured, "Add a task to book my exam slot" came back as an event with an empty start.
     check(
-      "an unparseable date is refused for events",
-      toProposal("create_event", { title: "x", startTime: "next tuesday-ish" }) === null,
+      "an unparseable date never makes an event; it is a task with no date",
+      (() => {
+        const p = toProposal("create_event", { title: "x", startTime: "next tuesday-ish" });
+        return p?.kind === "task" && p.dueDate === null && p.title === "x";
+      })(),
     );
     check(
       "a missing event end is repaired, not rejected",
