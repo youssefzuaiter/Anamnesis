@@ -29,6 +29,8 @@ export type RefFields = {
   number?: string;
   doi?: string;
   url?: string;
+  /** For a thesis: APA names a doctoral dissertation and a master's thesis differently. */
+  degree?: "doctoral" | "masters";
 };
 
 export type ParsedEntry = RefFields & { bibtex: string; line: number };
@@ -443,6 +445,9 @@ function toFields(key: string, type: ReferenceType, rawType: string, fields: Map
   set("number", article ? undefined : text("number"));
   set("doi", doi ? doi.slice(0, MAX_FIELD) : undefined);
   set("url", url ? url.slice(0, MAX_FIELD) : undefined);
+  if (finalType === "thesis") {
+    set("degree", rawType === "phdthesis" ? "doctoral" : rawType === "mastersthesis" || /master/i.test(fields.get("type") ?? "") ? "masters" : /ph\.?d|doctor/i.test(fields.get("type") ?? "") ? "doctoral" : undefined);
+  }
   return ref;
 }
 
@@ -481,5 +486,7 @@ export function toBibtex(ref: RefFields): string {
   add("year", ref.year === null ? undefined : String(ref.year));
   add("doi", ref.doi);
   add("url", ref.url);
-  return `@${WRITE_TYPE[ref.type]}{${ref.key},\n${lines.map(([name, value]) => `  ${name} = {${value}}`).join(",\n")}\n}\n`;
+  const entryType =
+    ref.type === "thesis" ? (ref.degree === "masters" ? "mastersthesis" : ref.degree === "doctoral" ? "phdthesis" : "thesis") : WRITE_TYPE[ref.type];
+  return `@${entryType}{${ref.key},\n${lines.map(([name, value]) => `  ${name} = {${value}}`).join(",\n")}\n}\n`;
 }

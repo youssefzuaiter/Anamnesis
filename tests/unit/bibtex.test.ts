@@ -85,6 +85,9 @@ test("a Google Scholar style export parses into references", () => {
   assert.deepEqual(thesis.authors, [{ family: "Öztürk", given: "Ayşe" }]);
   assert.equal(thesis.title, "Derin öğrenme");
   assert.equal(thesis.institution, "Bahçeşehir Üniversitesi");
+  assert.equal(thesis.degree, "doctoral");
+  assert.equal(parseBibtex("@mastersthesis{m, title={T}}").entries[0].degree, "masters");
+  assert.equal(parseBibtex("@thesis{m, title={T}, type={Master's thesis}}").entries[0].degree, "masters");
   assert.deepEqual(report.authors, [{ literal: "World Health Organization" }]);
   assert.equal(report.number, "12");
   assert.equal(site.url, "https://example.com/page");
