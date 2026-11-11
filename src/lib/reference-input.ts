@@ -17,10 +17,15 @@ export const referenceSchema = z
       .min(1, "Give the reference a citation key.")
       .max(MAX_KEY, "A citation key is at most 100 characters.")
       .regex(KEY_PATTERN, "A citation key uses letters, digits and _ : . - / and starts and ends with a letter, digit or _."),
-    type: z.enum(REFERENCE_TYPES),
+    type: z.enum(REFERENCE_TYPES, { error: "Choose a type from the list." }),
     title: z.string().trim().min(1, "Give the reference a title.").max(MAX_FIELD, "A title is at most 1,000 characters."),
     authors: z.array(name).max(MAX_NAMES),
-    year: z.number().int().min(1000, "Use a year between 1000 and 2100.").max(2100, "Use a year between 1000 and 2100.").nullable(),
+    year: z
+      .number({ error: "Use a year between 1000 and 2100." })
+      .int("Use a year between 1000 and 2100.")
+      .min(1000, "Use a year between 1000 and 2100.")
+      .max(2100, "Use a year between 1000 and 2100.")
+      .nullable(),
     container: text.optional(),
     volume: text.optional(),
     issue: text.optional(),
@@ -69,7 +74,8 @@ export function referenceFromForm(form: FormData): unknown {
     type: value("type") ?? "other",
     title: value("title") ?? "",
     authors: namesFromLines(value("authors") ?? ""),
-    year: year === undefined ? null : /^\d{1,4}$/.test(year) ? Number(year) : Number.NaN,
+    // Anything but plain digits is not a year; NaN lets the schema say so in its own words.
+    year: year === undefined ? null : /^\d{1,5}$/.test(year) ? Number(year) : Number.NaN,
   };
   for (const field of DETAIL_FIELDS) {
     if (field === "editors") {
