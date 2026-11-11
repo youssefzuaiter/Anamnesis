@@ -2252,6 +2252,84 @@ signed out the link survives sign-in; `//evil.example` as `next` lands on `/`; t
 mutants, every one caught but the two single layers above. **Not verified:** a real Android share sheet, the iOS
 Shortcut, and the session over Tailscale's `:8443` address (with the production step).
 
+## References and citations
+
+A list of works at `/references` (Study, `g b`), cited in a note as `[@key]` and shown in the reading view in **APA 7**,
+with a References list under the note (ROADMAP item 22). Plan `docs/superpowers/plans/2026-11-11-references.md`.
+Not tagged *demo*; one additive migration; no new dependency.
+
+- **The owner's two rulings.** (1) **Formatted here, not with citeproc**: citeproc (the standard CSL engine) is
+  CPAL-1.0 or AGPL, which would mean a credit notice in the app or offering the source to its users, and this repo has
+  no licence of its own; he chose to write it. (2) **APA 7 only.** Cost accepted: approximations at APA's edges (below).
+- **BibTeX is read and written here too** (`lib/bibtex.ts`), after looking: `@retorquere/bibtex-parser` is 9 MB with
+  heavy dependencies, `citation-js` brings its whole core, `@orcid/bibtex-parse-js` (2022) does not decode LaTeX.
+  It reads entries, `@string` macros, `#`, month macros, nested braces and quoted values, decodes LaTeX accents by
+  composing Unicode (`{\u{g}}` ğ, `{\c{s}}` ş, `{\i}` ı, `\.{I}` İ, then NFC), `--` and `---`, and splits names
+  ("Family, Given", "Given von Family", `{Organisation}`, `and others`). URLs and DOIs are taken as written, never
+  as LaTeX. **One linear pass:** a value may not run past a line that starts a new entry, so a broken entry is reported
+  with its line and the entries after it are still read. Thesis degree (doctoral or master's) is kept because APA names
+  them differently.
+- **Data:** `Reference` (`key` unique per account, `type`, `title`, `authors` JSON, `year`, `details` JSON for the
+  rest, `bibtex` as imported or null). **Hard delete**: a note citing a deleted key shows it as not found, nothing in a
+  note is lost. Editing drops the stored BibTeX (it no longer describes the work); fields the form does not show for a
+  type are carried as hidden inputs, never lost. Stored JSON is checked again on every read.
+- **Import** (paste or a .bib file, at most 1 MB and 2,000 entries) is previewed first: new, already yours, a key you
+  use with other content (yours is kept), what could not be read and on which line. **Add** sends the text again and the
+  server reads it afresh; it adds only keys the account does not have (`createMany` with `skipDuplicates` is a second
+  layer, so a mutant removing the filter survives by design).
+- **Citation syntax is pandoc's**: `[@key]`, `[@key, p. 3]`, `[@a; @b]`, `[see @a]`, `[-@a]` (year only), and a bare
+  `@key` as a narrative citation **only when the key is one of the account's references** (so "@someone" stays text).
+  An unknown bracketed key is shown as typed, dashed, titled "No reference has the key …". Like `[[wiki links]]`,
+  citations are substituted into text the Markdown parser has already split from code, so nothing in code is a citation;
+  table cells now get both. **The References list comes from `citedKeys(content)`**, the same outside-code rule the
+  page loads references by, not from what rendered: React calls the paragraph components lazily, after `NoteContent`
+  returns.
+- **APA 7, what is followed:** one, two (`&`, or "and" in a narrative citation) and three-or-more (`et al.`) authors;
+  group authors in full; `n.d.`; `2021a`/`2021b` for the same authors and year, lettered by title; several works in one
+  bracket in reference-list order; the list sorted by authors name by name (one author before the same author with
+  others), then year, then title, a work without authors by its title; authors as `Family, I. I.` (hyphenated given
+  names `J.-M.`), up to 20, then the first 19, `. . .`, the last; italics for the journal and volume, a book, a report, a
+  thesis; `(2nd ed.)` (a first edition is not named); `In E. Editor (Ed.),` for a chapter; `[Doctoral dissertation,
+  …]`/`[Master's thesis, …]`; `(Report No. …)`; a DOI as `https://doi.org/…`, else the link; a hanging indent.
+  **Not followed:** titles are kept as written (APA's sentence case needs knowing proper nouns; BibTeX's `{Braces}`
+  protect them only in some files); one author's works across years are not merged `(Smith, 2018, 2019)`; APA's extra
+  names when two `et al.` forms collide; more than 26 works by the same authors in a year; publisher omitted when it is
+  the author; retrieval dates; the narrative form of several works.
+- **Exports.** The JSON export has a `references` table (20 exported models); the vault zip has `references.bib` at its
+  root (each work as imported, else written from its fields), and importing the vault back ignores that file (the
+  References page imports it).
+
+**What testing and review found.** (1) My first parser skipped the entry right after a broken one when another followed
+(found by reading the recovery code; a test now has three). (2) Six surviving mutants of 32 showed missing tests:
+duplicate keys in one file, URLs read as LaTeX, escaping on write, `[@a b]`, the 1,000-character bracket bound, a first
+edition; all added. (3) **The review measured a quadratic**: deciding whether a bare `@key` sits inside a bracket scanned
+every bracket per match, so a note of 25,000 `[@a]` took 367 ms to find and 508 ms for its keys on every view; one pointer
+makes it linear (the growth test caught the old code at 516 ms then 2,791 ms). (4) A year typed as `1e3` got Zod's
+"expected number, received NaN". (5) Fixed timings were too tight under load (a 1 MB hostile file took 861 ms in the whole
+suite and 271 ms alone, linear), so those tests check growth when the input doubles. (6) React 19 resets a form after its
+action whether it succeeded or not; the form's defaults are what was last submitted, so a refusal keeps what was typed
+(a browser test checks it).
+
+**Security review, by replaying the real actions** (session and Next stubbed with Node's module mocks): with no session
+every action refuses before reading; another account's id and a non-uuid are "not found"; a smuggled `userId` is ignored;
+an unknown type, a 10,000-line author list, a 1 MB title, a `javascript:` link and a key with quotes are refused; a 2 MB
+file and 1 MB + 1 of text are refused; 1 MB of hostile BibTeX is reported in 4 ms; 2,001 entries are refused; importing a
+key another account uses adds it to mine only. Rendering: a reference's fields reach the page only as React text.
+
+**Tests.** Unit: `bibtex` (10), `citations` (6), `apa` (6), `reference-input` (2); render: `citations` (4); integration:
+`references` (6), the export and vault tests; browser: `references.spec.ts` (6: import with a preview, citing and the list,
+deleting, a refused then accepted form, a stranger's id and a made-up one as 404, phones in light and dark), and
+`/references` in the navigation test. 38 mutants, all caught but the one with a second layer.
+
+**Looked at in the browser** (a throwaway `look-` account, deleted after): the import preview, the list, a reference
+and a note citing three works, at 1280px and 375px in light and dark, with no horizontal overflow; a Next dev badge
+"1 Issue" seen once came from the screenshot loop changing colour scheme straight after a load, and a clean run of the
+same pages logged no console error or warning.
+
+**Not done:** DOI lookup (an outside request), other styles (citeproc's licence), importing `references.bib` from a vault,
+citations in the assistant or search (references are not embedded), a citation picker while typing, page numbers checked
+against the work, Word or LaTeX export of a note with its list.
+
 ## Data export
 
 `GET /api/export` (`services/export-service.ts`) dumps what a user owns that can safely leave
