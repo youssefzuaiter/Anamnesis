@@ -48,9 +48,17 @@ test("long hostile text is read quickly", () => {
 });
 
 test("a note of tens of thousands of citations is read in linear time", () => {
-  const text = "[@a] and @b ".repeat(25_000);
-  const started = performance.now();
-  assert.equal(findCitations(text, () => true).length, 50_000);
-  citedKeys(text);
-  assert.ok(performance.now() - started < 250, `${performance.now() - started} ms`);
+  assert.equal(findCitations("[@a] and @b ".repeat(1_000), () => true).length, 2_000);
+  // Doubling the text about doubles the time; the old check per bracket made it about four times.
+  const time = (n: number) => {
+    const text = "[@a] and @b ".repeat(n);
+    const started = performance.now();
+    findCitations(text, () => true);
+    citedKeys(text);
+    return performance.now() - started;
+  };
+  time(2_000); // warm up
+  const small = Math.min(time(12_500), time(12_500));
+  const large = Math.min(time(25_000), time(25_000));
+  assert.ok(large / small < 3, `${small.toFixed(0)} ms then ${large.toFixed(0)} ms`);
 });
