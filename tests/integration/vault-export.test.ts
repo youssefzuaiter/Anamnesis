@@ -315,3 +315,21 @@ test("a missing or empty account id is refused before any query", async () => {
     await assert.rejects(() => vaultPreflight(bad as never), AppError);
   }
 });
+
+test("the caller's references are in references.bib, as imported or written from their fields", async () => {
+  const alice = await newUser();
+  const bob = await newUser();
+  await prisma.reference.create({ data: { userId: alice.id, key: "imported1", type: "article", title: "Imported", bibtex: "@article{imported1,\n  title = {Imported, as it came}\n}" } });
+  await prisma.reference.create({ data: { userId: alice.id, key: "handmade1", type: "book", title: "Öğrenme", authors: [{ family: "Doğan", given: "Ayşe" }], year: 2021, details: { publisher: "P" } } });
+  await prisma.reference.create({ data: { userId: bob.id, key: "bobsecret", type: "article", title: "Bob's secret paper" } });
+
+  const files = await vaultOf(alice.id);
+  const bib = text(files, "references.bib");
+  assert.match(bib, /@article\{imported1,\n {2}title = \{Imported, as it came\}\n\}/);
+  assert.match(bib, /@book\{handmade1,[\s\S]*author = \{Doğan, Ayşe\}[\s\S]*title = \{Öğrenme\}/);
+  assert.ok(!bib.includes("bobsecret"));
+  assert.ok(!(await vaultOf(bob.id)).get("references.bib")?.toString().includes("imported1"));
+
+  const nobody = await newUser();
+  assert.equal((await vaultOf(nobody.id)).has("references.bib"), false, "no file when there is nothing to put in it");
+});

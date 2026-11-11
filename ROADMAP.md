@@ -93,8 +93,9 @@ services. Nothing may need a paid API key.
   into Anamnesis. Needs HTTPS. iPhone Safari has no share targets, so the owner chose an iOS Shortcut
   that opens `/share` (the clip card, prefilled); the manifest target serves Android and desktop. HTTPS is
   Tailscale Serve; see "Sharing a page in" in `CLAUDE.md`.
-- [ ] **22. References and citations** (M to L, migration). Store papers, cite them in notes
-  with `[@key]`, import BibTeX, build a bibliography. Useful for report writing.
+- [x] **22. References and citations** (M to L, migration). Store papers, cite them in notes
+  with `[@key]`, import BibTeX, build a bibliography. Useful for report writing. Formatted here in APA 7
+  (the owner declined citeproc's CPAL/AGPL licence); see "References and citations" in `CLAUDE.md`.
 - [ ] **23. Assistant proposed edits** (M, model, security). "Append this summary to the
   note", "reschedule this task". Still confirm-first and audited. The assistant is
   create-only today; widening that is a deliberate, measured change.

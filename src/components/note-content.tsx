@@ -4,6 +4,7 @@ import { MarkdownAsync, type Components } from "react-markdown";
 import "katex/dist/katex.min.css"; // rehype-katex does not import its own CSS
 import { remarkPlugins, rehypePlugins } from "@/lib/markdown";
 import { wikiLinkPattern, normalizeTitle } from "@/lib/wiki-links";
+import { NoteReferences, withCitations, type CitationContext } from "@/components/note-citations";
 
 /**
  * `[[Title]]` is this app's own syntax, not Markdown's, so it is substituted
@@ -81,10 +82,13 @@ function linkifyChildren(
 export async function NoteContent({
   content,
   links,
+  citations,
 }: {
   content: string;
   /** Normalized note title → its id, or null when nothing resolves. */
   links: Record<string, string | null>;
+  /** The works this note cites (see note-citations.tsx); without it, [@key] stays text. */
+  citations?: CitationContext;
 }) {
   if (!content.trim()) {
     return (
@@ -95,7 +99,8 @@ export async function NoteContent({
   }
 
   const map = new Map(Object.entries(links));
-  const linkify = (children: ReactNode) => linkifyChildren(children, map);
+  const linkify = (children: ReactNode) =>
+    citations ? withCitations(children, citations, (text) => withWikiLinks(text, map)) : linkifyChildren(children, map);
 
   const components: Components = {
     h1: ({ children }) => (
@@ -159,12 +164,12 @@ export async function NoteContent({
     ),
     th: ({ children }) => (
       <th className="border-b border-border-strong px-2 py-1.5 font-semibold">
-        {children}
+        {linkify(children)}
       </th>
     ),
     td: ({ children }) => (
       <td className="border-b border-border-subtle px-2 py-1.5">
-        {children}
+        {linkify(children)}
       </td>
     ),
     hr: () => <hr className="border-border-subtle" />,
@@ -205,6 +210,7 @@ export async function NoteContent({
   return (
     <div className="flex max-w-[68ch] flex-col gap-4 font-serif text-[17px] leading-[1.75] text-text">
       {rendered}
+      {citations && <NoteReferences ctx={citations} />}
     </div>
   );
 }

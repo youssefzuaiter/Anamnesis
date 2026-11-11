@@ -32,6 +32,9 @@ import { RAIL_CARD } from "@/components/rail-card";
 import { reasonLine } from "@/lib/link-reason";
 import { normalizeTitle } from "@/lib/wiki-links";
 import { Icon } from "@/components/icons";
+import { citedKeys } from "@/lib/citations";
+import { referencesByKeys } from "@/services/reference-service";
+import { citationContext } from "@/components/note-citations";
 
 
 export const metadata = { title: "Note · Anamnesis" };
@@ -62,7 +65,8 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
   const note = await getNote(userId, id);
   if (!note) notFound();
 
-  const [projects, courses, outgoing, backlinks, titles, focusSwitches, cards, attachments] =
+  const cited = citedKeys(note.content);
+  const [projects, courses, outgoing, backlinks, titles, focusSwitches, cards, attachments, references] =
     await Promise.all([
       listProjectOptions(userId),
       listCourseOptions(userId),
@@ -72,6 +76,7 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
       getSettings(userId),
       listForNote(userId, note.id),
       listAttachments(userId, note.id),
+      referencesByKeys(userId, cited),
     ]);
   const [{ resolved, unresolved }, related, suggestions, mentions] = await Promise.all([
     resolveNoteTitles(userId, titles),
@@ -164,7 +169,13 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
               </div>
             </>
           }
-          body={<NoteContent content={note.content} links={linkTargets} />}
+          body={
+            <NoteContent
+              content={note.content}
+              links={linkTargets}
+              citations={citationContext(references.map((fields) => ({ id: fields.id, fields })), cited)}
+            />
+          }
           editor={
             <NoteEditor
               action={updateThisNote}

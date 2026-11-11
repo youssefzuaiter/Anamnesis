@@ -6,6 +6,8 @@ import { ATTACHMENT_TYPES, mimeForExtension } from "@/lib/attachment-types";
 export const VAULT = {
   attachmentsDir: "attachments",
   manifestPath: ".anamnesis/manifest.json",
+  /** The account's references as BibTeX, at the top so Zotero, Obsidian or LaTeX find it. */
+  referencesPath: "references.bib",
   formatVersion: 1,
   /** Notes created by one import run; a second run carries on, because a run never duplicates. */
   maxImportNotes: 500,

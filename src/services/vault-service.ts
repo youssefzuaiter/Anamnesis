@@ -4,6 +4,8 @@ import { MAX_ATTACHMENT_BYTES } from "@/lib/attachment-types";
 import { deleteAttachment, getAttachment, putAttachment } from "@/lib/attachment-store";
 import { ZIP_LIMITS, ZipError, ZipWriter, openZip, type ZipEntry } from "@/lib/zip";
 import { VAULT, allocateNames, attachmentParts, manifestJson, noteFile, safeStem, type NameInput } from "@/lib/vault";
+import * as referenceService from "@/services/reference-service";
+import { toBibtex } from "@/lib/bibtex";
 import { baseName, classifyEntry, parseNoteFile, planImport, sniffAttachment, vaultRoot, type ParsedNote } from "@/lib/vault-import";
 import type { NoteInput } from "@/repositories/note-repository";
 import * as noteService from "@/services/note-service";
@@ -121,6 +123,17 @@ async function* writeVault(userId: string, options: { maxOffset?: number }): Asy
       yield await writer.add({ name: fileName, data: Buffer.from(text, "utf8"), modified: note.updatedAt });
       noteCount += 1;
     }
+  }
+
+  // The account's references, for Zotero, Obsidian or LaTeX: each as it was imported, else written
+  // from its fields. Importing the vault back ignores this file; the References page imports it.
+  const references = await referenceService.listReferences(userId);
+  if (references.length) {
+    const bib = [...references]
+      .sort((a, b) => a.key.localeCompare(b.key, "en"))
+      .map((ref) => (ref.bibtex ?? toBibtex(ref)).trimEnd())
+      .join("\n\n");
+    yield await writer.add({ name: VAULT.referencesPath, data: Buffer.from(`${bib}\n`, "utf8"), modified: new Date() });
   }
 
   const info = manifestJson({ exportedAt: new Date(), notes: noteCount, attachments: attachmentCount, missing });

@@ -16,7 +16,8 @@ test("the go-to keys are the ones in the design", () => {
   assert.deepEqual(
     GO_TO_SHORTCUTS.map((s) => `${s.key} ${s.href}`),
     ["h /", "n /notes", "s /search", "t /tasks", "c /calendar", "p /projects", "g /goals",
-     "u /courses", "d /cards", "r /review", "f /focus", "a /audit", "x /trash", ", /settings", "i /ai"],
+     "u /courses", "d /cards",
+    "b /references", "r /review", "f /focus", "a /audit", "x /trash", ", /settings", "i /ai"],
   );
 });
 

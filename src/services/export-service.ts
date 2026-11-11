@@ -122,6 +122,9 @@ export const tables = {
   attachments: table(LIGHT_PAGE, (userId, page) =>
     prisma.attachment.findMany({ where: { AND: [{ userId, note: { deletedAt: null } }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
+  references: table(LIGHT_PAGE, (userId, page) =>
+    prisma.reference.findMany({ where: { AND: [{ userId }, afterCreated(page.after)] }, ...oldestFirst(page) }),
+  ),
   // The address is a secret: it is read to take its host and dropped here, for both forms of the file.
   calendarSubscriptions: table(LIGHT_PAGE, async (userId, page) => {
     const feeds = await prisma.calendarSubscription.findMany({ where: { AND: [{ userId }, afterCreated(page.after)] }, ...oldestFirst(page) });
@@ -195,6 +198,7 @@ export async function buildFullExport(userId: string) {
     conversations,
     messages,
     attachments,
+    references,
     calendarSubscriptions,
   ] = await Promise.all([
     readUser(userId),
@@ -216,6 +220,7 @@ export async function buildFullExport(userId: string) {
     readAll(tables.conversations, userId),
     readAll(tables.messages, userId),
     readAll(tables.attachments, userId),
+    readAll(tables.references, userId),
     readAll(tables.calendarSubscriptions, userId),
   ]);
 
@@ -242,6 +247,7 @@ export async function buildFullExport(userId: string) {
     conversations,
     messages,
     attachments,
+    references,
     calendarSubscriptions,
   };
 }
