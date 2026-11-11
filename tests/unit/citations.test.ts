@@ -46,3 +46,11 @@ test("long hostile text is read quickly", () => {
     assert.ok(performance.now() - started < 300, `${text.slice(0, 10)}: ${performance.now() - started} ms`);
   }
 });
+
+test("a note of tens of thousands of citations is read in linear time", () => {
+  const text = "[@a] and @b ".repeat(25_000);
+  const started = performance.now();
+  assert.equal(findCitations(text, () => true).length, 50_000);
+  citedKeys(text);
+  assert.ok(performance.now() - started < 250, `${performance.now() - started} ms`);
+});

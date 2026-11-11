@@ -55,7 +55,14 @@ export function findCitations(text: string, known: (key: string) => boolean): Ci
     }
   }
 
-  const covered = (at: number) => found.some((c) => !c.narrative && at >= c.start && at < c.end);
+  // Brackets were found in order and do not overlap, and bare matches come in order too, so one
+  // pointer walks through the brackets: linear, where checking every bracket per match was not
+  // (25,000 brackets took 367 ms).
+  let bracket = 0;
+  const covered = (at: number) => {
+    while (bracket < found.length && found[bracket].end <= at) bracket++;
+    return bracket < found.length && found[bracket].start <= at;
+  };
   const narrative: Citation[] = [];
   BARE.lastIndex = 0;
   for (let match = BARE.exec(text); match; match = BARE.exec(text)) {
