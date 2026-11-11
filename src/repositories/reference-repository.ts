@@ -57,16 +57,3 @@ export function notesContaining(userId: string, text: string, take: number): Pro
     ORDER BY "updatedAt" DESC
     LIMIT ${take}`;
 }
-
-export function listReferencesForExport(userId: string, page: { cursor?: { createdAt: Date; id: string }; take: number }) {
-  return prisma.reference.findMany({
-    where: {
-      userId,
-      ...(page.cursor
-        ? { OR: [{ createdAt: { gt: page.cursor.createdAt } }, { createdAt: page.cursor.createdAt, id: { gt: page.cursor.id } }] }
-        : {}),
-    },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    take: page.take,
-  });
-}

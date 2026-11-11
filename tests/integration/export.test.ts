@@ -100,6 +100,12 @@ async function populate(userId: string, label: string) {
   const message = await prisma.message.create({
     data: { userId, conversationId: conversation.id, role: "user", content: `Hello ${label}`, citations: [{ index: 1, title: `Cited ${label}` }] },
   });
+  const reference = await prisma.reference.create({
+    data: {
+      userId, key: `ref-${label}`, type: "article", title: `Paper ${label}`, authors: [{ family: "Doe", given: "Jane" }], year: 2020,
+      details: { container: "Journal", doi: "10.1/x" }, bibtex: `@article{ref-${label}, title={Paper}}`,
+    },
+  });
   const profile = await prisma.userProfile.create({
     data: {
       userId, university: `Uni ${label}`, program: "AI", studentId: "123", targetGpa: 3.25, gpaScale: [{ letter: "AA", points: 4 }],
@@ -108,7 +114,7 @@ async function populate(userId: string, label: string) {
     },
   });
   return {
-    ids: [goal, project, course, assessment, note, version, attachment, card, task, checklistItem, subscription, event, link, telemetry, studySession, audit, conversation, message, profile].map((row) => row.id),
+    ids: [goal, project, course, assessment, note, version, attachment, card, task, checklistItem, subscription, event, link, telemetry, studySession, audit, conversation, message, reference, profile].map((row) => row.id),
     note, course, conversation,
   };
 }

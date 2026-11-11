@@ -26,6 +26,7 @@ export const EXPORTED_MODELS: Readonly<Record<string, string>> = {
   Conversation: "conversations",
   Message: "messages",
   Attachment: "attachments",
+  Reference: "references",
   CalendarSubscription: "calendarSubscriptions",
 };
 
