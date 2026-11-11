@@ -159,6 +159,15 @@ test("a target the model words loosely is still found: 'my … note', or a title
   assert.deepEqual(twice.proposals, [], "two notes with the title the request names are not guessed between");
 });
 
+test("two open tasks with one title are not guessed between", async () => {
+  const me = await newUser();
+  await task(me, "Essay");
+  await task(me, "essay");
+  const result = await decideEdits("move essay to friday", now, { userId: me, callTools: model({ name: "reschedule_task", arguments: { task_title: "Essay" } }) });
+  assert.deepEqual(result.proposals, []);
+  assert.match(result.reasons[0], /2 open tasks are called "Essay"/);
+});
+
 // --- Confirming ---------------------------------------------------------------------------------
 
 const appendOf = (n: { id: string; title: string; updatedAt: Date }, text = "Added line"): ActionProposal => ({

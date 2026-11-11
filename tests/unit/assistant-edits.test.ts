@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { parseNaturalDate } from "@/lib/natural-date";
 import { MAX_NOTE_LENGTH } from "@/lib/see-also";
 import { proposalSchema, toEditRequest, toProposal } from "@/lib/ai-tools";
-import { appendedContent, MAX_APPEND, refersBack, rescheduledDue, titleKey } from "@/lib/assistant-edits";
+import { appendedContent, MAX_APPEND, plainTitle, refersBack, rescheduledDue, titleKey, titlesInRequest } from "@/lib/assistant-edits";
 
 test("a request that points back at the conversation uses the last answer", () => {
   for (const question of [
@@ -91,4 +91,13 @@ test("a create whose model-made date cannot be read is repaired, not dropped", (
   const event = toProposal("create_event", { title: "Book exam slot", startTime: "" });
   assert.ok(event?.kind === "task", "an event with no readable start becomes a task, as a dateless event does");
   assert.equal(event.title, "Book exam slot");
+});
+
+test("a model's wording of a title is made plain, and only whole titles in a request count", () => {
+  assert.equal(plainTitle("my reading list note"), "reading list");
+  assert.equal(plainTitle("The essay draft task"), "essay draft");
+  assert.equal(plainTitle("note"), "note", "a title that is only the word stays");
+  const rows = [{ title: "Read" }, { title: "Reading list" }, { title: "List" }];
+  assert.deepEqual(titlesInRequest("save it to my reading list", rows), [{ title: "Reading list" }], "the longest, and never 'Read' inside 'reading'");
+  assert.deepEqual(titlesInRequest("save it to my readings", [{ title: "Read" }]), []);
 });
