@@ -256,3 +256,13 @@ export async function listFeedTasks(userId: string, from: Date, to: Date, take: 
   });
 }
 
+/** The caller's live, unfinished tasks whose title equals `key` with case and spaces folded. */
+export function findOpenTasksByTitleKey(userId: string, key: string, take: number) {
+  return prisma.$queryRaw<{ id: string; title: string; dueDate: Date | null; scheduledStart: Date | null }[]>`
+    SELECT "id", "title", "dueDate", "scheduledStart" FROM "Task"
+    WHERE "userId" = ${userId} AND "deletedAt" IS NULL AND "status" <> 'done'
+      AND lower(regexp_replace(btrim("title"), '[[:space:]]+', ' ', 'g')) = ${key}
+    ORDER BY "updatedAt" DESC
+    LIMIT ${take}`;
+}
+

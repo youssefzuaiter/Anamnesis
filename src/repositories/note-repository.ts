@@ -395,3 +395,17 @@ export async function listImportIdentities(userId: string): Promise<{ title: str
     WHERE "userId" = ${userId} AND "deletedAt" IS NULL
   `;
 }
+
+/**
+ * The caller's live notes whose title equals `key` once case and runs of spaces are folded (the
+ * assistant's edits name a note by title). At most `take`, so the caller can tell one from several.
+ */
+export function findNotesByTitleKey(userId: string, key: string, take: number) {
+  return prisma.$queryRaw<{ id: string; title: string; updatedAt: Date }[]>`
+    SELECT "id", "title", "updatedAt" FROM "Note"
+    WHERE "userId" = ${userId} AND "deletedAt" IS NULL
+      AND lower(regexp_replace(btrim("title"), '[[:space:]]+', ' ', 'g')) = ${key}
+    ORDER BY "updatedAt" DESC
+    LIMIT ${take}`;
+}
+

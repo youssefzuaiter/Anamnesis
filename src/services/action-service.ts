@@ -6,6 +6,9 @@ import * as taskService from "@/services/task-service";
 import * as eventService from "@/services/event-service";
 import * as noteService from "@/services/note-service";
 import * as goalService from "@/services/goal-service";
+import { appendedContent } from "@/lib/assistant-edits";
+import { getNote } from "@/repositories/note-repository";
+import { getTask } from "@/repositories/task-repository";
 
 export type ActorType = "USER" | "AI_AGENT" | "SYSTEM";
 export type ActionSource = "assistant" | "capture";
@@ -23,6 +26,8 @@ const ACTION_NAMES = {
   event: "EVENT_CREATED",
   note: "NOTE_CREATED",
   goal: "GOAL_CREATED",
+  note_append: "NOTE_APPENDED",
+  task_reschedule: "TASK_RESCHEDULED",
 } as const;
 
 const ENTITY_TYPES = {
@@ -30,6 +35,8 @@ const ENTITY_TYPES = {
   event: "Event",
   note: "Note",
   goal: "Goal",
+  note_append: "Note",
+  task_reschedule: "Task",
 } as const;
 
 const HREF_PREFIX = {
@@ -37,7 +44,48 @@ const HREF_PREFIX = {
   event: "/calendar",
   note: "/notes",
   goal: "/goals",
+  note_append: "/notes",
+  task_reschedule: "/tasks",
 } as const;
+
+const CHANGED = (what: string) => new AppError("VALIDATION_ERROR", `${what} changed since this was proposed. Ask again.`);
+
+/**
+ * The two edits (ROADMAP 23). The target id came through the browser, so it is read again scoped by
+ * the session's user (another account's, a trashed or a missing id is simply not found), and the
+ * state the proposal was made against must still hold, or nothing is written.
+ */
+async function applyEdit(
+  userId: string,
+  proposal: Extract<ActionProposal, { kind: "note_append" | "task_reschedule" }>,
+): Promise<{ entityId: string; before: Record<string, string | number | null>; after: Record<string, string | number | null> }> {
+  if (proposal.kind === "note_append") {
+    const note = await getNote(userId, proposal.targetId);
+    if (!note) throw new AppError("RESOURCE_NOT_FOUND", "That note no longer exists.");
+    if (note.updatedAt.toISOString() !== proposal.noteUpdatedAt) throw CHANGED("That note");
+    const content = appendedContent(note.content, proposal.text);
+    if (content === null) throw new AppError("VALIDATION_ERROR", "That would make the note longer than 100,000 characters.");
+    // An ordinary update: the old text is kept as a version (History undoes it) and the note is re-indexed.
+    await noteService.updateNote(userId, note.id, {
+      title: note.title,
+      content,
+      tags: note.tags,
+      isFavorite: note.isFavorite,
+      projectId: note.projectId,
+      courseId: note.courseId,
+    });
+    return { entityId: note.id, before: { length: note.content.length }, after: { length: content.length } };
+  }
+
+  const task = await getTask(userId, proposal.targetId);
+  if (!task) throw new AppError("RESOURCE_NOT_FOUND", "That task no longer exists.");
+  if (task.status === "done") throw new AppError("VALIDATION_ERROR", "That task is already done.");
+  if ((task.dueDate?.toISOString() ?? null) !== proposal.fromDue || (task.scheduledStart !== null) !== proposal.clearsBlock) {
+    throw CHANGED("That task");
+  }
+  await taskService.carryTaskTo(userId, task.id, new Date(proposal.toDue), proposal.clearsBlock);
+  return { entityId: task.id, before: { dueDate: proposal.fromDue }, after: { dueDate: proposal.toDue } };
+}
 
 /**
  * Records that the model asked for something. Written when the proposal is shown,
@@ -103,8 +151,13 @@ export async function executeProposal(
   if (alreadyApplied) return alreadyApplied;
 
   let entityId: string;
+  let change: { before: Record<string, string | number | null>; after: Record<string, string | number | null> } | null = null;
 
-  if (proposal.kind === "task") {
+  if (proposal.kind === "note_append" || proposal.kind === "task_reschedule") {
+    const edited = await applyEdit(userId, proposal);
+    entityId = edited.entityId;
+    change = { before: edited.before, after: edited.after };
+  } else if (proposal.kind === "task") {
     const task = await taskService.createTask(userId, {
       title: proposal.title,
       description: null,
@@ -164,7 +217,7 @@ export async function executeProposal(
       action: ACTION_NAMES[proposal.kind],
       entityType: ENTITY_TYPES[proposal.kind],
       entityId,
-      metadata: { proposalId, source, confirmedByUser: true },
+      metadata: { proposalId, source, confirmedByUser: true, ...(change ?? {}) },
     },
   });
 

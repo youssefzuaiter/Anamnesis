@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_APPEND } from "@/lib/assistant-edits";
 import {
   PROJECT_CATEGORIES,
   TASK_PRIORITIES,
@@ -9,13 +10,17 @@ import {
 // here cannot be requested, so widening the agent's reach is a deliberate edit to
 // this list rather than an emergent property of a prompt.
 //
-// Deliberately create-only: nothing here can update or delete, so the worst a
-// fully hijacked model can achieve is proposing clutter the user then declines.
+// Four creates and, since ROADMAP 23, exactly two edits: adding text to the end of a note and
+// moving a task's due date. Nothing here can delete, rename or rewrite, and an edit names its
+// target by title only; the server finds it among the caller's own rows. The worst a fully hijacked
+// model achieves is still a proposal the user reads in full and declines.
 export const AI_TOOLS = [
   "create_task",
   "create_event",
   "create_note",
   "create_goal",
+  "append_to_note",
+  "reschedule_task",
 ] as const;
 export type AiTool = (typeof AI_TOOLS)[number];
 
@@ -49,7 +54,46 @@ export const proposalSchema = z.discriminatedUnion("kind", [
     title: z.string().trim().min(1).max(200),
     category: z.enum(PROJECT_CATEGORIES).default("University"),
   }),
+  // The edits carry their target's id and the state they were proposed against, so a confirm can
+  // check the target is still the caller's and has not changed in between.
+  z.object({
+    kind: z.literal("note_append"),
+    targetId: z.uuid(),
+    targetTitle: z.string().max(200),
+    text: z.string().trim().min(1).max(MAX_APPEND),
+    noteUpdatedAt: isoDate,
+  }),
+  z.object({
+    kind: z.literal("task_reschedule"),
+    targetId: z.uuid(),
+    targetTitle: z.string().max(200),
+    fromDue: isoDate.nullable(),
+    toDue: isoDate,
+    clearsBlock: z.boolean(),
+  }),
 ]);
+
+/** An edit the model asked for, before its target is looked up. */
+export type EditRequest =
+  | { tool: "append_to_note"; noteTitle: string | null; text: string | null }
+  | { tool: "reschedule_task"; taskTitle: string };
+
+const optionalText = (max: number) =>
+  z.preprocess((value) => (typeof value === "string" && value.trim() === "" ? undefined : value), z.string().trim().max(max).optional());
+
+/** The model's arguments for an edit, checked; null for anything else or anything malformed. */
+export function toEditRequest(name: string, args: Record<string, unknown>): EditRequest | null {
+  if (name === "append_to_note") {
+    const parsed = z.object({ note_title: optionalText(200), text: optionalText(MAX_APPEND) }).safeParse(args);
+    if (!parsed.success) return null;
+    return { tool: "append_to_note", noteTitle: parsed.data.note_title ?? null, text: parsed.data.text ?? null };
+  }
+  if (name === "reschedule_task") {
+    const parsed = z.object({ task_title: z.string().trim().min(1).max(200) }).safeParse(args);
+    return parsed.success ? { tool: "reschedule_task", taskTitle: parsed.data.task_title } : null;
+  }
+  return null;
+}
 
 export type ActionProposal = z.infer<typeof proposalSchema>;
 
@@ -140,6 +184,39 @@ export const OLLAMA_TOOLS = [
       },
     },
   },
+  // The two edits (ROADMAP 23). The model names a target by title; the server looks it up among the
+  // caller's own rows, takes dates from the person's words and, for "append this", the last answer.
+  {
+    type: "function",
+    function: {
+      name: "append_to_note",
+      description:
+        "Propose adding text to the end of an existing note, for the user to confirm. Use only when they ask you to add, append or save something to a note they already have.",
+      parameters: {
+        type: "object",
+        properties: {
+          note_title: { type: "string", description: "The title of the existing note" },
+          text: { type: "string", description: "The text to add, if they gave it" },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "reschedule_task",
+      description:
+        "Propose moving an existing task to another day, for the user to confirm. Use only when they ask you to reschedule, move, postpone or push back a task they already have.",
+      parameters: {
+        type: "object",
+        properties: {
+          task_title: { type: "string", description: "The title of the existing task" },
+        },
+        required: ["task_title"],
+      },
+    },
+  },
 ] as const;
 
 const DEFAULT_EVENT_MINUTES = 60;
@@ -224,6 +301,8 @@ export function toProposal(
     });
     return result.success ? result.data : null;
   }
+
+  if (name !== "create_note") return null; // an edit: see toEditRequest
 
   const result = proposalSchema.safeParse({
     kind: "note",
