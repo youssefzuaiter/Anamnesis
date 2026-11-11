@@ -348,6 +348,7 @@ test("navigation reaches every section", async ({ page }) => {
     ["/cards", /cards/i],
     ["/review", /weekly review/i],
     ["/courses", /courses/i],
+    ["/references", /references/i],
     ["/settings", /settings/i],
     ["/trash", /trash/i],
     ["/calendar/subscriptions", /imported calendars/i],
