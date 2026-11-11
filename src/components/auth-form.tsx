@@ -57,9 +57,12 @@ function Field({
 export function AuthForm({
   action,
   mode,
+  next = "/",
 }: {
   action: AuthAction;
   mode: "login" | "register";
+  /** Where to go once signed in: a local path already checked with `safeNext`. */
+  next?: string;
 }) {
   const [state, formAction] = useActionState(action, null);
   const router = useRouter();
@@ -69,9 +72,9 @@ export function AuthForm({
       // The session cookie is set by the action; refresh so server components
       // re-render with it before navigating into the protected shell.
       router.refresh();
-      router.replace("/");
+      router.replace(next);
     }
-  }, [state, router]);
+  }, [state, router, next]);
 
   return (
     <form action={formAction} className="flex flex-col gap-4">

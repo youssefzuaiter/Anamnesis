@@ -89,8 +89,10 @@ services. Nothing may need a paid API key.
   its source. Reuse the SSRF guard (`assertFetchableUrl`); cap size and time. The guard was
   replaced by `lib/safe-fetch.ts` (DNS checked at connect time, redirects re-checked), which calendar
   subscriptions use too; see "Web clipper" in `CLAUDE.md`.
-- [ ] **21. PWA share target** (S to M, ops, depends on HTTPS in F). Share a page from a phone
-  into Anamnesis. Needs HTTPS.
+- [x] **21. PWA share target** (S to M, ops, depends on HTTPS in F). Share a page from a phone
+  into Anamnesis. Needs HTTPS. iPhone Safari has no share targets, so the owner chose an iOS Shortcut
+  that opens `/share` (the clip card, prefilled); the manifest target serves Android and desktop. HTTPS is
+  Tailscale Serve; see "Sharing a page in" in `CLAUDE.md`.
 - [ ] **22. References and citations** (M to L, migration). Store papers, cite them in notes
   with `[@key]`, import BibTeX, build a bibliography. Useful for report writing.
 - [ ] **23. Assistant proposed edits** (M, model, security). "Append this summary to the

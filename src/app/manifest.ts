@@ -13,6 +13,13 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "An AI-native personal knowledge and productivity workspace.",
     start_url: "/",
     display: "standalone",
+    // Android and desktop Chrome list the installed app in the share sheet. iPhone Safari does not
+    // support this (WebKit bug 194593); there an iOS Shortcut opens the same address.
+    share_target: {
+      action: "/share",
+      method: "GET",
+      params: { url: "url", text: "text", title: "title" },
+    },
     background_color: "#f5f6f8",
     theme_color: "#f5f6f8",
     icons: [

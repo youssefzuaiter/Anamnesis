@@ -5,11 +5,13 @@ import { useFormStatus } from "react-dom";
 import type { ApiResponse } from "@/lib/api-response";
 import { clipUrlAction } from "@/actions/clip";
 
-function SubmitButton() {
+function SubmitButton({ autoFocus }: { autoFocus: boolean }) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
+      // A shared link arrives filled in: focus (and scroll to) the button that clips it.
+      autoFocus={autoFocus}
       disabled={pending}
       className="min-h-11 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
     >
@@ -18,11 +20,11 @@ function SubmitButton() {
   );
 }
 
-export function ClipForm() {
+export function ClipForm({ initialUrl = "" }: { initialUrl?: string }) {
   const [state, formAction] = useActionState<ApiResponse<null> | null, FormData>(clipUrlAction, null);
   // Controlled: React resets a form's uncontrolled fields when its action returns, which would clear
   // the link under a refusal, just when it needs correcting or retrying.
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initialUrl);
 
   return (
     <form action={formAction} className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
@@ -51,7 +53,7 @@ export function ClipForm() {
       </div>
 
       <div>
-        <SubmitButton />
+        <SubmitButton autoFocus={initialUrl !== ""} />
       </div>
     </form>
   );

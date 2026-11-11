@@ -3,10 +3,13 @@ import { PdfImportForm } from "@/components/pdf-import-form";
 import { MarkdownImportForm } from "@/components/markdown-import-form";
 import { VaultImportForm } from "@/components/vault-import-form";
 import { ClipForm } from "@/components/clip-form";
+import { sharedLink } from "@/lib/share";
 
 export const metadata = { title: "Import · Anamnesis" };
 
-export default function ImportPdfPage() {
+export default async function ImportPdfPage({ searchParams }: PageProps<"/notes/import">) {
+  // A shared link (see /share) prefills the clip card. Nothing is fetched until Clip page is pressed.
+  const shared = sharedLink({ url: (await searchParams).url });
   return (
     <div className="mx-auto max-w-2xl">
       <header className="mb-5">
@@ -42,7 +45,8 @@ export default function ImportPdfPage() {
         network), up to 5 MB and 15 seconds; a page behind a sign-in has no
         article to clip.
       </p>
-      <ClipForm />
+      {/* Keyed by the link, so a second share while this page is open replaces the first. */}
+      <ClipForm key={shared ?? ""} initialUrl={shared ?? ""} />
 
       <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
         From Markdown files

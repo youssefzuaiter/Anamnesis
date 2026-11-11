@@ -172,6 +172,27 @@ send failed (it is tried three times). `docker compose ... logs ntfy` shows what
 is asleep sends nothing; on waking it sends that day's list of what is due, but never a heads-up for an
 event that has already started.
 
+## Sharing a page from the iPhone
+
+Anamnesis has a share address, `/share?url=<link>`: it opens the clip card with the link filled in (through
+sign-in first if needed); nothing is fetched until **Clip page** is tapped. Android and desktop Chrome list
+the installed app in their share sheet on their own (the manifest's `share_target`). **iPhone Safari does not
+support share targets** (WebKit bug 194593), so on the iPhone a Shortcut does it. Set up once, after the
+Tailscale steps above:
+
+1. On the Mac, serve the app to the tailnet on its own port beside ntfy:
+   `tailscale serve --bg --https=8443 http://127.0.0.1:3200`. The app stays bound to localhost; only your own
+   devices on the tailnet reach `https://<this-mac>.<tailnet>.ts.net:8443`. Open that address in Safari on the
+   iPhone once and sign in.
+2. In the Shortcuts app: **New Shortcut**, then in its details turn on **Show in Share Sheet** and accept
+   **URLs** (and **Safari web pages**). Add **URL Encode** (input: Shortcut Input), then **URL** with
+   `https://<this-mac>.<tailnet>.ts.net:8443/share?url=` followed by the URL Encode result, then **Open URLs**.
+   Name it "Clip to Anamnesis".
+3. In Safari (or any app), Share, **Clip to Anamnesis**: the clip card opens with the link; tap **Clip page**.
+
+**Not yet checked on a real iPhone or over Tailscale** (to do with the production step of item 19): that the
+session survives on the `:8443` address and that Auth.js accepts the forwarded host.
+
 ## Before exposing it to the internet
 
 It is bound to localhost on purpose. Before it is reachable from anywhere else:
