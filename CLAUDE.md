@@ -1778,6 +1778,72 @@ worst an injection achieves is a wrong or silly answer — it provably cannot re
 another tenant's data, because that data never enters the context window. The evals
 assert exactly that, including under a fully compromised answer.
 
+### Assistant proposed edits
+
+ROADMAP item 23 (tagged *model, security*): the assistant may propose **"append to a note"** and
+**"reschedule a task"**, confirm-first and audited like every proposal. Plan
+`docs/superpowers/plans/2026-11-11-assistant-edits.md`. No migration. The forks were decided by a
+council I ran inline (weaker than independent voices); no owner question was needed.
+
+- **The model never supplies an id or a date.** It names a target by title (and, for an append,
+  the words). `decideEdits` (`services/assistant-service.ts`) looks the title up among the caller's
+  **live** notes, or open tasks, with case and spaces folded; then the title made plain
+  (`plainTitle`: "my reading list note" → "reading list"); then any title the request itself
+  contains as whole words, the longest only (`titlesInRequest`). None, or several, is no proposal
+  and a sentence saying which ("2 notes are called …", "I could not find an open task called …").
+  In a thread scoped to one note, "the note" is that note. The reschedule's day comes from
+  `parseNaturalDate` on the person's words (no date, no proposal); with no time given it keeps the
+  old due date's time of day, else the end of the day; a planned block is cleared.
+- **"Append this summary" is the thread's last answer, verbatim** (`refersBack`). A 3B model asked
+  to copy text paraphrases it. The answer comes from the browser's history, which is the person's
+  own session; the card shows exactly what will be written either way.
+- **A proposal carries the target's id and a fingerprint** (the note's `updatedAt`; the task's old
+  due date and whether it has a block). Confirming re-reads the target **for the session's user**:
+  another account's, a trashed or a missing id is "no longer exists"; a changed fingerprint is
+  "changed since this was proposed. Ask again."; a done task is refused; an append that would pass
+  100,000 characters is refused. An append is an ordinary `updateNote` (a version is kept, so
+  History undoes it; the note is re-indexed); a reschedule is `carryTaskTo`. Audit:
+  `NOTE_APPENDED` / `TASK_RESCHEDULED` with `before` and `after` (lengths, due dates); the audit
+  page names them and links them (`lib/audit-label.ts`).
+- **The decision prompt was widened by one sentence and the prefilter by six words** ("append",
+  "save", "reschedule", "postpone", "move/push … to"). The decision call still sees only the
+  person's question, never retrieved text, so an instruction inside a note cannot become an edit by
+  being asked about (an eval asserts it).
+
+**Measured with llama3.2:3b, temperature 0, each phrasing once** (so a spread, not rates). First
+build: edits 6/10, creates 8/10 (the previous prompt and four tools gave 9/10 on the same ten),
+creates turned into an edit 0/10, plain questions near the new words with a proposal or a reason
+0/12. The misses were read, not guessed at, and four had deterministic fixes: a create whose
+model-made date was "tomorrow" was dropped by the ISO check (older than this item; the model's dates
+are replaced from the words anyway, so an unreadable one is now ignored), an event with an empty
+start was dropped (now a task, as a dateless event already became), "my reading list note" did not
+match "Reading list" (`plainTitle`), and "the 20th of November" was not a date (the parser now
+accepts "of"). After: **edits 9/10, creates 10/10, creates turned into an edit 0/10, plain
+questions 0/12**; the eval section's seven edit phrasings 7/7. The one miss left, "postpone calling
+the dentist" for the task "Call the dentist", is left unguessed on purpose: the model named "dentist
+appointment", and matching loosely would risk the wrong task.
+
+**Security review, by replaying the real confirm action** (session stubbed): no session refused;
+another account's note and task "no longer exist", also with a smuggled `userId`; an unknown kind
+(`note_delete`), a 10,001-character text and non-uuid ids refused by the schema; a forged `content`
+field is stripped (only the append happens); a stale fingerprint refused. Nothing of the other
+account changed.
+
+**Tests.** 10 unit (`assistant-edits`: the rules, the schema, the create repairs, `plainTitle`,
+`titlesInRequest`, the date) and 2 (`audit-label`); 11 integration (`assistant-edits`, a scripted
+model and a real database: resolution, ambiguity for notes and tasks, the scoped note, the last
+answer, no date, done and trashed targets, another account's same title, ids and dates from the
+model ignored, confirming both edits, idempotence, every refusal); an eval section "Proposed edits"
+(`EVAL_ONLY=edits pnpm eval`). 23 mutants, all caught (three first survived and exposed missing
+tests: `plainTitle` hidden by the request fallback, whole-word matching, two tasks with one title).
+**Looked at in the browser with the real model:** both cards at 1280 and 375px in light and dark,
+and an append confirmed into a note.
+
+**Not done:** other edits (rename, complete, change priority, rewrite), editing an event, choosing
+among same-titled targets from the card, a fuzzy title match, undo from the card itself (History
+does it for a note; a reschedule's old date is in the audit), the docked assistant knowing its page's
+note.
+
 ### Assistant threads persist across a reload
 
 Before `Conversation`/`Message` existed, a chat lived only in `AssistantChat`'s
@@ -1828,9 +1894,10 @@ default and enforced on the server, hold for each of them.
 ### Tool calling: the model proposes, it never acts
 
 `lib/ai-tools.ts` holds the complete list of things the assistant may request.
-It is **create-only** — nothing can update or delete — so the worst a fully
-hijacked model achieves is proposing clutter the user then declines. Widening
-that reach is a deliberate edit to one list, not an emergent property of a prompt.
+It was **create-only** until item 23 added exactly two edits, adding text to the end of a note
+and moving a task's due date (see "Assistant proposed edits"); nothing can delete, rename or
+rewrite, so the worst a fully hijacked model achieves is a proposal the user reads in full and
+declines. Widening that reach is a deliberate edit to one list, not an emergent property of a prompt.
 
 `services/action-service.ts` is the single point where a proposal becomes real,
 and everything that makes it safe lives there rather than in the model's

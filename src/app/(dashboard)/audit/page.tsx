@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUserId } from "@/lib/session";
-import { listAuditTrail, type AuditEntry } from "@/services/action-service";
+import { listAuditTrail } from "@/services/action-service";
+import { auditLabel } from "@/lib/audit-label";
 
 export const metadata = { title: "Audit log · Anamnesis" };
 
@@ -9,47 +10,6 @@ const ACTOR_LABEL: Record<string, string> = {
   USER: "You",
   SYSTEM: "System",
 };
-
-const ENTITY_HREF_PREFIX: Record<string, string> = {
-  Task: "/tasks",
-  Event: "/calendar",
-  Note: "/notes",
-  Goal: "/goals",
-};
-
-function proposedTitle(entry: AuditEntry): string | null {
-  if (!entry.metadata || typeof entry.metadata !== "object") return null;
-  const proposal = (entry.metadata as Record<string, unknown>).proposal;
-  if (!proposal || typeof proposal !== "object") return null;
-  const title = (proposal as Record<string, unknown>).title;
-  return typeof title === "string" ? title : null;
-}
-
-function describe(entry: AuditEntry): { label: string; href: string | null } {
-  switch (entry.action) {
-    case "AI_MUTATION_PROPOSED": {
-      const title = proposedTitle(entry);
-      return {
-        label: title
-          ? `Assistant proposed a ${entry.entityType.toLowerCase()}: "${title}"`
-          : `Assistant proposed a new ${entry.entityType.toLowerCase()}`,
-        href: null,
-      };
-    }
-    case "AI_MUTATION_DECLINED":
-      return { label: "You declined the assistant's proposal", href: null };
-    case "TASK_CREATED":
-    case "EVENT_CREATED":
-    case "NOTE_CREATED":
-    case "GOAL_CREATED":
-      return {
-        label: `Created ${entry.entityType.toLowerCase()}`,
-        href: `${ENTITY_HREF_PREFIX[entry.entityType]}/${entry.entityId}`,
-      };
-    default:
-      return { label: entry.action, href: null };
-  }
-}
 
 export default async function AuditPage() {
   const userId = await requireUserId();
@@ -73,7 +33,7 @@ export default async function AuditPage() {
       ) : (
         <ul className="flex flex-col gap-2">
           {entries.map((entry) => {
-            const { label, href } = describe(entry);
+            const { label, href } = auditLabel(entry);
             const body = (
               <>
                 <div className="flex items-center gap-2">

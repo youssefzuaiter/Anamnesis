@@ -124,8 +124,20 @@ jobs:
       - name: Apply migrations
         run: pnpm exec prisma migrate deploy
 
+      # The system packages come from Ubuntu's mirrors, which this runner image could not resolve for
+      # hours on 2026-11-11 (no GitHub incident) while everything else downloaded. One attempt there
+      # spends about 10 minutes on lookups that time out, so retrying ran the job past its limit. The
+      # image already holds Chromium's libraries (what failed were fonts), so: if the mirrors do not
+      # resolve, or the full install does not finish in 5 minutes, install the browser alone with a
+      # warning. A browser that truly cannot run still fails the tests below.
       - name: Install Playwright's browser
-        run: pnpm exec playwright install --with-deps chromium
+        run: |
+          if getent hosts archive.ubuntu.com security.ubuntu.com > /dev/null \
+            && timeout 300 pnpm exec playwright install --with-deps chromium; then
+            exit 0
+          fi
+          echo "::warning::Ubuntu's package mirrors were unreachable; installing Chromium without its system packages."
+          pnpm exec playwright install chromium
 
       - name: Install and start Ollama
         run: |

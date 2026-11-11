@@ -96,9 +96,10 @@ services. Nothing may need a paid API key.
 - [x] **22. References and citations** (M to L, migration). Store papers, cite them in notes
   with `[@key]`, import BibTeX, build a bibliography. Useful for report writing. Formatted here in APA 7
   (the owner declined citeproc's CPAL/AGPL licence); see "References and citations" in `CLAUDE.md`.
-- [ ] **23. Assistant proposed edits** (M, model, security). "Append this summary to the
+- [x] **23. Assistant proposed edits** (M, model, security). "Append this summary to the
   note", "reschedule this task". Still confirm-first and audited. The assistant is
-  create-only today; widening that is a deliberate, measured change.
+  create-only today; widening that is a deliberate, measured change. Two edits, targets found by
+  title among your own rows, measured with the evals; see "Assistant proposed edits" in `CLAUDE.md`.
 - [ ] **24. Summarise a PDF or long note into a new note** (S to M, model). A proposal the user
   confirms, like any other.
 

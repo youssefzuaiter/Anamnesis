@@ -7,7 +7,10 @@ import {
   callWithTools,
   type ChatMessage,
 } from "@/lib/ollama";
-import { OLLAMA_TOOLS, toProposal, type ActionProposal } from "@/lib/ai-tools";
+import { OLLAMA_TOOLS, toEditRequest, toProposal, type ActionProposal, type EditRequest } from "@/lib/ai-tools";
+import { MAX_APPEND, plainTitle, refersBack, rescheduledDue, titleKey, titlesInRequest } from "@/lib/assistant-edits";
+import { findNotesByTitleKey, getNote, listLiveNoteTitles } from "@/repositories/note-repository";
+import { findOpenTasksByTitleKey, listOpenTaskTitles } from "@/repositories/task-repository";
 import { parseNaturalDate } from "@/lib/natural-date";
 import { recordProposed } from "@/services/action-service";
 import {
@@ -65,9 +68,9 @@ Rules you must always follow:
 // 10/10, and the extra wording made the model propose a goal for the plain
 // question "what tasks do I have for my thesis goal" and stop recognising
 // "Write down that …" as a note (notes 1/2 → 0/2).
-const ACTION_DECISION_PROMPT = `Decide whether the user is asking you to CREATE something in their workspace.
+const ACTION_DECISION_PROMPT = `Decide whether the user is asking you to CREATE something in their workspace, ADD text to a note they already have, or MOVE a task they already have to another day.
 
-Call a tool only when they are clearly asking you to add, create, schedule, book, remind them of, or write down something new. If they are asking for more than one distinct thing — "add three tasks: X, Y, Z" or "break this into tasks" — call the tool once per item, not once for the whole request.
+Call a tool only when they are clearly asking you to add, create, schedule, book, remind them of, or write down something new, to append something to an existing note, or to reschedule an existing task. If they are asking for more than one distinct thing — "add three tasks: X, Y, Z" or "break this into tasks" — call the tool once per item, not once for the whole request.
 
 Do NOT call any tool when they are asking a question, searching, or asking what something says or contains. In that case reply with the single word: NONE`;
 
@@ -86,8 +89,9 @@ const MAX_PROPOSALS_PER_TURN = 8;
 // 10 do now. Widening it was measured, not assumed — of 6 plain questions that
 // the new pattern newly admits ("did I set a goal for June", "do I have a new
 // goal this month", …) the model proposed on none.
+// The edits (ROADMAP 23) add "append", "save", "reschedule", "postpone" and "move/push … to".
 const ACTION_HINT =
-  /\b(add|create|schedule|book|remind|note down|write down|make|set up|put|plan|draft|set\b[^.?!]{0,25}\bgoals?|new goal)\b/i;
+  /\b(add|create|schedule|book|remind|note down|write down|make|set up|put|plan|draft|set\b[^.?!]{0,25}\bgoals?|new goal|append|save|reschedule|postpone|(move|push)\b[^.?!]{0,60}\b(to|back|until)\b)\b/i;
 
 /**
  * Asks whether the user's message is a request to create something, and returns
@@ -148,11 +152,37 @@ export async function decideAction(
   question: string,
   now = new Date(),
 ): Promise<ActionProposal[]> {
-  if (!ACTION_HINT.test(question)) return [];
+  return (await decideEdits(question, now)).proposals;
+}
+
+type ToolCaller = (messages: ChatMessage[], tools: readonly unknown[]) => Promise<{ name: string; arguments: Record<string, unknown> }[]>;
+
+export type EditContext = {
+  userId: string;
+  /** The note a thread is scoped to: "the note" means this one. */
+  scopeNoteId?: string | null;
+  /** The thread's last answer, which "append this summary" adds verbatim. */
+  lastAnswer?: string | null;
+  /** The model; replaced by a scripted caller in tests. */
+  callTools?: ToolCaller;
+};
+
+/**
+ * Every valid proposal the model asked for, creates and (with a user) edits, and for each edit that
+ * cannot be proposed a sentence saying why. The model names an edit's target by title only; it is
+ * looked up here among the caller's own live rows, its date comes from the person's words, and
+ * "this summary" is the thread's last answer. Nothing is written.
+ */
+export async function decideEdits(
+  question: string,
+  now = new Date(),
+  ctx?: EditContext,
+): Promise<{ proposals: ActionProposal[]; reasons: string[] }> {
+  if (!ACTION_HINT.test(question)) return { proposals: [], reasons: [] };
 
   let calls;
   try {
-    calls = await callWithTools(
+    calls = await (ctx?.callTools ?? callWithTools)(
       [
         { role: "system", content: ACTION_DECISION_PROMPT },
         { role: "user", content: question },
@@ -161,16 +191,103 @@ export async function decideAction(
     );
   } catch {
     // Losing the model should cost the action shortcut, not the whole answer.
-    return [];
+    return { proposals: [], reasons: [] };
   }
 
   const proposals: ActionProposal[] = [];
+  const reasons: string[] = [];
   for (const call of calls) {
     if (proposals.length >= MAX_PROPOSALS_PER_TURN) break;
     const proposal = toProposal(call.name, call.arguments);
-    if (proposal) proposals.push(groundDates(proposal, question, now));
+    if (proposal) {
+      proposals.push(groundDates(proposal, question, now));
+      continue;
+    }
+    const request = toEditRequest(call.name, call.arguments);
+    if (!request || !ctx) continue;
+    const resolved = await resolveEdit(request, question, now, ctx);
+    if ("reason" in resolved) reasons.push(resolved.reason);
+    else proposals.push(resolved.proposal);
   }
-  return proposals;
+  return { proposals, reasons: [...new Set(reasons)] };
+}
+
+const MAX_TITLE_MATCHES = 5;
+
+/**
+ * The rows a request names: the model's title as given, then made plain ("my reading list note" is
+ * "reading list"), then any title the request itself contains as whole words. Several rows mean an
+ * ambiguous title, which the caller refuses rather than guesses.
+ */
+async function lookUp<T extends { title: string }>(
+  modelTitle: string | null,
+  question: string,
+  byKey: (key: string) => Promise<T[]>,
+  all: () => Promise<T[]>,
+): Promise<T[]> {
+  for (const title of modelTitle ? [modelTitle, plainTitle(modelTitle)] : []) {
+    if (!titleKey(title)) continue;
+    const rows = await byKey(titleKey(title));
+    if (rows.length) return rows;
+  }
+  return titlesInRequest(question, await all());
+}
+
+async function resolveEdit(
+  request: EditRequest,
+  question: string,
+  now: Date,
+  ctx: EditContext,
+): Promise<{ proposal: ActionProposal } | { reason: string }> {
+  if (request.tool === "reschedule_task") {
+    const tasks = await lookUp(request.taskTitle, question, (key) => findOpenTasksByTitleKey(ctx.userId, key, MAX_TITLE_MATCHES), () => listOpenTaskTitles(ctx.userId));
+    if (tasks.length === 0) return { reason: `I could not find an open task called "${plainTitle(request.taskTitle)}".` };
+    if (tasks.length > 1) return { reason: `${tasks.length} open tasks are called "${plainTitle(request.taskTitle)}". Rename one, or move it from its own page.` };
+    const [target] = tasks;
+    const toDue = rescheduledDue(target.dueDate, parseNaturalDate(question, now));
+    if (!toDue) return { reason: `You did not say when to move "${target.title}" to.` };
+    return {
+      proposal: {
+        kind: "task_reschedule",
+        targetId: target.id,
+        targetTitle: target.title,
+        fromDue: target.dueDate?.toISOString() ?? null,
+        toDue: toDue.toISOString(),
+        clearsBlock: target.scheduledStart !== null,
+      },
+    };
+  }
+
+  // An append: which note, then what text.
+  let target: { id: string; title: string; updatedAt: Date } | null = null;
+  const named = request.noteTitle || ctx.scopeNoteId === undefined || ctx.scopeNoteId === null;
+  if (named) {
+    const notes = await lookUp(request.noteTitle, question, (key) => findNotesByTitleKey(ctx.userId, key, MAX_TITLE_MATCHES), () => listLiveNoteTitles(ctx.userId));
+    if (notes.length > 1) return { reason: `${notes.length} notes are called "${request.noteTitle ? plainTitle(request.noteTitle) : notes[0].title.trim()}". Rename one, or ask from that note's page ("Ask about this note").` };
+    target = notes[0] ?? null;
+  }
+  if (!target && ctx.scopeNoteId) {
+    const scoped = await getNote(ctx.userId, ctx.scopeNoteId);
+    if (scoped) target = { id: scoped.id, title: scoped.title, updatedAt: scoped.updatedAt };
+  }
+  if (!target) {
+    return {
+      reason: request.noteTitle
+        ? `I could not find a note called "${plainTitle(request.noteTitle)}".`
+        : `Say which note to add it to (its title), or ask from that note's page ("Ask about this note").`,
+    };
+  }
+
+  let text: string | null;
+  if (refersBack(question)) {
+    text = ctx.lastAnswer?.trim() || null;
+    if (!text) return { reason: "There is no answer in this conversation to add yet. Ask your question first, then ask me to add the answer." };
+  } else {
+    text = request.text;
+    if (!text) return { reason: `Say what to add to "${target.title}".` };
+  }
+  if (text.length > MAX_APPEND) return { reason: `That is longer than ${MAX_APPEND.toLocaleString("en")} characters, more than one addition takes.` };
+  return { proposal: { kind: "note_append", targetId: target.id, targetTitle: target.title, text, noteUpdatedAt: target.updatedAt.toISOString() } };
 }
 
 function excerptOf(text: string): string {
@@ -325,7 +442,21 @@ export async function* answerQuestion(
   // every kind of question, an action request included (which does not search).
   const resolved = scope ? await resolveScope(userId, scope) : null;
 
-  const actions = await decideAction(question);
+  // An edit names its target by title; in a thread scoped to one note, "the note" is that note, and
+  // "append this summary" means the thread's last answer.
+  const lastAnswer = [...history].reverse().find((message) => message.role === "assistant")?.content ?? null;
+  const { proposals: actions, reasons } = await decideEdits(question, new Date(), {
+    userId,
+    scopeNoteId: scope?.kind === "note" ? scope.id : null,
+    lastAnswer,
+  });
+
+  // An edit that could not be proposed is answered with why, not with a search.
+  if (actions.length === 0 && reasons.length > 0) {
+    yield { type: "citations", citations: [] };
+    yield { type: "delta", text: reasons.join(" ") };
+    return;
+  }
 
   // Retrieval is skipped entirely for action requests — no embedding, no search.
   const { citations, messages } = actions.length === 0
@@ -339,9 +470,10 @@ export async function* answerQuestion(
     yield {
       type: "delta",
       text:
-        actions.length === 1
+        (actions.length === 1
           ? "I have drafted this for you. Nothing is saved until you confirm it."
-          : `I have drafted ${actions.length} items for you. Nothing is saved until you confirm each one.`,
+          : `I have drafted ${actions.length} items for you. Nothing is saved until you confirm each one.`) +
+        (reasons.length ? ` ${reasons.join(" ")}` : ""),
     };
 
     for (const action of actions) {
