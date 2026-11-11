@@ -409,3 +409,8 @@ export function findNotesByTitleKey(userId: string, key: string, take: number) {
     LIMIT ${take}`;
 }
 
+/** The caller's live notes' titles, for finding a note a request names by title. */
+export function listLiveNoteTitles(userId: string) {
+  return prisma.note.findMany({ where: { userId, deletedAt: null }, select: { id: true, title: true, updatedAt: true }, take: 5_000 });
+}
+

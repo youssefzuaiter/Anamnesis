@@ -107,7 +107,7 @@ export function parseNaturalDate(text: string, now = new Date()): ParsedDate {
     "i",
   ).exec(text);
   const dayMonth = new RegExp(
-    `\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MONTHS.join("|")})\\b`,
+    `\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${MONTHS.join("|")})\\b`,
     "i",
   ).exec(text);
   const monthDay = new RegExp(

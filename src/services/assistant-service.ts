@@ -8,9 +8,9 @@ import {
   type ChatMessage,
 } from "@/lib/ollama";
 import { OLLAMA_TOOLS, toEditRequest, toProposal, type ActionProposal, type EditRequest } from "@/lib/ai-tools";
-import { MAX_APPEND, refersBack, rescheduledDue, titleKey } from "@/lib/assistant-edits";
-import { findNotesByTitleKey, getNote } from "@/repositories/note-repository";
-import { findOpenTasksByTitleKey } from "@/repositories/task-repository";
+import { MAX_APPEND, plainTitle, refersBack, rescheduledDue, titleKey, titlesInRequest } from "@/lib/assistant-edits";
+import { findNotesByTitleKey, getNote, listLiveNoteTitles } from "@/repositories/note-repository";
+import { findOpenTasksByTitleKey, listOpenTaskTitles } from "@/repositories/task-repository";
 import { parseNaturalDate } from "@/lib/natural-date";
 import { recordProposed } from "@/services/action-service";
 import {
@@ -214,6 +214,25 @@ export async function decideEdits(
 
 const MAX_TITLE_MATCHES = 5;
 
+/**
+ * The rows a request names: the model's title as given, then made plain ("my reading list note" is
+ * "reading list"), then any title the request itself contains as whole words. Several rows mean an
+ * ambiguous title, which the caller refuses rather than guesses.
+ */
+async function lookUp<T extends { title: string }>(
+  modelTitle: string | null,
+  question: string,
+  byKey: (key: string) => Promise<T[]>,
+  all: () => Promise<T[]>,
+): Promise<T[]> {
+  for (const title of modelTitle ? [modelTitle, plainTitle(modelTitle)] : []) {
+    if (!titleKey(title)) continue;
+    const rows = await byKey(titleKey(title));
+    if (rows.length) return rows;
+  }
+  return titlesInRequest(question, await all());
+}
+
 async function resolveEdit(
   request: EditRequest,
   question: string,
@@ -221,9 +240,9 @@ async function resolveEdit(
   ctx: EditContext,
 ): Promise<{ proposal: ActionProposal } | { reason: string }> {
   if (request.tool === "reschedule_task") {
-    const tasks = await findOpenTasksByTitleKey(ctx.userId, titleKey(request.taskTitle), MAX_TITLE_MATCHES);
-    if (tasks.length === 0) return { reason: `I could not find an open task called "${request.taskTitle}".` };
-    if (tasks.length > 1) return { reason: `${tasks.length} open tasks are called "${request.taskTitle}". Rename one, or move it from its own page.` };
+    const tasks = await lookUp(request.taskTitle, question, (key) => findOpenTasksByTitleKey(ctx.userId, key, MAX_TITLE_MATCHES), () => listOpenTaskTitles(ctx.userId));
+    if (tasks.length === 0) return { reason: `I could not find an open task called "${plainTitle(request.taskTitle)}".` };
+    if (tasks.length > 1) return { reason: `${tasks.length} open tasks are called "${plainTitle(request.taskTitle)}". Rename one, or move it from its own page.` };
     const [target] = tasks;
     const toDue = rescheduledDue(target.dueDate, parseNaturalDate(question, now));
     if (!toDue) return { reason: `You did not say when to move "${target.title}" to.` };
@@ -241,9 +260,10 @@ async function resolveEdit(
 
   // An append: which note, then what text.
   let target: { id: string; title: string; updatedAt: Date } | null = null;
-  if (request.noteTitle) {
-    const notes = await findNotesByTitleKey(ctx.userId, titleKey(request.noteTitle), MAX_TITLE_MATCHES);
-    if (notes.length > 1) return { reason: `${notes.length} notes are called "${request.noteTitle}". Rename one, or ask from that note's page ("Ask about this note").` };
+  const named = request.noteTitle || ctx.scopeNoteId === undefined || ctx.scopeNoteId === null;
+  if (named) {
+    const notes = await lookUp(request.noteTitle, question, (key) => findNotesByTitleKey(ctx.userId, key, MAX_TITLE_MATCHES), () => listLiveNoteTitles(ctx.userId));
+    if (notes.length > 1) return { reason: `${notes.length} notes are called "${request.noteTitle ? plainTitle(request.noteTitle) : notes[0].title.trim()}". Rename one, or ask from that note's page ("Ask about this note").` };
     target = notes[0] ?? null;
   }
   if (!target && ctx.scopeNoteId) {
@@ -253,7 +273,7 @@ async function resolveEdit(
   if (!target) {
     return {
       reason: request.noteTitle
-        ? `I could not find a note called "${request.noteTitle}".`
+        ? `I could not find a note called "${plainTitle(request.noteTitle)}".`
         : `Say which note to add it to (its title), or ask from that note's page ("Ask about this note").`,
     };
   }

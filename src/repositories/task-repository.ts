@@ -266,3 +266,12 @@ export function findOpenTasksByTitleKey(userId: string, key: string, take: numbe
     LIMIT ${take}`;
 }
 
+/** The caller's live, unfinished tasks' titles, for finding a task a request names by title. */
+export function listOpenTaskTitles(userId: string) {
+  return prisma.task.findMany({
+    where: { userId, deletedAt: null, status: { not: "done" } },
+    select: { id: true, title: true, dueDate: true, scheduledStart: true },
+    take: 5_000,
+  });
+}
+

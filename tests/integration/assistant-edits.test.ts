@@ -128,6 +128,37 @@ test("creates still come through beside edits, and the model's own ids or dates 
   assert.equal(new Date(reschedule.toDue).getDate(), 12, "tomorrow from the words, not 2020 from the model");
 });
 
+test("a target the model words loosely is still found: 'my … note', or a title the request itself contains", async () => {
+  const me = await newUser();
+  const reading = await note(me, "Reading list");
+  await note(me, "Reading");
+  const loose = await decideEdits("Add 'Deep Learning book' to my reading list note", now, {
+    userId: me, callTools: model({ name: "append_to_note", arguments: { note_title: "my reading list note", text: "Deep Learning book" } }),
+  });
+  assert.ok(loose.proposals[0]?.kind === "note_append");
+  assert.equal(loose.proposals[0].targetId, reading.id);
+
+  const untitled = await decideEdits("Save your answer in my reading list", now, {
+    userId: me, lastAnswer: "An answer.", callTools: model({ name: "append_to_note", arguments: { note_title: "", text: "" } }),
+  });
+  assert.ok(untitled.proposals[0]?.kind === "note_append", JSON.stringify(untitled));
+  assert.equal(untitled.proposals[0].targetId, reading.id, "the longest title the request contains, as whole words");
+
+  const essay = await task(me, "Essay draft", { dueDate: new Date(2026, 10, 12, 17) });
+  const pushed = await decideEdits("Push essay draft back to the 20th of November", now, {
+    userId: me, callTools: model({ name: "reschedule_task", arguments: { task_title: "the essay draft task" } }),
+  });
+  assert.ok(pushed.proposals[0]?.kind === "task_reschedule", JSON.stringify(pushed));
+  assert.equal(pushed.proposals[0].targetId, essay.id);
+  assert.equal(pushed.proposals[0].toDue, new Date(2026, 10, 20, 17).toISOString());
+
+  await note(me, "Reading list");
+  const twice = await decideEdits("Save your answer in my reading list", now, {
+    userId: me, lastAnswer: "An answer.", callTools: model({ name: "append_to_note", arguments: {} }),
+  });
+  assert.deepEqual(twice.proposals, [], "two notes with the title the request names are not guessed between");
+});
+
 // --- Confirming ---------------------------------------------------------------------------------
 
 const appendOf = (n: { id: string; title: string; updatedAt: Date }, text = "Added line"): ActionProposal => ({

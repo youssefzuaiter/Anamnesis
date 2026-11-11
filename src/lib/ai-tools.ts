@@ -262,7 +262,9 @@ export function toProposal(
     const result = proposalSchema.safeParse({
       kind: "task",
       title: args.title,
-      dueDate: args.dueDate ?? null,
+      // A model writes "tomorrow" here as often as a date. Its dates are replaced from the person's
+      // own words afterwards (groundDates), so one that cannot be read is dropped, not the task.
+      dueDate: isoDate.safeParse(args.dueDate).success ? args.dueDate : null,
       priority: args.priority ?? "medium",
       estimatedMinutes: normalizedMinutes(args.estimatedMinutes),
     });
@@ -272,7 +274,12 @@ export function toProposal(
   if (name === "create_event") {
     const start =
       typeof args.startTime === "string" ? Date.parse(args.startTime) : NaN;
-    if (Number.isNaN(start)) return null;
+    // No readable start: a task, as a dateless event becomes one later (groundDates), not nothing.
+    // Measured: "Add a task to book my exam slot" came back as an event with an empty start.
+    if (Number.isNaN(start)) {
+      const result = proposalSchema.safeParse({ kind: "task", title: args.title });
+      return result.success ? result.data : null;
+    }
 
     const parsedEnd =
       typeof args.endTime === "string" ? Date.parse(args.endTime) : NaN;

@@ -77,3 +77,18 @@ test("an edit tool never becomes a create proposal", () => {
   assert.equal(toProposal("append_to_note", { title: "x", note_title: "x", text: "y" }), null);
   assert.equal(toProposal("reschedule_task", { title: "x", task_title: "x" }), null);
 });
+
+test("'the 20th of November' is a date, like '20 November'", () => {
+  const now = new Date(2026, 10, 11, 10, 0);
+  assert.deepEqual(parseNaturalDate("push it to the 20th of November", now).date, new Date(2026, 10, 20));
+  assert.deepEqual(parseNaturalDate("on 3rd of march", now).date, new Date(2027, 2, 3));
+});
+
+test("a create whose model-made date cannot be read is repaired, not dropped", () => {
+  const task = toProposal("create_task", { title: "Email supervisor", dueDate: "tomorrow", estimatedMinutes: "0" });
+  assert.ok(task?.kind === "task", "a due date in words is left to the person's own words later");
+  assert.equal(task.dueDate, null);
+  const event = toProposal("create_event", { title: "Book exam slot", startTime: "" });
+  assert.ok(event?.kind === "task", "an event with no readable start becomes a task, as a dateless event does");
+  assert.equal(event.title, "Book exam slot");
+});

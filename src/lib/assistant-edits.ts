@@ -44,3 +44,23 @@ export function rescheduledDue(oldDue: Date | null, when: ParsedDate): Date | nu
 export function titleKey(title: string): string {
   return title.trim().replace(/\s+/g, " ").toLowerCase();
 }
+
+/** A title as a model tends to word it, "my reading list note", made plain: "reading list". */
+export function plainTitle(title: string): string {
+  let plain = title.trim();
+  for (let i = 0; i < 3; i++) plain = plain.replace(/^(my|the|a|an)\s+/i, "").replace(/\s+(note|task)$/i, "").trim();
+  return plain;
+}
+
+/**
+ * The rows whose title the request itself contains as whole words, the longest such title only:
+ * the fallback when the model names no target, or one that matches nothing.
+ */
+export function titlesInRequest<T extends { title: string }>(question: string, rows: T[]): T[] {
+  const text = ` ${titleKey(question).replace(/[^\p{L}\p{N}]+/gu, " ")} `;
+  const words = (title: string) => titleKey(title).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const found = rows.filter((row) => words(row.title) !== "" && text.includes(` ${words(row.title)} `));
+  const longest = Math.max(0, ...found.map((row) => words(row.title).length));
+  return found.filter((row) => words(row.title).length === longest);
+}
+
