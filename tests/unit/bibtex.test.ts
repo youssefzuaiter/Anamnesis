@@ -112,10 +112,10 @@ test("a broken entry is reported with its line, and the entries after it still p
 
 test("toBibtex writes an entry that reads back the same", () => {
   for (const entry of parseBibtex(scholar).entries) {
-    const { bibtex: _source, line: _line, ...ref } = entry;
+    const fieldsOf = (parsed: typeof entry) => Object.fromEntries(Object.entries(parsed).filter(([k]) => k !== "bibtex" && k !== "line"));
+    const ref = fieldsOf(entry) as unknown as Parameters<typeof toBibtex>[0];
     const [back] = parseBibtex(toBibtex(ref)).entries;
-    const { bibtex: _b, line: _l, ...again } = back;
-    assert.deepEqual(again, ref, entry.key);
+    assert.deepEqual(fieldsOf(back), ref, entry.key);
   }
 });
 

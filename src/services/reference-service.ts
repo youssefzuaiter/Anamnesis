@@ -97,8 +97,8 @@ export async function updateReference(userId: string, id: string, input: unknown
 /** A stored reference passed back in as input: only its fields count. */
 function stripStored(input: unknown): unknown {
   if (!input || typeof input !== "object") return input;
-  const { id: _id, bibtex: _bibtex, createdAt: _c, updatedAt: _u, ...fields } = input as Record<string, unknown>;
-  return fields;
+  const stored = new Set(["id", "bibtex", "createdAt", "updatedAt"]);
+  return Object.fromEntries(Object.entries(input).filter(([field]) => !stored.has(field)));
 }
 
 export async function deleteReference(userId: string, id: string): Promise<void> {
