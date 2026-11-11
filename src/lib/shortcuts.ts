@@ -10,7 +10,7 @@ export type GoToShortcut = { key: string; href: string; label: string };
 
 /**
  * Pressed after `g`. A key is the first letter of its destination where that is
- * free; `u` (Courses), `d` (Cards, a deck), `x` (Trash), `h` (Today, home) and
+ * free; `u` (Courses), `d` (Cards, a deck), `b` (References, a bibliography), `x` (Trash), `h` (Today, home) and
  * `i` (Assistant) are compromises. The labels equal the sidebar's, which a unit
  * test checks, so a new sidebar item cannot be added without a key.
  */
@@ -24,6 +24,7 @@ export const GO_TO_SHORTCUTS: readonly GoToShortcut[] = [
   { key: "g", href: "/goals", label: "Goals" },
   { key: "u", href: "/courses", label: "Courses" },
   { key: "d", href: "/cards", label: "Cards" },
+  { key: "b", href: "/references", label: "References" },
   { key: "r", href: "/review", label: "Review" },
   { key: "f", href: "/focus", label: "Focus" },
   { key: "a", href: "/audit", label: "Audit trail" },

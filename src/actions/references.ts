@@ -40,13 +40,10 @@ export async function updateReferenceAction(id: string, _prev: ApiResponse<null>
   redirect(`/references/${id}`);
 }
 
-export async function deleteReferenceAction(id: string): Promise<ApiResponse<null>> {
-  try {
-    const userId = await requireUserId();
-    await referenceService.deleteReference(userId, id);
-  } catch (error) {
-    return toApiResponse(error);
-  }
+/** For ConfirmDeleteButton: a refusal (not yours, already gone) shows the error page, as for an event. */
+export async function deleteReferenceAction(id: string): Promise<void> {
+  const userId = await requireUserId();
+  await referenceService.deleteReference(userId, id);
   refresh();
   redirect("/references");
 }
