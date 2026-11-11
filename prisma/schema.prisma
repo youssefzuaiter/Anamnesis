@@ -38,6 +38,7 @@ model User {
   goals        Goal[]
   studySessions StudySession[]
   reminderDeliveries ReminderDelivery[]
+  references   Reference[]
 }
 
 model UserProfile {
@@ -510,3 +511,27 @@ model ReminderDelivery {
   @@unique([userId, key])
   @@index([createdAt])
 }
+
+/// A work a note can cite with [@key] (ROADMAP 22). Hard deleted: a note citing a deleted key shows it as
+/// unresolved, so nothing in a note is lost. Fields are as lib/bibtex.ts reads them.
+model Reference {
+  id        String   @id @default(uuid())
+  userId    String
+  key       String
+  type      String
+  title     String
+  authors   Json     @default("[]")
+  year      Int?
+  /// container, volume, issue, pages, publisher, edition, editors, institution, number, doi, url, degree
+  details   Json     @default("{}")
+  /// The entry as imported, so an export gives it back as it came; null for one made in the app.
+  bibtex    String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId, updatedAt])
+}
+
