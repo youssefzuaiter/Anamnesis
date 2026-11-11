@@ -138,3 +138,24 @@ test("hostile input is refused or reported quickly", () => {
     assert.ok(performance.now() - started < 300, `${text.slice(0, 20)}… took ${performance.now() - started} ms`);
   }
 });
+
+test("a key that appears twice keeps the first, and says so", () => {
+  const { entries, problems } = parseBibtex("@article{same, title={First}}\n@article{same, title={Second}}");
+  assert.deepEqual(entries.map((e) => e.title), ["First"]);
+  assert.match(problems[0].message, /appears twice; the first is kept/);
+  assert.equal(problems[0].line, 2);
+});
+
+test("a URL or DOI is taken as written, not as LaTeX", () => {
+  const [entry] = parseBibtex("@misc{u, title={T}, url={https://example.com/~user/a--b?x=1\\%20&y=2}, doi={https://doi.org/10.1000/a--b}}").entries;
+  assert.equal(entry.url, "https://example.com/~user/a--b?x=1%20&y=2");
+  assert.equal(entry.doi, "10.1000/a--b");
+});
+
+test("special characters survive a write and a read", () => {
+  const ref = { key: "sp", type: "article" as const, title: "R&D at 50% of $5 for a_b #1 {sic}", authors: [{ family: "O'Brien", given: "Pat" }], year: 2000, container: "J & K" };
+  const [back] = parseBibtex(toBibtex(ref)).entries;
+  assert.equal(back.title, ref.title);
+  assert.equal(back.container, "J & K");
+  assert.deepEqual(back.authors, ref.authors);
+});

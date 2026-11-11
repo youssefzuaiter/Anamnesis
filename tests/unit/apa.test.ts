@@ -58,6 +58,8 @@ test("reference list entries for each type, italics where APA puts them", () => 
   assert.equal(plain(referenceApa(ctx, article)), "LeCun, Y., Bengio, Y., & Hinton, G. (2015). Deep learning. Nature, 521(7553), 436–444. https://doi.org/10.1038/nature14539");
   assert.deepEqual(referenceApa(ctx, article).filter((p) => p.italic).map((p) => p.text), ["Nature, 521"]);
   assert.equal(plain(referenceApa(ctx, book)), "Goodfellow, I. (2016). Deep learning (2nd ed.). MIT Press.");
+  const first = { ...book, key: "bk1", edition: "1" };
+  assert.equal(plain(referenceApa(apaContext([first]), first)), "Goodfellow, I. (2016). Deep learning. MIT Press.", "a first edition is not named");
   assert.deepEqual(referenceApa(ctx, book).filter((p) => p.italic).map((p) => p.text), ["Deep learning"]);
   assert.equal(plain(referenceApa(ctx, chapter)), "Doe, J.-M. (2001). A chapter. In E. Editor (Ed.), Big book (pp. 1–20). P.");
   assert.equal(plain(referenceApa(ctx, paper)), "Vaswani, A. (2017). Attention is all you need. In Advances in Neural Information Processing Systems 30 (pp. 5998–6008).");

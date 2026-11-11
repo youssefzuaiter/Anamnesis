@@ -28,7 +28,7 @@ test("a bare @key is a narrative citation only when it is known, and its trailin
 });
 
 test("brackets that are not citations are left alone", () => {
-  for (const text of ["[a link](http://x)", "[[Wiki title]]", "[x] task", "[see the notes]", "[@]", "[@ a]", "[email@x.com]", "[@a; plain words]"]) {
+  for (const text of ["[a link](http://x)", "[[Wiki title]]", "[x] task", "[see the notes]", "[@]", "[@ a]", "[email@x.com]", "[@a; plain words]", "[@a b]", `[@a, ${"x".repeat(1_000)}]`]) {
     assert.deepEqual(items(text).filter((c) => !c.narrative), [], text);
   }
 });
