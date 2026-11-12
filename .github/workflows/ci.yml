@@ -92,7 +92,9 @@ jobs:
   # run it by hand.
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 245 tests took 15.7 minutes on 2026-11-11 (the whole job 18m10s of a 20-minute limit), and each
+    # feature adds a few. The tests' own timeouts catch a hang; this only has to fit the suite.
+    timeout-minutes: 30
     services:
       postgres:
         image: pgvector/pgvector:pg17
