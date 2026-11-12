@@ -23,15 +23,11 @@ const note = (userId: string, title: string, content: string, deletedAt: Date | 
   prisma.note.create({ data: { userId, title, content, tags: [], deletedAt } });
 const refused = (code: string, message: RegExp) => (error: unknown) => error instanceof AppError && error.code === code && message.test(error.message);
 
-/** A scripted model: points answers taken from the section text, then an overview. */
-function model(script: { points?: (section: string) => unknown; overview?: unknown }) {
+/** A scripted model: points answers taken from the section text. */
+function model(script: { points?: (section: string) => unknown }) {
   const calls: string[] = [];
   const complete = async (messages: { role: string; content: string }[]) => {
     const user = messages[1].content;
-    if (user.includes("Write the overview.")) {
-      calls.push("overview");
-      return script.overview ?? { overview: "This note explains optimizers." };
-    }
     calls.push("points");
     const section = user.slice(user.indexOf("<<<BEGIN QUOTED NOTE>>>") + 24, user.indexOf("<<<END QUOTED NOTE>>>"));
     return script.points ? script.points(section) : { points: [section.trim().split(/(?<=\.)\s/)[0]] };
@@ -39,7 +35,7 @@ function model(script: { points?: (section: string) => unknown; overview?: unkno
   return { calls, complete };
 }
 
-test("a note becomes a summary proposal that links back to it, after one call per section and one overview", async () => {
+test("a note becomes a summary proposal that links back to it, after one call per section", async () => {
   const me = await newUser();
   const para = (i: number) => `Section ${i} says the learning rate sets the step size of gradient descent. ${"Filler words about training runs. ".repeat(80)}`;
   const n = await note(me, "Optimizers lecture", Array.from({ length: 6 }, (_, i) => para(i)).join("\n\n"));
@@ -47,15 +43,14 @@ test("a note becomes a summary proposal that links back to it, after one call pe
   const progress: string[] = [];
   const result = await summariseNote(me, n.id, { complete: m.complete, now, onProgress: (done, total) => progress.push(`${done}/${total}`) });
 
-  assert.equal(result.sections, m.calls.filter((c) => c === "points").length);
+  assert.equal(result.sections, m.calls.length);
   assert.ok(result.sections >= 2, String(result.sections));
-  assert.equal(m.calls.at(-1), "overview");
   assert.deepEqual(progress, Array.from({ length: result.sections }, (_, i) => `${i + 1}/${result.sections}`));
   assert.equal(result.proposal.kind, "note");
   assert.ok(result.proposal.kind === "note");
   assert.equal(result.proposal.title, "Summary: Optimizers lecture");
-  assert.match(result.proposal.content, /^> Summary of \[\[Optimizers lecture\]\] by the assistant on Thu 12 Nov\./);
-  assert.match(result.proposal.content, /## Key points\n\n- Section 0 says the learning rate/);
+  assert.match(result.proposal.content, /^> Key points of \[\[Optimizers lecture\]\], picked by the assistant on Thu 12 Nov/);
+  assert.match(result.proposal.content, /\n\n- Section 0 says the learning rate/);
   assert.equal(await prisma.note.count({ where: { userId: me } }), 1, "nothing is saved before a confirm");
 });
 
@@ -76,17 +71,20 @@ test("points the section does not support are dropped, and a note with none left
   );
 });
 
-test("an answer that breaks the schema is skipped for that section; a broken overview stops the summary", async () => {
+test("an answer that breaks the schema costs its section, not the summary", async () => {
   const me = await newUser();
   const n = await note(me, "Short", "Photosynthesis turns light into chemical energy in chloroplasts.");
   await assert.rejects(
     () => summariseNote(me, n.id, { now, complete: model({ points: () => ({ nope: 1 }) }).complete }),
     refused("AI_OUTPUT_INVALID", /could not find points/),
   );
-  await assert.rejects(
-    () => summariseNote(me, n.id, { now, complete: model({ overview: { overview: "" } }).complete }),
-    refused("AI_OUTPUT_INVALID", /overview/),
-  );
+  const two = await note(me, "Two parts", `First part about photosynthesis in chloroplasts. ${"Words here. ".repeat(500)}\n\nSecond part about mitochondria making ATP. ${"More words. ".repeat(500)}`);
+  let call = 0;
+  const halfBroken = await summariseNote(me, two.id, {
+    now,
+    complete: async () => (++call === 1 ? { nope: 1 } : { points: ["Second part about mitochondria making ATP."] }),
+  });
+  assert.equal(halfBroken.kept, 1);
 });
 
 test("another account's, a trashed, a missing or an empty note is refused before any model call", async () => {

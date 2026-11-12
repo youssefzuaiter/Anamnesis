@@ -1,8 +1,10 @@
 // Summarising a note (ROADMAP 24): the parts that are not the model. Pure.
 //
 // A 3B model with Ollama's default context cannot read a long note in one go, and text past the
-// context is dropped silently, so a note is read in sections, each section's points are checked
-// against that section, and the overview is written from the kept points only.
+// context is dropped silently, so a note is read in sections and each section's points are kept only
+// if that section's own words back them. There is no model-written overview: measured, two of three
+// were wrong or garbled (an invented "hydrogen atoms", a Turkish note half in English), and an
+// overview is a paraphrase no word check can hold, while all 51 points measured were faithful.
 
 import { groundedness } from "@/lib/quiz";
 import { dateLabel } from "@/lib/note-templates";
@@ -49,15 +51,16 @@ export function keepGrounded(points: string[], section: string, floor: number): 
 /** A title that can sit inside `[[...]]` and still resolve: no brackets, no line break. */
 const linkable = (title: string) => !/[[\]\n]/.test(title) && title.trim() === title && title.length > 0;
 
-/** The new note: it says where it came from, that the assistant wrote it, and when. */
-export function summaryNote(sourceTitle: string, overview: string, points: string[], now: Date): { title: string; content: string } {
+/**
+ * The new note: where it came from, that the assistant picked the points and when, then each
+ * section's points as a list, in the note's order.
+ */
+export function summaryNote(sourceTitle: string, groups: string[][], now: Date): { title: string; content: string } {
   const source = linkable(sourceTitle) ? `[[${sourceTitle}]]` : `"${sourceTitle}"`;
+  const lists = groups.filter((group) => group.length > 0).map((group) => group.map((point) => `- ${point.trim()}`).join("\n"));
   const content = [
-    `> Summary of ${source} by the assistant on ${dateLabel(now)}. Check it against the note before relying on it.`,
-    "## Overview",
-    overview.trim(),
-    "## Key points",
-    points.map((point) => `- ${point.trim()}`).join("\n"),
+    `> Key points of ${source}, picked by the assistant on ${dateLabel(now)}. Check them against the note before relying on them.`,
+    ...lists,
   ].join("\n\n");
   return { title: `Summary: ${sourceTitle}`.slice(0, 200), content };
 }
