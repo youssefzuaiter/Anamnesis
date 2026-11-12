@@ -57,8 +57,10 @@ test("a note of tens of thousands of citations is read in linear time", () => {
     citedKeys(text);
     return performance.now() - started;
   };
-  time(2_000); // warm up
-  const small = Math.min(time(12_500), time(12_500));
-  const large = Math.min(time(25_000), time(25_000));
+  // Sizes large enough that real work outweighs a garbage-collection pause, and the best of three:
+  // at 12,500 the whole run took 21 ms and one pause made a linear run look 3.9 times slower.
+  time(5_000); // warm up
+  const small = Math.min(time(25_000), time(25_000), time(25_000));
+  const large = Math.min(time(50_000), time(50_000), time(50_000));
   assert.ok(large / small < 3, `${small.toFixed(0)} ms then ${large.toFixed(0)} ms`);
 });
