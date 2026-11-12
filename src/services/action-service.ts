@@ -11,7 +11,7 @@ import { getNote } from "@/repositories/note-repository";
 import { getTask } from "@/repositories/task-repository";
 
 export type ActorType = "USER" | "AI_AGENT" | "SYSTEM";
-export type ActionSource = "assistant" | "capture";
+export type ActionSource = "assistant" | "capture" | "summary";
 
 export type ExecutedAction = {
   entityType: "Task" | "Event" | "Note" | "Goal";

@@ -169,6 +169,8 @@ export async function* streamChat(
 export async function completeJson(
   messages: ChatMessage[],
   schema: object,
+  /** The context window in tokens. Ollama's default is small, and text past it is dropped silently. */
+  contextTokens?: number,
 ): Promise<unknown> {
   let raw: string;
   try {
@@ -177,7 +179,7 @@ export async function completeJson(
       messages,
       format: schema,
       stream: false,
-      options: { temperature: 0 },
+      options: contextTokens ? { temperature: 0, num_ctx: contextTokens } : { temperature: 0 },
     });
     raw = response.message.content;
   } catch (error) {
