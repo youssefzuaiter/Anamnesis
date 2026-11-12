@@ -167,8 +167,8 @@ test("many broken or repeated entries cost time in proportion to the text, not m
   };
   for (const unit of ["@article{k, title={x\n", "@article{k, title=\n x y\n", "@article{k, title={A}}\n"]) {
     time(unit.repeat(5_000)); // warm up
-    const small = Math.min(time(unit.repeat(20_000)), time(unit.repeat(20_000)));
-    const large = Math.min(time(unit.repeat(40_000)), time(unit.repeat(40_000)));
+    const small = Math.min(time(unit.repeat(20_000)), time(unit.repeat(20_000)), time(unit.repeat(20_000)));
+    const large = Math.min(time(unit.repeat(40_000)), time(unit.repeat(40_000)), time(unit.repeat(40_000)));
     assert.ok(large / small < 3, `${JSON.stringify(unit)}: ${small.toFixed(0)} ms then ${large.toFixed(0)} ms`);
   }
 });

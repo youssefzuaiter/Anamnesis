@@ -116,6 +116,16 @@ export function ProposalCard({
         </div>
       </div>
 
+      {proposal.kind === "note" && proposal.content.trim() !== "" && (
+        // A proposed note's text, exactly as it would be saved, as plain text.
+        <pre
+          aria-label="Note text"
+          className="mt-2.5 max-h-72 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-surface-subtle p-2.5 font-sans text-xs leading-relaxed text-text"
+        >
+          {proposal.content}
+        </pre>
+      )}
+
       {proposal.kind === "note_append" && (
         // Exactly what will be written, as plain text: nothing here is rendered as Markdown or HTML.
         <pre

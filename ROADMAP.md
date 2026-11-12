@@ -100,8 +100,9 @@ services. Nothing may need a paid API key.
   note", "reschedule this task". Still confirm-first and audited. The assistant is
   create-only today; widening that is a deliberate, measured change. Two edits, targets found by
   title among your own rows, measured with the evals; see "Assistant proposed edits" in `CLAUDE.md`.
-- [ ] **24. Summarise a PDF or long note into a new note** (S to M, model). A proposal the user
-  confirms, like any other.
+- [x] **24. Summarise a PDF or long note into a new note** (S to M, model). A proposal the user
+  confirms, like any other. Read in sections; each section's points kept only if the note's words back
+  them; no model-written overview (measured wrong 2 of 3); see "Summarise a note" in `CLAUDE.md`.
 
 ## F. Before it faces the internet
 

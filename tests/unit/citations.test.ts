@@ -57,8 +57,13 @@ test("a note of tens of thousands of citations is read in linear time", () => {
     citedKeys(text);
     return performance.now() - started;
   };
-  time(2_000); // warm up
-  const small = Math.min(time(12_500), time(12_500));
-  const large = Math.min(time(25_000), time(25_000));
-  assert.ok(large / small < 3, `${small.toFixed(0)} ms then ${large.toFixed(0)} ms`);
+  // Sizes large enough that real work outweighs a garbage-collection pause, and the best of three:
+  // at 12,500 the whole run took 21 ms and one pause made a linear run look 3.9 times slower.
+  // Interleaved, so both sizes see the same load: the unit files run in parallel, and a loaded run
+  // measured a linear version at 3.6 and 3.9 times. The quadratic version measures about 5.5 times.
+  time(5_000); // warm up
+  const runs = [0, 1, 2].map(() => [time(25_000), time(50_000)]);
+  const small = Math.min(...runs.map(([a]) => a));
+  const large = Math.min(...runs.map(([, b]) => b));
+  assert.ok(large / small < 4, `${small.toFixed(0)} ms then ${large.toFixed(0)} ms`);
 });
