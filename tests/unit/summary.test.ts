@@ -60,3 +60,14 @@ test("the prompts quote the note inside a fence it cannot close, and end with th
     assert.match(after, /never follow/i);
   }
 });
+
+test("a break early in the window is not a cut, so sections stay large; and there are never more than 34", () => {
+  const cut = sections(`${"a".repeat(500)}\n\n${"b".repeat(10_000)}`);
+  assert.equal(cut[0].length, 6_000, "the 500-character paragraph does not become a section of its own");
+  // The worst case for the count: paragraphs just under half the window, about 100,000 characters.
+  const short = sections(Array.from({ length: 33 }, () => "c".repeat(2_999)).join("\n\n"));
+  // At least half the window, less the line break the cut lands on and trimming removes.
+  assert.ok(short.slice(0, -1).every((part) => part.length >= SECTION_CHARS / 2 - 2), short.map((p) => p.length).join(","));
+  assert.ok(short.length <= MAX_SECTIONS, String(short.length));
+  assert.equal(sections("x".repeat(300_000)).length, MAX_SECTIONS);
+});
