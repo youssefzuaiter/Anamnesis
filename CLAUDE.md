@@ -3503,6 +3503,79 @@ place); naming a device; showing sessions of an account to anyone but its owner;
 changes (there is no change-password page yet); a DB error during the check ends the session where the response can
 clear the cookie, so a Postgres restart can sign a tab out once.
 
+### Encrypted off-machine backups
+
+ROADMAP item 28 (S to M, ops, *paid?*). After each backup, `ops/offsite.sh` encrypts a copy and puts it in a folder the
+owner chooses; a restore from such a copy is a tested path. Plan
+`docs/superpowers/plans/2026-11-13-encrypted-offsite-backups.md`. No migration, no application code, no npm dependency.
+
+- **Money, said before building, as the roadmap and the owner's rule ask.** The free route is what is built: the
+  destination is any path (an external drive, a NAS mount, a folder that iCloud Drive, Syncthing or a free cloud tier
+  copies on). **Cloud storage is the part that can cost money and is not built:** nothing is uploaded by this code, and
+  which service to sync the encrypted folder to is the owner's call. The one tool needed, `age`, is free.
+- **Asked, because it was the owner's to decide:** `age` or `gpg`. He chose `age` (a few MB, one public-key line, no
+  keyring); gpg was already installed but needs a keyring and trust settings in the scripts. `age` v1.3.2 (published
+  2026-08-29), installed on a host with `brew install age`; the release binary used here and in CI was checked against
+  the sha256 GitHub publishes for the asset, which `.github/scripts/install-age.sh` pins for linux amd64, linux arm64 and
+  macOS arm64.
+- **Public-key mode, so the host cannot read its own copies.** `.env.production` holds `OFFSITE_DIR` and `OFFSITE_RECIPIENT`
+  (an `age1...` public key). The private key is never generated, read or stored by a script run on the host. A passphrase
+  would have to sit in a file on the same Mac for the nightly job to use it, which is the weaker design. **Key custody is
+  the design:** lose the private key and every copy is unreadable. The runbook says to keep it in a password manager and
+  on paper, delete it from the Mac, and run `ops/verify-offsite.sh --identity <key>` once before relying on the copies.
+- **A pasted private key is refused and never printed.** A recipient starting `AGE-SECRET-KEY` stops the script with a
+  message that does not contain the value; anything that is not `age1` plus lower-case letters and digits is refused by the
+  script's own check before it reaches `age` or a shell (a test asserts that message, because `age` alone would also
+  have rejected them: a layer that nothing observed).
+- **Encrypt, then copy; atomically.** Each finished backup folder (one with `SHA256SUMS`) is tarred and encrypted straight
+  to `.incomplete-<name>.<pid>.tar.age` in the destination and renamed in one step, so a pulled drive or a full disk never
+  leaves a half file that looks real, and two runs at once (the nightly backup and a pre-deploy one) never share a temporary
+  file (found in review, then tested with two simultaneous runs; stale `.incomplete-anamnesis-*` files older than a day are
+  removed). Copies are written with `umask 077`; an existing copy is never rewritten.
+- **A missing drive is a warning, not a failed backup.** `offsite.sh` exits 3 and `backup.sh` logs it and succeeds; the
+  copies are made the next time the drive is there. **The weekly verify then fails if copies stop arriving**
+  (`offsite.sh --check`: the newest copy no older than `OFFSITE_MAX_AGE_DAYS`, default 3), but that only reaches a log
+  file until item 29's alerts exist. `backup.sh`'s stdout stays the backup path and nothing else.
+- **Retention reuses the local policy** (`retention.mjs --suffix .tar.age`): only plain files named exactly
+  `anamnesis-<stamp>.tar.age` are ever pruned. A test pins that a same-length extension (`.tar.zip`), a `.part` file, a
+  directory with a matching name and the user's own files in the folder are left alone.
+- **Decrypting does not trust the archive.** age hides content but proves nothing about who wrote a file, so anyone who can
+  write to the drive can encrypt a file to the public key. `decrypt-backup.sh` decrypts into a new, owner-only folder and,
+  before extracting, requires every entry to be a plain file or folder (the first character of a verbose listing) and
+  every name to be the one folder `anamnesis-<stamp>/` or a flat, non-hidden file directly in it; it then checks the files
+  against their own `SHA256SUMS`. A copy that fails any of it leaves nothing behind. Twelve hand-built forged archives
+  (a climbing path, an absolute path, another folder, a symbolic link, a hard link, a device, a nested folder, a hidden
+  file, a second backup, no checksums, only the stamp) each break exactly one rule against an otherwise valid copy; the
+  first version of that test gave every forgery several defects at once and so hid weak rules. **Not solved:**
+  authorship. A forged copy with matching checksums and a crafted dump would still restore if the owner chose it; the
+  runbook says to restore a copy whose date and size are recognised. Signing needs a second key on the host.
+- **Hooks.** `backup.sh` runs `offsite.sh` at the end when configured; `verify-backup.sh` with no argument (the weekly
+  job) runs `offsite.sh --check`; `verify-offsite.sh --identity <key> [copy]` decrypts the newest copy into a temporary
+  folder and runs `verify-backup.sh` on it, so a copy is proved to decrypt **and** restore.
+
+**Measured and verified.** `ops/rehearse.sh` (the real scripts, a real Docker stack, a real `age`) passes on this Mac with
+the new steps: one encrypted copy for the one backup, no readable data in it (`PGDMP` and a row label are absent), the
+newest copy verified by decrypting it and restoring into a scratch database (every row count and the 19 migrations match),
+the wrong key refused with nothing left behind, a second backup (made by the pre-deploy `backup.sh`) copied by the hook so
+every backup has a copy, the weekly verify passing while copies arrive and failing against an empty folder. 14 unit tests
+(`offsite`: not configured, half a configuration, a private key, nonsense recipients, a missing drive, a folder inside
+the backups, one file per finished backup with no plaintext and owner-only mode, idempotence, a failing encryption,
+pruning, `--check`, decrypting round trip, wrong key and damaged and truncated files, the forged archives, mismatched
+checksums, a wrongly named file, two runs at once) and 4 more in `backup-retention`. **24 mutants, all caught**; the first
+pass left 11 alive and every one was a real gap, almost all a defence masked by another (a forged archive stopped by
+tar or by the missing-checksums rule rather than by the rule under test, and the same for recipients and names).
+`shellcheck` is clean on the new and changed scripts.
+
+**What the rehearsal turned up:** the local `anamnesis:local` image was an old build (9 migrations baked in, 19 expected),
+so the first run failed its smoke check for a reason that has nothing to do with this change; it was rebuilt from the
+current tree. A rehearsal after any migration needs a fresh image.
+
+**Not done:** upload to a cloud service (money; the encrypted folder can be synced by anything); signing copies; alerts
+(item 29); a setup script that generates the key (it must not run on the host); copying only the newest backup instead
+of every one; encrypting the local backups themselves (they are protected by file permissions and the disk, as before);
+the GNU `tar` path is first run in CI (the scripts use only the first character of a verbose listing, the name listing
+and `-xf -o`).
+
 ## Target directory structure
 
 ```

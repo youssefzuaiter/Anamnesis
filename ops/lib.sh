@@ -76,6 +76,12 @@ env_value() {
   printf '%s' "${value:-$fallback}"
 }
 
+# Encrypted off-machine copies (ROADMAP item 28). Both are optional and come from the environment first,
+# then the env file: a folder to copy into (an external drive, a NAS mount, a synced folder) and the
+# age PUBLIC key to encrypt to. The matching private key is never on this machine.
+offsite_dir() { printf '%s' "${ANAMNESIS_OFFSITE_DIR:-$(env_value OFFSITE_DIR)}"; }
+offsite_recipient() { printf '%s' "${ANAMNESIS_OFFSITE_RECIPIENT:-$(env_value OFFSITE_RECIPIENT)}"; }
+
 sha256() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi
 }

@@ -88,9 +88,49 @@ A migration must leave the **previous** release working. Otherwise a rollback pu
 - **Written to** `~/anamnesis-backups/anamnesis-<UTC timestamp>/`, outside the repository, owner-only.
 - **Contains** `database.dump` (a full Postgres dump), `attachments.tar` (the uploaded files, which live on disk and not in the database), `counts.txt` (row counts at that moment), `manifest.json` and `SHA256SUMS`.
 - **Kept**: everything from the last 7 days, the newest of each of the last 4 weeks, the newest of each of the last 6 months, and always at least the 3 newest.
-- **Checked** every Sunday at 04:30 by `ops/verify-backup.sh`, which restores the newest backup into a throwaway database and compares row counts with what was recorded. A backup that has never been restored is a hope, not a backup.
+- **Checked** every Sunday at 04:30 by `ops/verify-backup.sh`, which restores the newest backup into a throwaway database and compares row counts with what was recorded (and, if off-machine copies are set up, that they are still arriving). A backup that has never been restored is a hope, not a backup.
 
-**They are on the same machine as the data.** That protects against a bad deploy or a deleted row, not against the disk dying. Until you copy them somewhere else, you have no protection against that. When you do, encrypt them first, and never put a backup in a GitHub artifact or any public place: this repository is public, so artifacts are downloadable by anyone.
+**They are on the same machine as the data.** That protects against a bad deploy or a deleted row, not against the disk dying or the machine being lost. Until you set up an off-machine copy (below), you have no protection against that. Never put a backup in a GitHub artifact or any public place: this repository is public, so artifacts are downloadable by anyone.
+
+### Off-machine backups (encrypted, free)
+
+After every backup, `ops/offsite.sh` encrypts a copy with [age](https://age-encryption.org) and puts it in a folder you choose: an external drive, a NAS mount, or a folder that something else (iCloud Drive, Syncthing, a free cloud tier) copies on. **The folder only ever holds ciphertext**, so a lost drive or a synced folder leaks nothing. Nothing is uploaded by this code; the destination is a path. **It costs nothing**: a drive or any folder is free. Cloud storage is the part that can cost money, and it is not built in; which service to sync the encrypted folder to, free tier or paid, is your call.
+
+**Key custody is the whole design.** Backups are encrypted to a *public* key kept in `.env.production`. The matching *private* key is what opens them, and it must **not** live on this Mac (then a stolen Mac would open its own copies) and must **not** live only here either (then a dead Mac would take the key with the backups). Keep it in your password manager, plus a printed copy somewhere safe. **If you lose the private key, every encrypted copy is unreadable, and no one can help.**
+
+One-time setup, on any machine you trust (it does not have to be the production Mac):
+
+```bash
+brew install age
+age-keygen -o anamnesis-backup-key.txt     # prints "Public key: age1..." ; the file is the PRIVATE key
+```
+
+Put the file in your password manager (and print it), then **delete the file from this Mac**. In `.env.production` on the production Mac add only the public key and the folder:
+
+```bash
+OFFSITE_DIR=/Volumes/Backup/anamnesis
+OFFSITE_RECIPIENT=age1...                  # the "Public key" line; never the AGE-SECRET-KEY one
+```
+
+Then take a backup (`ops/backup.sh`) and, **before relying on it**, prove a copy opens and restores, with the private key file in hand:
+
+```bash
+ops/verify-offsite.sh --identity ~/path/to/anamnesis-backup-key.txt     # decrypts the newest copy and restores it into a scratch database
+```
+
+- **When it runs.** Every `ops/backup.sh` (nightly, and before each deploy) copies any backup that has no copy yet, then prunes old copies with the same keep rules as the local ones. A copy is written as `.incomplete-...` and renamed when finished, so a pulled drive never leaves a half file that looks real.
+- **Drive not plugged in.** The nightly backup still succeeds and logs a warning (`offsite.sh` exits 3); the missed copies are made the next time the drive is there. **If copies stop arriving the weekly verify (Sundays 04:30) fails**: it runs `ops/offsite.sh --check`, which wants a copy no older than 3 days (`OFFSITE_MAX_AGE_DAYS`). It only reaches the log files, so look at `ops/state/verify.log`, or use alerts when item 29 lands.
+- **Restoring from a copy** (needs the private key):
+
+```bash
+ops/decrypt-backup.sh /Volumes/Backup/anamnesis/anamnesis-<timestamp>.tar.age --identity ~/path/to/key.txt
+# prints the backup folder it made; then, as for any backup:
+ops/verify-backup.sh <that folder>
+ops/restore.sh <that folder> --confirm-overwrite
+```
+
+- **What encryption does not give you.** age hides the content; it does not prove who wrote a file. Anyone who can write to the drive can add a file that encrypts to your public key. `decrypt-backup.sh` therefore refuses anything but plain files inside one folder named for the copy (no `..`, links, absolute paths), and checks the files against their own checksums, but it cannot know a copy is the one *you* made: restore from a copy whose date and size you recognise.
+- **Do not turn it on for the throwaway rehearsal's sake**: `ops/rehearse.sh` makes its own key pair and folder.
 
 ### Restoring
 

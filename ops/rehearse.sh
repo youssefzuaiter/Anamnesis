@@ -58,6 +58,7 @@ expect() { # expect <what> <expected> <actual>
 need docker
 need node
 need openssl
+need age
 docker image inspect "$IMAGE_REF" >/dev/null 2>&1 || fail "image $IMAGE_REF is not available locally (build it, or pull it, first)"
 
 step "set up a throwaway environment"
@@ -107,6 +108,29 @@ if "$OPS_DIR/verify-backup.sh" "$BAD" >/dev/null 2>&1; then fail "verify-backup.
 log "  ok  a damaged backup is refused"
 rm -rf "$BAD"
 
+step "an encrypted off-site copy: encrypt, copy, decrypt, restore"
+# A throwaway key pair. The private key lives in the sandbox only for this test; on a real host it is never
+# on the machine. Everything below is the real scripts.
+OFFSITE_KEY="$SANDBOX/offsite-key.txt"
+age-keygen -o "$OFFSITE_KEY" >/dev/null 2>&1
+export ANAMNESIS_OFFSITE_RECIPIENT
+ANAMNESIS_OFFSITE_RECIPIENT="$(grep -o 'age1[0-9a-z]*' "$OFFSITE_KEY" | head -n 1)"
+export ANAMNESIS_OFFSITE_DIR="$SANDBOX/offsite"
+mkdir "$ANAMNESIS_OFFSITE_DIR"
+"$OPS_DIR/offsite.sh" >/dev/null
+COPIES="$(find "$ANAMNESIS_OFFSITE_DIR" -maxdepth 1 -type f -name 'anamnesis-*.tar.age' | wc -l | tr -d ' ')"
+expect "one encrypted copy for the one backup" 1 "$COPIES"
+COPY="$(find "$ANAMNESIS_OFFSITE_DIR" -maxdepth 1 -type f -name 'anamnesis-*.tar.age')"
+if grep -aq 'PGDMP' "$COPY" || grep -aq 'User ' "$COPY"; then fail "the encrypted copy holds readable data"; fi
+log "  ok  the copy holds no readable data"
+"$OPS_DIR/offsite.sh" --check
+"$OPS_DIR/verify-offsite.sh" --identity "$OFFSITE_KEY"
+OTHER_KEY="$SANDBOX/other-key.txt"
+age-keygen -o "$OTHER_KEY" >/dev/null 2>&1
+if "$OPS_DIR/decrypt-backup.sh" "$COPY" --identity "$OTHER_KEY" --out "$SANDBOX/wrong-key" >/dev/null 2>&1; then fail "a copy was decrypted with the wrong key"; fi
+[ ! -e "$SANDBOX/wrong-key" ] || fail "a failed decrypt left a folder behind"
+log "  ok  the wrong key is refused and leaves nothing"
+
 step "second deploy: must take a backup before touching anything"
 # Configure the smoke account the way a real host would, so this deploy runs the
 # signed-in check too.
@@ -119,6 +143,17 @@ log "  ok  the deploy ran the signed-in smoke check"
 after="$(find "$ANAMNESIS_BACKUP_DIR" -maxdepth 1 -type d -name 'anamnesis-*' | wc -l | tr -d ' ')"
 [ "$after" -gt "$before" ] || fail "a deploy over a live database did not take a backup first"
 log "  ok  backups went from $before to $after"
+# backup.sh made that backup with an off-site copy configured, so the copy must have followed it.
+copies_after="$(find "$ANAMNESIS_OFFSITE_DIR" -maxdepth 1 -type f -name 'anamnesis-*.tar.age' | wc -l | tr -d ' ')"
+expect "every backup has an encrypted copy" "$after" "$copies_after"
+# The weekly verify (no argument) also insists that copies keep arriving: it passes now, and fails when the
+# folder is empty (a drive that stopped receiving copies).
+"$OPS_DIR/verify-backup.sh" >/dev/null 2>&1 || fail "the weekly verify failed although off-site copies are arriving"
+log "  ok  the weekly verify passes while copies arrive"
+EMPTY="$SANDBOX/offsite-empty"
+mkdir "$EMPTY"
+if ANAMNESIS_OFFSITE_DIR="$EMPTY" "$OPS_DIR/verify-backup.sh" >/dev/null 2>&1; then fail "the weekly verify passed with no off-site copies"; fi
+log "  ok  the weekly verify fails when copies stop arriving"
 
 step "a release that fails its smoke check must roll back and keep serving"
 if ANAMNESIS_EXPECT_VERSION=not-the-running-release \
