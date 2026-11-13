@@ -106,7 +106,7 @@ services. Nothing may need a paid API key.
 
 ## F. Before it faces the internet
 
-- [ ] **25. Control registration** (S, security). An invite code or an off switch; today anyone
+- [x] **25. Control registration** (S, security). An invite code or an off switch; today anyone
   who can reach `/register` can make an account.
 - [ ] **26. Two-factor sign-in (TOTP)** (M, security, migration). Recovery codes; keep login
   failures indistinguishable from unknown accounts.

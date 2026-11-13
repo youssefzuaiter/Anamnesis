@@ -40,7 +40,7 @@ Then, in GitHub, approve the first production deployment (Actions → "Publish a
 
 ```bash
 ops/update.sh --force     # deploys it
-open http://localhost:3200/register    # create your account
+open http://localhost:3200/register    # create your account (the first one needs no code)
 ```
 
 Optional but recommended:
@@ -49,7 +49,7 @@ Optional but recommended:
 ops/install-launchd.sh    # checks for a new release every 5 minutes, backs up nightly, verifies weekly
 ```
 
-For a smoke check that really signs in, register a second, otherwise empty account, give it a long random password, and add `SMOKE_EMAIL=` and `SMOKE_PASSWORD=` to `.env.production`. Every deploy then proves that sessions and the database work together.
+For a smoke check that really signs in, register a second, otherwise empty account. After the first account `/register` is closed, so for this one step put `REGISTRATION_CODE=` (16 or more random characters, for example `openssl rand -hex 16`) in `.env.production`, run `ops/deploy.sh`, register with that code, then remove the line and run `ops/deploy.sh` again. Give the account a long random password, and add `SMOKE_EMAIL=` and `SMOKE_PASSWORD=` to `.env.production`. Every deploy then proves that sessions and the database work together.
 
 The app listens on `127.0.0.1:3200` only. Anything that is not this machine cannot reach it, which is the point; read "Before exposing it" below before changing that.
 
@@ -199,7 +199,7 @@ It is bound to localhost on purpose. Before it is reachable from anywhere else:
 
 1. Put a reverse proxy with HTTPS in front of it (Caddy is the least work).
 2. Set `NEXTAUTH_URL` to the public address.
-3. **Close open registration.** Today anyone who can reach `/register` can create an account. That is fine on localhost and not fine on the internet.
+3. **Register the first account before it is reachable.** Registration closes once one account exists, and reopens only with `REGISTRATION_CODE` set; keep that unset. Until the first account exists, whoever reaches `/register` first gets it.
 4. Add rate limiting beyond the login throttle, and security headers.
 
 The code is public, so assume anyone reading it knows exactly how it works.

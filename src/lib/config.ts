@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import { registrationCode } from "@/lib/registration";
 
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),
@@ -8,6 +9,8 @@ const envSchema = z.object({
   OLLAMA_BASE_URL: z.string().url(),
   OLLAMA_CHAT_MODEL: z.string().min(1),
   OLLAMA_EMBEDDING_MODEL: z.string().min(1),
+  /** Optional invite code for accounts after the first; see "Registration" in CLAUDE.md. */
+  REGISTRATION_CODE: registrationCode,
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
