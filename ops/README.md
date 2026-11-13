@@ -193,6 +193,10 @@ Tailscale steps above:
 **Not yet checked on a real iPhone or over Tailscale** (to do with the production step of item 19): that the
 session survives on the `:8443` address and that Auth.js accepts the forwarded host.
 
+## Signed-in devices
+
+Settings lists each signed-in browser and can end it. The sign-in cookie is still a token, but it names a row in the `AuthSession` table and is refused the moment that row is gone (one indexed read per request, about 0.4 ms). **The deploy that first contains this signs everyone out once**: tokens made before it carry no session id, so each browser (the owner's phone and laptop) lands on the sign-in page once. Every smoke check signs in and so adds a row for the smoke account; an account keeps its newest 50 and drops rows idle for 30 days, so nothing builds up. The table is not in the data export, and a restore from a backup brings the old rows back with the data, so sessions that were ended after that backup was taken work again until they are ended once more.
+
 ## Before exposing it to the internet
 
 It is bound to localhost on purpose. Before it is reachable from anywhere else:

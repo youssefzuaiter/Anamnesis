@@ -110,7 +110,7 @@ services. Nothing may need a paid API key.
   who can reach `/register` can make an account.
 - [x] **26. Two-factor sign-in (TOTP)** (M, security, migration). Recovery codes; keep login
   failures indistinguishable from unknown accounts.
-- [ ] **27. Session list and sign out everywhere** (S to M, security).
+- [x] **27. Session list and sign out everywhere** (S to M, security).
 - [ ] **28. Encrypted off-machine backups** (S to M, ops, paid?). Encrypt first, then copy. An
   external drive is free; cloud storage costs money, so say so before building toward it.
 - [ ] **29. Error and uptime alerts** (S, ops). Reuse whatever 19 chose (ntfy: the app token may publish to `anamnesis-*`).

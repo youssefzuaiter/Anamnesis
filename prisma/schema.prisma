@@ -24,6 +24,7 @@ model User {
   totpEnabledAt DateTime?
   totpLastStep  Int?
   recoveryCodes RecoveryCode[]
+  authSessions  AuthSession[]
 
   profile     UserProfile?
   projects    Project[]
@@ -556,4 +557,19 @@ model RecoveryCode {
 
   @@unique([userId, codeHash])
   @@index([userId])
+}
+
+/// One signed-in browser or device (ROADMAP item 27). The sign-in token carries this row's id; ending a
+/// session deletes the row, and a token whose row is gone is refused on its next request.
+model AuthSession {
+  id         String   @id @default(uuid())
+  userId     String
+  /// "Chrome on macOS": the only thing kept about the device, never the raw user agent or an address.
+  device     String
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, lastSeenAt])
 }

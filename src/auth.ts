@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { verifyPassword, hashPassword } from "@/lib/password";
 import { config } from "@/lib/config";
 import { checkSecondFactor } from "@/services/two-factor-service";
+import { isSessionValid, startSession } from "@/services/session-service";
+import { headers } from "next/headers";
 
 const credentialsSchema = z.object({
   email: z.email(),
@@ -57,12 +59,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    jwt({ token, user }) {
-      if (user) token.sub = user.id;
-      return token;
+    // Runs on every `auth()` call, so on every page, action and route. A sign-in makes a session row
+    // and puts its id in the token; after that the token is good only while that row exists, so ending
+    // a session (Settings, "sign out everywhere") is refused on its very next request. Returning null
+    // ends the session. A token without a `sid` (made before sessions were tracked) is refused once.
+    async jwt({ token, user }) {
+      if (user) {
+        if (!user.id) return null;
+        token.sub = user.id;
+        let agent: string | null = null;
+        try {
+          agent = (await headers()).get("user-agent");
+        } catch {
+          // Outside a request there is no agent to label; the session is still made.
+        }
+        token.sid = await startSession(user.id, agent);
+        return token;
+      }
+      return (await isSessionValid({ userId: token.sub, sessionId: token.sid })) ? token : null;
     },
     session({ session, token }) {
       if (token.sub) session.user.id = token.sub;
+      if (typeof token.sid === "string") session.sessionId = token.sid;
       return session;
     },
   },

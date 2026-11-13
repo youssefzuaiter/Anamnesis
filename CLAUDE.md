@@ -3446,6 +3446,63 @@ loaded while the database was empty and submitted after another account appeared
 no field on screen (a reload shows it); several codes, single-use codes or invitations by email; rate limiting
 registration (the code length is the defence).
 
+### Signed-in devices
+
+ROADMAP item 27 (S to M, security). Settings lists where the account is signed in and can end one session, every other
+session, or every session including this one. Plan `docs/superpowers/plans/2026-11-13-sessions.md`. No dependency.
+
+- **The token is still a JWT, but it names a row.** A sign-in makes an `AuthSession` row (`device`, `createdAt`,
+  `lastSeenAt`) and puts its id in the token as `sid`. The Auth.js `jwt` callback runs on **every** `auth()` call, so on
+  every page, server action and route, and returns `null` (ending the session) unless that account's row exists. Ending a
+  session is deleting its row, so it takes effect on the very next request. Real database sessions (the Auth.js adapter)
+  were the alternative: more machinery for the same behaviour, and a rewrite of how sign-in works. **Measured:** the check
+  is one indexed read, 0.41 ms per call (100 calls in a loop); a page makes several. `lastSeenAt` is written at most
+  every 5 minutes per session, so "Last active" can be that stale and the check itself is exact.
+- **A token with no `sid` is refused, once.** Every token made before this release signs in again after the deploy.
+  A legacy path (valid until a per-user "revoked before" timestamp) was considered and dropped: it needs a column and a
+  clock comparison, and a token refreshed concurrently with a revoke can outlive it, which is the thing "sign out
+  everywhere" must not allow. **Cost accepted:** one forced sign-in after the deploy, in the runbook. A deleted account's
+  tokens die with its rows (cascade).
+- **Only a label is stored about a device**: `deviceLabel` (`lib/device-label.ts`, pure) gives "Chrome on macOS" from a
+  user agent cut to 300 characters, always one of a fixed set of words; the raw agent is never stored (a test checks the
+  row), and no address is kept, since this app has no client address worth trusting. **Cost accepted:** two devices with the
+  same browser and system look alike in the list.
+- **Limits.** At most the newest 50 sessions per account (every sign-in, smoke checks included, makes one) and rows idle
+  30 days are dropped at the next sign-in, which matches the token's own 30-day life.
+- **Ownership.** Every query carries the session's `userId`; the only thing the browser sends is the id of a session to
+  end, and another account's id, a missing one and a malformed one are the same "does not exist". This device's own
+  session cannot be ended from the list (that is Sign out), and "sign out all other devices" refuses to run without a current
+  session id rather than ending everything.
+- **Sign out ends its row too.** `signOutAction` deletes the row before clearing the cookie, so a copy of the cookie
+  (tested: a second browser context given the same cookies) stops working. Clearing the cookie alone left it valid.
+
+**Security review, by replaying the real actions** (session stubbed): with no session all three are `AUTH_REQUIRED` and
+nothing changes; ending another account's session by id, with or without a forged `userId` beside it, is "does not
+exist" and that account's rows are untouched; ending this device from the list, `null`, an array, a number, a missing
+or object id, an empty id and a 10 MB id are all refused, and `' OR 1=1 --` is just an id that does not exist;
+"others" with no current session is refused; "everywhere" ends only this account's rows (the other account kept 1).
+
+**Tests.** 16 unit (`device-label`: ten real user agents, the 300-character cut, hostile input), 10 integration
+(`auth-sessions`: a row per sign-in with only a label, validity for one account only, the touch interval, the list, ending
+one and refusals, ending the others and all, the cap, idle pruning, cascade, and the cost), 8 browser
+(`sessions.spec.ts`, two real browsers as one account: ending a device is refused on its next page and route with 401; a
+server action from an ended device writes nothing; all others; everywhere; a copied cookie after Sign out; a row-less
+token; the phone in light and dark). **22 mutants, all caught**; two first survived and were real test gaps: the 300-character
+cut (the regexes are so cheap that cost cannot show it, so a user agent with its browser name past 300 characters now
+does) and idle pruning (masked by the 50-session cap in the same test, so it has its own test). **Looked at in the
+browser:** the card at 1280 and 375 px, light and dark, 0 px overflow, 44 px buttons.
+
+**What running the migration turned up:** `pnpm exec prisma migrate diff ... > migration.sql` now writes pnpm's own
+"Lockfile passes supply-chain policies" lines into the file, so the migration failed on the first apply (P3009, a failed
+record in the dev database). The file is cut at its first `-- CreateTable`, the record was resolved with
+`migrate resolve --rolled-back`, and it applied; the two-factor migration was checked and is clean. Run
+`node_modules/.bin/prisma` directly, or check `head -1` of a generated file.
+
+**Not done:** a notification when a new device signs in (ntfy could carry it); more detail per device (an address, a
+place); naming a device; showing sessions of an account to anyone but its owner; "sign out everywhere" when the password
+changes (there is no change-password page yet); a DB error during the check ends the session where the response can
+clear the cookie, so a Postgres restart can sign a tab out once.
+
 ## Target directory structure
 
 ```

@@ -1,7 +1,8 @@
 "use server";
 
 import { z } from "zod";
-import { signIn, signOut } from "@/auth";
+import { auth, signIn, signOut } from "@/auth";
+import { endSession } from "@/services/session-service";
 import { registerAccount } from "@/services/registration-service";
 import { config } from "@/lib/config";
 import { type ApiResponse, ok, fail, toApiResponse } from "@/lib/api-response";
@@ -98,5 +99,9 @@ export async function loginAction(
 }
 
 export async function signOutAction(): Promise<void> {
+  // End this device's own session row first: a copy of the cookie must stop working too, which
+  // clearing the cookie alone would not do.
+  const session = await auth();
+  if (session?.user?.id && session.sessionId) await endSession(session.user.id, session.sessionId);
   await signOut({ redirectTo: "/login" });
 }
