@@ -36,6 +36,7 @@
     "pdf-parse": "^2.4.5",
     "pg": "^8.23.1",
     "prisma": "7.10.1",
+    "qrcode-generator": "2.0.4",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "^10.1.0",

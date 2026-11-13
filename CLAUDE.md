@@ -3318,6 +3318,75 @@ resets — the limiter guards the account, not just wrong guesses. An in-memory
 it, an accepted trade-off for a personal, single-server app. A successful login
 clears the counter for that email.
 
+### Two-factor sign-in
+
+ROADMAP item 26 (M, security, migration). An account can require a 6-digit authenticator code at sign-in, with ten
+one-time recovery codes. Plan `docs/superpowers/plans/2026-11-13-two-factor.md`. One dependency added after
+`search-first`: `qrcode-generator` 2.0.4 (MIT, no dependencies, 3 months old) for the setup QR; the algorithm itself is
+RFC 6238 over `node:crypto`, checked against the RFC's own vectors. No owner question was needed.
+
+- **The code is a third, optional field of the same login form.** Everyone sees "Authentication code (optional)"; only
+  accounts that turned two-factor on need it, checked inside the Credentials `authorize` after the password. Every
+  failure (unknown email, wrong password, right password with a missing or wrong code) is the same `null`, so the one
+  message, now "Incorrect email, password or code.", cannot tell them apart. A two-step form (password, then a code
+  page) would have had to show a code page for some accounts and not others, which is the enumeration the roadmap
+  forbids. **Measured on the dev server, 12 attempts each, submit to message:** unknown email median 116 ms, no
+  two-factor and wrong password 111, two-factor and wrong password 115, two-factor with the right password and a wrong
+  code 109, one message in all four. (The decoy hash keeps the unknown-email path as slow as the others.)
+- **A setup is pending until a right code confirms it.** `beginSetup` stores a new key, sealed, with
+  `totpEnabledAt` still null; sign-in asks for nothing until `confirmSetup` verifies a code from the app, so an
+  abandoned or mistyped setup cannot lock anyone out. Beginning again replaces the pending key; beginning when it is
+  already on is refused.
+- **The key is encrypted at rest** (`lib/secret-box.ts`: AES-256-GCM, key derived from `NEXTAUTH_SECRET` with HKDF),
+  so a database dump or a backup cannot read it. **Cost accepted: changing `NEXTAUTH_SECRET` makes every stored key
+  unopenable.** Authenticator codes are then refused (the generic message) and recovery codes still work; turning
+  two-factor off and on again makes a new key. Measured: an unopenable key refuses codes and accepts recovery codes.
+- **A code works once.** Steps are 30 s, one either side of now is accepted, and `totpLastStep` records the last
+  accepted step; it is claimed with a conditional `UPDATE ... WHERE totpLastStep IS NULL OR totpLastStep < step`, so two
+  requests with the same code at the same moment cannot both pass (8 concurrent checks: exactly 1 true). Every step in
+  the window is compared in constant time.
+- **Recovery codes** are 80 random bits (four groups of four, base32), shown once, stored as SHA-256 hashes (a slow
+  hash is for passwords people choose; these cannot be guessed offline), each consumed by a conditional update (8
+  concurrent uses: exactly 1). Typed in any case and spacing. Regenerating replaces all ten.
+- **Turning off and making new codes need the password and a current code or recovery code**, and failures there count
+  in a limiter of their own (five per 15 minutes per account) so a screen left unlocked cannot be used to guess the
+  code. Sign-in failures, wrong codes included, count in the existing per-email login limiter.
+- **Never in the export.** `totpSecret`, `totpLastStep`, `totpEnabledAt` and the `RecoveryCode` table are listed in
+  `export-shape.ts` as omitted, with reasons; a test puts an enabled account through the export and looks for the sealed
+  key, the codes, their hashes and the column names. The whole-model export test now follows `OMITTED_COLUMNS` instead of
+  a hard-coded `passwordHash`, and failed until the new columns were classified, as designed.
+- **Data, additive, so the previous release keeps working:** three nullable `User` columns and a `RecoveryCode` table
+  with a cascading foreign key. The SQL is `prisma migrate diff` output against the live database (only these
+  additions), applied with `migrate deploy`.
+- **The setup QR** is drawn by `lib/qr.ts` as an inline SVG: dark modules on a white square with a four-module quiet
+  zone in fixed colours, so it scans in dark mode too; shown as an `<img>` with a data URL, never as injected HTML. **20
+  generated codes were rasterised and decoded back to the exact setup address by an independent reader** (jsQR,
+  installed in a scratch directory, not a dependency of the project). The key is also shown as text.
+
+**Security review, by replaying the real actions** (session stubbed): with no session all four are `AUTH_REQUIRED` and
+nothing changes; a forged `userId` in the input is ignored (the account is the session's); another account's recovery
+code or authenticator code with my own password is refused and changes nothing; `null`, an array, a number, a string,
+missing fields, a 10 MB password and a 10 MB code are all `VALIDATION_ERROR` in under 5 ms; beginning while on is
+refused.
+
+**Tests.** 19 unit (`totp` including the RFC 6238 and RFC 4226 vectors, `secret-box`, `recovery-codes`, `qr`), 11
+integration (`two-factor`: pending setup, begin and confirm rules, replay and the window, recovery codes and other
+accounts, concurrency, a key that cannot be opened, turning off, regenerating, the throttle, cascade delete, the
+export), 4 browser (`two-factor.spec.ts`: set up, sign-in needing the code, a replayed code, a recovery code once, turning
+off; four failure kinds with one sentence; the phone in light and dark). The shared `e2e-` account is never given
+two-factor; each test makes its own account with the same password. **28 mutants, all caught except three that cannot be
+seen by behaviour:** the constant-time compare, the 100-character cap before normalising a recovery code, and the
+confirm-time key guard, which the earlier code check masks (the same "second layer" as before; there is no test for it).
+**Looked at in the browser:** the sign-in field, the setup card, the recovery codes and the turn-off form at 1280 and
+375 px, light and dark, 0 px overflow. Found by looking: the setup key was cut off at 375 px (a one-line input), so it is a
+wrapping text area now.
+
+**Not done:** asking for the password to *begin* setup (someone at an unlocked screen can enrol their own authenticator;
+turning off and new codes do need it; the app has no change-password page); ending other sessions when it is turned on
+(item 27); a "remember this device"; WebAuthn or SMS; the smoke account (ops) must stay without two-factor; locking the
+account for the owner after repeated code failures is the existing per-email limiter, which anyone can trip for a
+known email.
+
 ## Target directory structure
 
 ```

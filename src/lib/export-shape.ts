@@ -34,6 +34,8 @@ export const EXPORTED_MODELS: Readonly<Record<string, string>> = {
 export const NOT_EXPORTED: Readonly<Record<string, string>> = {
   WorkspaceEmbedding:
     "Derived from the exported text and rebuilt on request (Settings, Rebuild search index); its vector column cannot be written as JSON.",
+  RecoveryCode:
+    "Hashes of the one-time codes for two-factor sign-in: credentials, so they never leave the database.",
   ReminderDelivery:
     "A log of which reminders this server already sent, kept only so a restart does not send them twice; it means nothing to another server and is deleted after 30 days.",
 };
@@ -42,6 +44,9 @@ export const NOT_EXPORTED: Readonly<Record<string, string>> = {
 export const OMITTED_COLUMNS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   User: {
     passwordHash: "A credential: it never leaves the database, in an export or anywhere else.",
+    totpSecret: "The sealed key of the account's two-factor sign-in: a credential, so it never leaves the database.",
+    totpLastStep: "Bookkeeping that stops an authenticator code being used twice; it means nothing outside this server.",
+    totpEnabledAt: "Whether sign-in asks for a second factor is a property of this server's security setup, not of the person's data; a file never turns it on elsewhere.",
   },
   CalendarSubscription: {
     url: "A feed address is a bearer secret (anyone holding it can read the timetable); only its host is exported, as `host`.",

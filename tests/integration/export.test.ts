@@ -147,7 +147,7 @@ test("every exported model arrives whole: every column, minus the stated omissio
   // The root model has no userId, so it is checked on its own.
   const userRow = payload.user as Record<string, unknown>;
   for (const column of readSchema().User) {
-    if (column === "passwordHash") assert.ok(!(column in userRow), "User.passwordHash is left out");
+    if (column in OMITTED_COLUMNS.User) assert.ok(!(column in userRow), `User.${column} is left out`);
     else assert.ok(column in userRow, `User.${column} is in the file`);
   }
   const profile = rowsOf(payload, "profile")[0];

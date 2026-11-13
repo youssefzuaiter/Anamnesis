@@ -8,16 +8,19 @@ import { ReindexButton } from "@/components/reindex-button";
 import { getFeedLinkStatus } from "@/services/calendar-feed-service";
 import { PushRemindersCard } from "@/components/push-reminders-card";
 import { getPushSettings } from "@/services/reminder-push-service";
+import { TwoFactorCard } from "@/components/two-factor-card";
+import { twoFactorStatus } from "@/services/two-factor-service";
 
 export const metadata = { title: "Settings · Anamnesis" };
 
 export default async function SettingsPage() {
   const userId = await requireUserId();
-  const [profile, session, feed, pushSettings] = await Promise.all([
+  const [profile, session, feed, pushSettings, twoFactor] = await Promise.all([
     getProfile(userId),
     auth(),
     getFeedLinkStatus(userId),
     getPushSettings(userId),
+    twoFactorStatus(userId),
   ]);
 
   return (
@@ -41,6 +44,11 @@ export default async function SettingsPage() {
           studentId: profile.studentId,
         }}
       />
+
+      <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
+        Two-factor sign-in
+      </h2>
+      <TwoFactorCard enabled={twoFactor.enabled} recoveryCodesLeft={twoFactor.recoveryCodesLeft} />
 
       <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
         Your data
