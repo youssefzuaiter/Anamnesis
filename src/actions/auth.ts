@@ -2,8 +2,8 @@
 
 import { z } from "zod";
 import { signIn, signOut } from "@/auth";
-import { prisma } from "@/lib/prisma";
-import { hashPassword } from "@/lib/password";
+import { registerAccount } from "@/services/registration-service";
+import { config } from "@/lib/config";
 import { type ApiResponse, ok, fail, toApiResponse } from "@/lib/api-response";
 import {
   isRateLimited,
@@ -48,23 +48,8 @@ export async function registerAction(
   const email = parsed.data.email.toLowerCase();
 
   try {
-    const existing = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true },
-    });
-    if (existing) {
-      return fail("VALIDATION_ERROR", "An account with that email already exists.");
-    }
-
-    await prisma.user.create({
-      data: {
-        email,
-        name,
-        passwordHash: await hashPassword(password),
-        profile: { create: {} },
-      },
-    });
-
+    // The invite code goes to the service as given; it decides whether one is needed at all.
+    await registerAccount({ name, email, password, inviteCode: formData.get("inviteCode") }, config.REGISTRATION_CODE);
     await signIn("credentials", { email, password, redirect: false });
     return ok(null);
   } catch (error) {

@@ -894,7 +894,7 @@ was left for one.
 - **`/quiz` needs `pnpm exec next typegen`** for `PageProps<"/quiz">` before `tsc` knows the route.
 
 **Accepted, not fixed:** no rate limit on either action, each can cost one model call (the same as
-`/api/ai/chat`; registration must be closed before this is exposed); an injected answer or a card
+`/api/ai/chat`; registration is closed after the first account since item 25); an injected answer or a card
 imported from a PDF can talk the judge into a wrong verdict (measured 2 of 6), or the generator into
 a misleading question, which is a wrong suggestion shown to the same student, who can click any
 grade anyway; a student can write a `REFERENCE ANSWER:` line inside their answer, which
@@ -2717,7 +2717,7 @@ and the phone in light and dark).
 notes; Obsidian aliases and heading links (`[[Title|alias]]` does not resolve here, as before); overwriting or updating
 a note from a changed vault (an import never overwrites); a vault with more than 60,000 entries or 3.5 GB of attachments
 (the preflight refuses it and says to use the JSON export or the backup); progress while a large import runs; a rate limit
-(none exists on any route; registration must be closed before this is exposed, as already recorded); a snapshot.
+(none exists on any route; registration is closed after the first account since item 25); a snapshot.
 
 ## Calendar feed
 
@@ -2860,8 +2860,8 @@ counts threw "query parameter limit exceeded" above 32,767 task ids (it would ha
 many open tasks), so `countsForTasks` asks for 5,000 at a time and de-duplicates (40,000 ids 77 ms, 100,000 ids 205 ms); and the
 order mismatch above. A 5,000-step task (200 characters each, only possible by writing the rows directly) costs 36 ms to read and 75 ms to move in. **Accepted, not fixed:** two tabs moving steps at
 once can leave a gap or a tie (12 racing moves left positions `0,1,3,4,4,5`): the order is still one deterministic order and the
-next move renumbers; no rate limit on the five actions (none has one in this app; registration must be closed before the app is
-exposed); the add's row lock makes a concurrent save of the same task wait a few milliseconds, not measured under load.
+next move renumbers; no rate limit on the five actions (none has one in this app; registration is closed after the
+first account since item 25); the add's row lock makes a concurrent save of the same task wait a few milliseconds, not measured under load.
 
 **The interaction, and what looking and review turned up.**
 
@@ -3318,6 +3318,59 @@ resets — the limiter guards the account, not just wrong guesses. An in-memory
 it, an accepted trade-off for a personal, single-server app. A successful login
 clears the counter for that email.
 
+### Registration
+
+ROADMAP item 25 (S, security). **The first account needs nothing; after it `/register` is closed, unless
+`REGISTRATION_CODE` is set, and then it asks for that code.** The rule is `registrationMode` in
+`lib/registration.ts` (pure); `services/registration-service.ts` counts accounts and creates one. Decided by a
+council I ran inline (weaker than independent voices); no owner question was needed.
+
+- **Why this shape and not a plain on/off switch.** A switch that defaults to open repeats today's hole on every
+  install where nobody flips it; one that defaults to closed needs setup before the owner's own first account.
+  Counting accounts gives a closed default with no first-run step, and the code covers the cases that do need a
+  second account: the smoke account (ops runbook) and the browser suite, which registers a fresh `e2e-` account on
+  every run. Development (`.env`) and CI (the workflow's env) set a code for that; production leaves it blank.
+  **Cost accepted:** until the first account exists, whoever reaches `/register` first gets it; the runbook
+  registers straight after the first deploy, on a server bound to localhost.
+- **The code.** At least 16 characters, or start-up stops with a sentence (`REGISTRATION_CODE must be at least 16
+  characters.`); blank or unset means none. Long enough that guessing it over the network is hopeless, so there is
+  no rate limit on registration. Compared as SHA-256 digests with `timingSafeEqual`, trimmed of the spaces a paste
+  adds. Anything that is not a string (a file, a missing field) never matches; a repeated field uses the first.
+- **Order of checks:** closed, then the code, then "an account with that email already exists". Someone without
+  the code learns nothing about which addresses have accounts.
+- **The first-account race.** Count, check and insert run in one transaction holding a Postgres advisory lock
+  (`pg_advisory_xact_lock`). Measured on a throwaway empty database with 8 simultaneous first registrations: with
+  a 50 ms pause added between the count and the insert, **8 accounts without the lock, 1 with it**; at natural
+  timing 1 either way (the scrypt hashing, done before the transaction on a 4-thread pool, rarely lets two
+  overlap). **No committed test catches removing the lock**: it needs an empty database, and the dev and CI ones
+  hold accounts; CI's e2e setup does run the first-account path on its empty database.
+- **The page** is rendered per request (`await connection()`; the build table shows `ƒ /register`), because who
+  may register depends on the accounts that exist now. Closed shows a sentence and a sign-in link, and no form.
+- **The service takes the code as an argument, not a default.** The first version had `code =
+  config.REGISTRATION_CODE`, and passing `undefined` (meaning "no code") brings a JavaScript default back, so a
+  test of "closed" silently ran with the dev code. Found by the race measurement printing "invite code" where it
+  should have said "closed"; the integration file failed red on it once `.env` had a code, before the fix.
+- **A race test that shows "no difference" may simply not have raced.** The first measurements looked as if the
+  lock did nothing; printing what each request counted showed the first had committed 90 ms before the others
+  counted. Print what each racer saw before trusting a "no difference".
+
+**Security review, by replaying the real `registerAction`** (`signIn` stubbed), under three settings. With a code:
+no field, a file holding the code, the field twice (wrong first), forged `userId` and `role` fields, all refused
+`FORBIDDEN` with "That invite code is not right." and nothing created; the right code created the account; a 10 MB
+code was refused in 39 ms. Blank: every case, the right code included, "Registration is closed.". Too short: the
+app does not start.
+
+**Tests.** 3 unit (`registration`), 5 integration (`registration`: closed writes nothing, wrong or missing codes,
+the right code with a profile and a lower-cased email, a taken email told only to a code holder, two at once), 3
+browser (`registration.spec.ts`: a wrong code then the right one, the phone in light and dark), and the e2e global
+setup fills the code when the field is shown. 11 mutants, all caught. **Looked at in the browser:** the invite form
+and the closed page at 1280 and 375 px, light and dark, 0 px overflow, 44 px field.
+
+**Not done:** a closed server still links "Create one" on the sign-in page (it leads to the closed page); a form
+loaded while the database was empty and submitted after another account appeared is refused as a wrong code with
+no field on screen (a reload shows it); several codes, single-use codes or invitations by email; rate limiting
+registration (the code length is the defence).
+
 ## Target directory structure
 
 ```
@@ -3533,9 +3586,9 @@ environment protection rules and secret scanning are described for public
 repositories, with private ones needing a paid plan or a paid security product, and
 the page fetched did not address required reviewers specifically. Private would hide
 the code and cost the merge gate for certain, and possibly the approval gate too. The
-consequence of staying public is that anyone can read how the app works, so open
-registration must be closed before it is ever exposed to the internet (see the
-runbook).
+consequence of staying public is that anyone can read how the app works, so registration
+is closed once the first account exists (item 25, "Registration"), and the runbook's other steps still
+apply before it is exposed to the internet.
 
 **One image runs the app and its migrations.** `prisma` moved from
 `devDependencies` to `dependencies` for exactly that reason: `ops/deploy.sh` runs
