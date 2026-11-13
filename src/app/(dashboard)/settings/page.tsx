@@ -10,17 +10,23 @@ import { PushRemindersCard } from "@/components/push-reminders-card";
 import { getPushSettings } from "@/services/reminder-push-service";
 import { TwoFactorCard } from "@/components/two-factor-card";
 import { twoFactorStatus } from "@/services/two-factor-service";
+import { SessionsCard } from "@/components/sessions-card";
+import { listSessions } from "@/services/session-service";
 
 export const metadata = { title: "Settings · Anamnesis" };
 
+// The server's own days and clock, like every date on the page; see CalendarFeedCard.
+const when = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
 export default async function SettingsPage() {
   const userId = await requireUserId();
-  const [profile, session, feed, pushSettings, twoFactor] = await Promise.all([
+  const [profile, session, feed, pushSettings, twoFactor, devices] = await Promise.all([
     getProfile(userId),
     auth(),
     getFeedLinkStatus(userId),
     getPushSettings(userId),
     twoFactorStatus(userId),
+    auth().then((current) => listSessions(userId, current?.sessionId ?? null)),
   ]);
 
   return (
@@ -49,6 +55,19 @@ export default async function SettingsPage() {
         Two-factor sign-in
       </h2>
       <TwoFactorCard enabled={twoFactor.enabled} recoveryCodesLeft={twoFactor.recoveryCodesLeft} />
+
+      <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
+        Signed-in devices
+      </h2>
+      <SessionsCard
+        sessions={devices.map((device) => ({
+          id: device.id,
+          device: device.device,
+          current: device.current,
+          lastActive: when.format(device.lastSeenAt),
+          signedIn: when.format(device.createdAt),
+        }))}
+      />
 
       <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
         Your data

@@ -34,6 +34,8 @@ export const EXPORTED_MODELS: Readonly<Record<string, string>> = {
 export const NOT_EXPORTED: Readonly<Record<string, string>> = {
   WorkspaceEmbedding:
     "Derived from the exported text and rebuilt on request (Settings, Rebuild search index); its vector column cannot be written as JSON.",
+  AuthSession:
+    "Which browsers are signed in to this server right now: the server's security state, not the person's data, and meaningless on another server.",
   RecoveryCode:
     "Hashes of the one-time codes for two-factor sign-in: credentials, so they never leave the database.",
   ReminderDelivery:
