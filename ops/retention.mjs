@@ -6,6 +6,13 @@
  *
  *   node ops/retention.mjs --dir ~/anamnesis-backups [--apply]
  *                          [--days 7] [--weeks 4] [--months 6] [--min 3]
+ *                          [--suffix .tar.age]
+ *   node ops/retention.mjs --dir <folder> --suffix .tar.age --newest-within <days>
+ *
+ * With `--suffix`, the backups are the plain FILES named anamnesis-<stamp><suffix> (the encrypted
+ * off-site copies) instead of directories named anamnesis-<stamp>; nothing else is ever touched.
+ * `--newest-within` deletes nothing: it exits 0 if the newest backup is at most that many days old,
+ * 1 if it is older or there is none (the weekly check that off-site copies are still being made).
  *
  * Without --apply it only prints what it would remove.
  *
@@ -14,7 +21,7 @@
  * newest `min` regardless of age (so a machine that was switched off for a
  * month cannot come back and prune itself down to nothing).
  */
-import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -90,6 +97,24 @@ export function selectBackups(names, now, policy = {}) {
   };
 }
 
+/**
+ * Age in days of the newest backup among `names` (with `suffix` removed from each first), or null
+ * if none is a backup.
+ * @param {string[]} names
+ * @param {Date} now
+ * @param {string} [suffix]
+ * @returns {number | null}
+ */
+export function newestAgeDays(names, now, suffix = "") {
+  let newest = null;
+  for (const name of names) {
+    if (suffix && !name.endsWith(suffix)) continue;
+    const date = parseBackupName(suffix ? name.slice(0, -suffix.length) : name);
+    if (date && (newest === null || date > newest)) newest = date;
+  }
+  return newest === null ? null : (now - newest) / DAY_MS;
+}
+
 function main() {
   const option = (name, fallback) => {
     const index = process.argv.indexOf(`--${name}`);
@@ -101,7 +126,34 @@ function main() {
     process.exit(2);
   }
 
-  const names = readdirSync(dir).filter((name) => statSync(path.join(dir, name)).isDirectory());
+  const suffix = option("suffix", "");
+  // Directories for plain backups; plain files (never links) ending in the suffix for encrypted copies.
+  const found = readdirSync(dir).filter((name) =>
+    suffix ? name.endsWith(suffix) && lstatSync(path.join(dir, name)).isFile() : statSync(path.join(dir, name)).isDirectory(),
+  );
+
+  const within = option("newest-within", undefined);
+  if (within !== undefined) {
+    const limit = Number(within);
+    if (!Number.isFinite(limit) || limit <= 0) {
+      console.error(`retention: --newest-within must be a number of days above 0 (got ${within})`);
+      process.exit(2);
+    }
+    const age = newestAgeDays(found, new Date(), suffix);
+    const what = suffix ? "encrypted copy" : "backup";
+    if (age === null) {
+      console.log(`retention: no ${what} found in ${dir}`);
+      process.exit(1);
+    }
+    if (age > limit) {
+      console.log(`retention: the newest copy is ${Math.floor(age)} days old (the limit is ${limit}); is the drive plugged in and the nightly backup running?`);
+      process.exit(1);
+    }
+    console.log(`retention: the newest ${what} is ${age.toFixed(1)} days old`);
+    process.exit(0);
+  }
+
+  const names = found.map((name) => (suffix ? name.slice(0, -suffix.length) : name));
   const { keep, remove } = selectBackups(names, new Date(), {
     days: Number(option("days", 7)),
     weeks: Number(option("weeks", 4)),
@@ -113,7 +165,7 @@ function main() {
   for (const name of remove) {
     console.log(`  ${process.argv.includes("--apply") ? "rm" : "would rm"} ${name}`);
     // Only direct children whose names matched the backup pattern reach here.
-    if (process.argv.includes("--apply")) rmSync(path.join(dir, name), { recursive: true, force: true });
+    if (process.argv.includes("--apply")) rmSync(path.join(dir, `${name}${suffix}`), { recursive: true, force: true });
   }
 }
 

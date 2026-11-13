@@ -74,6 +74,10 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # The off-site backup tests run the real scripts against a real `age`.
+      - name: Install age (pinned release, checksum verified)
+        run: .github/scripts/install-age.sh
+
       # Pure-function tests only (chunking, grades, recurrence, ics, spaced
       # repetition, pdf, wiki-links, attachment-store) — nothing here touches
       # Postgres or Ollama, so this tier stays fast and has nothing to flake
@@ -262,5 +266,8 @@ jobs:
       # Never upload what this produces as an artifact. The rows are synthetic,
       # but the habit matters: on a public repository an artifact is downloadable
       # by anyone, and a real backup must never be handled that way.
+      - name: Install age (pinned release, checksum verified)
+        run: .github/scripts/install-age.sh
+
       - name: Rehearse the production routine against it
         run: ops/rehearse.sh anamnesis:ci

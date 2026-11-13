@@ -88,4 +88,11 @@ if [ "$PRUNE" = 1 ]; then
   fi
 fi
 
+# Encrypted copy off this machine, if one is configured (ops/offsite.sh). The backup just made is good
+# whether or not the copy works, so a failed copy is a warning here; the weekly verify fails loudly if
+# copies stop arriving. Its output goes to stderr: stdout of this script is the backup path and nothing else.
+if [ -n "$(offsite_dir)$(offsite_recipient)" ]; then
+  "$OPS_DIR/offsite.sh" >&2 || log "WARNING: the encrypted off-site copy was not made (see above). The local backup is fine."
+fi
+
 printf '%s\n' "$dest"

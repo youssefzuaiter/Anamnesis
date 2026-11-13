@@ -233,7 +233,7 @@ Merging to `main` publishes a container image. Moving it to production needs you
 
 ## Limitations
 
-- **Self-hosted only.** Anamnesis is built for personal use on your own computer. The deployment pipeline serves that machine and binds the app to localhost; it is not ready to be exposed to the internet (no HTTPS, and only the login is rate limited). The backups it takes are on the same machine as the data.
+- **Self-hosted only.** Anamnesis is built for personal use on your own computer. The deployment pipeline serves that machine and binds the app to localhost; it is not ready to be exposed to the internet (no HTTPS, and only the login is rate limited). Backups are on the same machine as the data unless you set up the encrypted off-machine copy (a drive or folder you choose, `age`-encrypted, free; see `ops/README.md`).
 - **The local chat model is the weakest part.** A 3B model handles multi-item requests and some phrasings inconsistently. Its behaviour is measured rather than guaranteed. The security boundary does not depend on it.
 - **Quiz marking is a suggestion.** The small local model that marks answers rarely gives partial credit and can be talked into a wrong verdict by an answer that tells it to, which is why it only suggests and you choose the grade. Questions it writes from your notes are filtered for wording that is not in the note, but not for whether the answer fits the question, so some will not.
 - **Reminders need the server running and, for the phone, ntfy and Tailscale.** While no tab is open, reminders come only through the self-hosted ntfy server (see `ops/README.md`); a Mac that is asleep sends nothing, and an event that has already started is never announced late. There is no offline mode.

@@ -81,3 +81,9 @@ if [ "$failures" -ne 0 ]; then
   die "$failures check(s) failed — do not rely on $(basename "$backup")"
 fi
 log "BACKUP VERIFIED: $(basename "$backup")"
+
+# The weekly run (no argument) also checks that encrypted copies are still arriving off this machine.
+# Checking a specific backup by hand does not.
+if [ -z "${1:-}" ]; then
+  "$OPS_DIR/offsite.sh" --check || die "the encrypted off-site copies are not being made; fix that (a backup that stays on this machine does not survive losing it)"
+fi
