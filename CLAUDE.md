@@ -3381,6 +3381,12 @@ confirm-time key guard, which the earlier code check masks (the same "second lay
 375 px, light and dark, 0 px overflow. Found by looking: the setup key was cut off at 375 px (a one-line input), so it is a
 wrapping text area now.
 
+**What CI caught that I did not run:** the card's status line had `role="status"`, which made two status regions in
+`main` on Settings, and `calendar-feed.spec.ts` finds its own by `main.getByRole("status")` (two failures, strict mode
+violation). I had run only my own spec and looked at the card. It is `aria-live="polite"` now, and the eight specs that
+visit Settings (71 tests) pass. **Lesson, again: a change to a page other features share means running those pages'
+specs** (`grep -l settings tests/e2e/*.spec.ts`), as with the note header under "Quiz me".
+
 **Not done:** asking for the password to *begin* setup (someone at an unlocked screen can enrol their own authenticator;
 turning off and new codes do need it; the app has no change-password page); ending other sessions when it is turned on
 (item 27); a "remember this device"; WebAuthn or SMS; the smoke account (ops) must stay without two-factor; locking the

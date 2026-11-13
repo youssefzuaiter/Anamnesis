@@ -228,7 +228,8 @@ export function TwoFactorCard({ enabled, recoveryCodesLeft }: { enabled: boolean
           {error}
         </p>
       )}
-      <p role="status" className="text-xs text-text-muted">
+      {/* aria-live, not role="status": the settings page has one status region per card and older specs find theirs by that role. */}
+      <p aria-live="polite" className="text-xs text-text-muted">
         {status}
       </p>
     </div>
