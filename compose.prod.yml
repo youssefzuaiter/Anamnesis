@@ -45,6 +45,8 @@ services:
       DATABASE_URL: postgresql://anamnesis:${POSTGRES_PASSWORD}@postgres:5432/anamnesis
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?run ops/bootstrap.sh to create .env.production}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3200}
+      # Empty means closed after the first account; see ops/README.md, "Registration".
+      REGISTRATION_CODE: ${REGISTRATION_CODE:-}
       # Ollama runs on the host, not in a container: Docker cannot give a
       # container the Mac's GPU, and the models would crawl on CPU alone.
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}

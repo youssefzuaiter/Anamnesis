@@ -19,6 +19,8 @@ env:
   OLLAMA_BASE_URL: http://localhost:11434
   OLLAMA_CHAT_MODEL: llama3.2:3b
   OLLAMA_EMBEDDING_MODEL: nomic-embed-text
+  # The e2e setup registers an account on every run; after the first, registration needs this.
+  REGISTRATION_CODE: ci-only-invite-code-never-used-elsewhere
 
 jobs:
   # Fast, deterministic checks with no LLM in the loop — this is the tier

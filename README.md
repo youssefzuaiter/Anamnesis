@@ -139,7 +139,7 @@ ollama serve                   # in its own terminal, if it is not already runni
 pnpm dev                       # http://localhost:3100
 ```
 
-Open http://localhost:3100, create an account, and start.
+Open http://localhost:3100, create an account, and start. The first account needs nothing; after it, `/register` asks for `REGISTRATION_CODE` from `.env` (and is closed when that is blank), which is how the browser tests add their own account.
 
 The database credentials in `docker-compose.yml` and `.env.example` are for local development only. Do not reuse them anywhere else. `.env` is git-ignored and must stay that way.
 
@@ -220,6 +220,7 @@ Merging to `main` publishes a container image. Moving it to production needs you
 - `/api/export` downloads your data as one JSON file, written a page at a time so a large account does not have to fit in memory. The file says what it leaves out (see [Limitations](#limitations)).
 - `/api/calendar/<token>.ics` is your calendar feed. It is the one address that needs no sign-in, so the token in it is the credential: 256 random bits, shown once when you make the link, with only a hash of it kept. Anyone who has the address can read your event and task titles and times, so treat it like a password; "Make a new link" in Settings stops the old one at once, and "Turn off" ends it. Use the https address of your deployment (an `http://` one sends the token in the clear), and see `ops/README.md` for what that means for proxies and logs.
 - `/api/export/vault` downloads your notes and their attachments as a zip of Markdown files (one per note, named by its title so `[[links]]` work in Obsidian), written one entry at a time. Importing a vault zip is under Notes → Import. Only notes and attachments are in it; the JSON export and the backup hold the rest.
+- Registration closes once the first account exists. More accounts need the invite code in `REGISTRATION_CODE`; with none set, `/register` makes nothing.
 - Passwords are hashed with scrypt. Login is throttled after five failed attempts per email in a 15-minute window.
 - Two-factor sign-in is optional (Settings): a 6-digit code from an authenticator app, plus ten one-time recovery codes shown once. The key is stored encrypted under `NEXTAUTH_SECRET` and is never in the data export. A wrong code looks exactly like a wrong password.
 - Calendar feeds are fetched by the server. Requests to private and loopback addresses are refused.
@@ -231,7 +232,7 @@ Merging to `main` publishes a container image. Moving it to production needs you
 
 ## Limitations
 
-- **Self-hosted only.** Anamnesis is built for personal use on your own computer. The deployment pipeline serves that machine and binds the app to localhost; it is not ready to be exposed to the internet (open registration, no HTTPS). The backups it takes are on the same machine as the data.
+- **Self-hosted only.** Anamnesis is built for personal use on your own computer. The deployment pipeline serves that machine and binds the app to localhost; it is not ready to be exposed to the internet (no HTTPS, and only the login is rate limited). The backups it takes are on the same machine as the data.
 - **The local chat model is the weakest part.** A 3B model handles multi-item requests and some phrasings inconsistently. Its behaviour is measured rather than guaranteed. The security boundary does not depend on it.
 - **Quiz marking is a suggestion.** The small local model that marks answers rarely gives partial credit and can be talked into a wrong verdict by an answer that tells it to, which is why it only suggests and you choose the grade. Questions it writes from your notes are filtered for wording that is not in the note, but not for whether the answer fits the question, so some will not.
 - **Reminders need the server running and, for the phone, ntfy and Tailscale.** While no tab is open, reminders come only through the self-hosted ntfy server (see `ops/README.md`); a Mac that is asleep sends nothing, and an event that has already started is never announced late. There is no offline mode.

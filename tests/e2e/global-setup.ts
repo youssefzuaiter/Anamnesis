@@ -27,6 +27,10 @@ export default async function globalSetup() {
   await page.fill('input[name="name"]', "E2E Runner");
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', TEST_PASSWORD);
+  // After the first account, registration asks for the invite code (CI's database starts empty,
+  // so its first run registers without one; this machine's has accounts and needs it).
+  const invite = page.locator('input[name="inviteCode"]');
+  if (await invite.count()) await invite.fill(process.env.REGISTRATION_CODE ?? "");
   await page.getByRole("button", { name: /create account/i }).click();
 
   // Registration signs in and lands on the dashboard.

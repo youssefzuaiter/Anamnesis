@@ -58,9 +58,12 @@ export function AuthForm({
   action,
   mode,
   next = "/",
+  inviteCode = false,
 }: {
   action: AuthAction;
   mode: "login" | "register";
+  /** Registration after the first account asks for the configured invite code. */
+  inviteCode?: boolean;
   /** Where to go once signed in: a local path already checked with `safeNext`. */
   next?: string;
 }) {
@@ -102,6 +105,9 @@ export function AuthForm({
         minLength={mode === "register" ? 8 : undefined}
         placeholder={mode === "register" ? "At least 8 characters" : undefined}
       />
+      {mode === "register" && inviteCode && (
+        <Field label="Invite code" name="inviteCode" type="text" autoComplete="off" placeholder="From the person who runs this app" />
+      )}
 
       {mode === "login" && (
         <label className="block">
