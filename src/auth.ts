@@ -4,10 +4,14 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyPassword, hashPassword } from "@/lib/password";
 import { config } from "@/lib/config";
+import { checkSecondFactor } from "@/services/two-factor-service";
 
 const credentialsSchema = z.object({
   email: z.email(),
   password: z.string().min(1),
+  // Authenticator or recovery code. Optional here, and required below only for an account that turned
+  // two-factor on, so the form and every failure look the same for every account.
+  code: z.string().max(100).optional(),
 });
 
 // Verifying against a throwaway hash keeps the "no such user" path as slow as the
@@ -34,10 +38,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const parsed = credentialsSchema.safeParse(raw);
         if (!parsed.success) return null;
 
-        const { email, password } = parsed.data;
+        const { email, password, code } = parsed.data;
         const user = await prisma.user.findUnique({
           where: { email: email.toLowerCase() },
-          select: { id: true, email: true, name: true, passwordHash: true },
+          select: { id: true, email: true, name: true, passwordHash: true, totpEnabledAt: true },
         });
 
         if (!user) {
@@ -46,6 +50,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         if (!(await verifyPassword(password, user.passwordHash))) return null;
+        if (user.totpEnabledAt && !(await checkSecondFactor(user.id, code, Date.now()))) return null;
 
         return { id: user.id, email: user.email, name: user.name };
       },

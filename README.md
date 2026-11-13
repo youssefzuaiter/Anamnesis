@@ -222,6 +222,7 @@ Merging to `main` publishes a container image. Moving it to production needs you
 - `/api/export/vault` downloads your notes and their attachments as a zip of Markdown files (one per note, named by its title so `[[links]]` work in Obsidian), written one entry at a time. Importing a vault zip is under Notes → Import. Only notes and attachments are in it; the JSON export and the backup hold the rest.
 - Registration closes once the first account exists. More accounts need the invite code in `REGISTRATION_CODE`; with none set, `/register` makes nothing.
 - Passwords are hashed with scrypt. Login is throttled after five failed attempts per email in a 15-minute window.
+- Two-factor sign-in is optional (Settings): a 6-digit code from an authenticator app, plus ten one-time recovery codes shown once. The key is stored encrypted under `NEXTAUTH_SECRET` and is never in the data export. A wrong code looks exactly like a wrong password.
 - Calendar feeds are fetched by the server. Requests to private and loopback addresses are refused.
 - Voice input uses the browser's built-in speech recognition. In Chrome, that recognition service runs on Google's servers, so the audio you speak can leave your machine.
 - Phone reminders go through your own ntfy server; the text never leaves your machine. For an iPhone, ntfy.sh receives only a message id and a hash of the topic to wake the app.

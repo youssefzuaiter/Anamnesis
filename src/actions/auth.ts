@@ -24,6 +24,8 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   email: z.email("Enter a valid email address."),
   password: z.string().min(1, "Password is required."),
+  // Left blank by everyone who has not turned two-factor on; see `authorize` in src/auth.ts.
+  code: z.string().max(100).default(""),
 });
 
 function firstIssue(error: z.ZodError): string {
@@ -64,13 +66,14 @@ export async function loginAction(
   const parsed = loginSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
+    code: formData.get("code") ?? undefined,
   });
 
   if (!parsed.success) {
     return fail("VALIDATION_ERROR", firstIssue(parsed.error));
   }
 
-  const { password } = parsed.data;
+  const { password, code } = parsed.data;
   const email = parsed.data.email.toLowerCase();
 
   // Keyed by email, not IP: the thing worth throttling is guessing one
@@ -84,13 +87,13 @@ export async function loginAction(
   }
 
   try {
-    await signIn("credentials", { email, password, redirect: false });
+    await signIn("credentials", { email, password, code, redirect: false });
     clearAttempts(email);
     return ok(null);
   } catch {
     registerFailedAttempt(email);
     // Never distinguish "no such account" from "wrong password" here.
-    return fail("AUTH_REQUIRED", "Incorrect email or password.");
+    return fail("AUTH_REQUIRED", "Incorrect email, password or code.");
   }
 }
 

@@ -49,7 +49,7 @@ Optional but recommended:
 ops/install-launchd.sh    # checks for a new release every 5 minutes, backs up nightly, verifies weekly
 ```
 
-For a smoke check that really signs in, register a second, otherwise empty account. After the first account `/register` is closed, so for this one step put `REGISTRATION_CODE=` (16 or more random characters, for example `openssl rand -hex 16`) in `.env.production`, run `ops/deploy.sh`, register with that code, then remove the line and run `ops/deploy.sh` again. Give the account a long random password, and add `SMOKE_EMAIL=` and `SMOKE_PASSWORD=` to `.env.production`. Every deploy then proves that sessions and the database work together.
+For a smoke check that really signs in, register a second, otherwise empty account. After the first account `/register` is closed, so for this one step put `REGISTRATION_CODE=` (16 or more random characters, for example `openssl rand -hex 16`) in `.env.production`, run `ops/deploy.sh`, register with that code, then remove the line and run `ops/deploy.sh` again. Give the account a long random password, and add `SMOKE_EMAIL=` and `SMOKE_PASSWORD=` to `.env.production`. Every deploy then proves that sessions and the database work together. **Never turn two-factor sign-in on for that account**: the smoke check signs in with the password alone, so it would fail every deploy.
 
 The app listens on `127.0.0.1:3200` only. Anything that is not this machine cannot reach it, which is the point; read "Before exposing it" below before changing that.
 

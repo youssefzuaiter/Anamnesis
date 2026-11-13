@@ -109,6 +109,26 @@ export function AuthForm({
         <Field label="Invite code" name="inviteCode" type="text" autoComplete="off" placeholder="From the person who runs this app" />
       )}
 
+      {mode === "login" && (
+        <label className="block">
+          <span className="mb-1.5 block text-[13px] font-semibold text-text">Authentication code</span>
+          <input
+            name="code"
+            type="text"
+            autoComplete="one-time-code"
+            autoCapitalize="none"
+            spellCheck={false}
+            maxLength={100}
+            aria-describedby="code-help"
+            placeholder="Optional"
+            className="min-h-11 w-full rounded-lg border border-control bg-surface px-3 text-[15px] text-text placeholder:text-text-faint focus:border-accent focus:outline-none"
+          />
+          <span id="code-help" className="mt-1.5 block text-xs text-text-muted">
+            Only if you turned on two-factor sign-in. A recovery code works too.
+          </span>
+        </label>
+      )}
+
       {state && !state.success && (
         <p
           role="alert"

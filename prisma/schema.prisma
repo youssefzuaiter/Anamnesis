@@ -17,6 +17,14 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // Two-factor sign-in (ROADMAP item 26). The key is encrypted (lib/secret-box.ts); it is set while
+  // setup is pending and only counts once `totpEnabledAt` is. `totpLastStep` is the last 30-second step
+  // accepted, so a code cannot be used twice. All optional: an older release ignores them.
+  totpSecret    String?
+  totpEnabledAt DateTime?
+  totpLastStep  Int?
+  recoveryCodes RecoveryCode[]
+
   profile     UserProfile?
   projects    Project[]
   notes       Note[]
@@ -535,3 +543,17 @@ model Reference {
   @@index([userId, updatedAt])
 }
 
+
+/// A one-time code for signing in without the authenticator. Only a hash is kept; `usedAt` ends it.
+model RecoveryCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, codeHash])
+  @@index([userId])
+}
