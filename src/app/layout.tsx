@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Lora, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -40,7 +41,9 @@ export const viewport: Viewport = {
 // cannot import: this is a plain script in the document head.
 const THEME_SCRIPT = `(function(){var t="system";try{var v=localStorage.getItem("anamnesis-theme");if(v==="light"||v==="dark")t=v;}catch(e){}var dark=t==="dark"||(t==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.setAttribute("data-theme",dark?"dark":"light");})();`;
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // The per-request nonce from src/proxy.ts. Reading it makes every page render per request, which a nonce needs.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
     <html
       lang="en"
@@ -48,7 +51,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${ui.variable} ${reading.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body className="font-sans min-h-full flex flex-col">{children}</body>
     </html>

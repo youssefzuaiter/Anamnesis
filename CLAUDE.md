@@ -1475,9 +1475,8 @@ formula at 375px fails by 4,196px without the `.katex-display` scroll rule. **No
 checked:** `projects/[id]/page.tsx` and `calendar/page.tsx` use a similar
 `grid gap-4 sm:grid-cols-N` pattern and were not looked at.
 
-**Accepted, not fixed:** the app sends no Content-Security-Policy header anywhere, so none
-was added for this feature alone; KaTeX's output is safe with `trust` off, which the
-tests assert for `\href`, `\url`, `\includegraphics` and the `\html…` family.
+**Content-Security-Policy:** since item 30 every page sends one (see "Content-Security-Policy"); KaTeX's output
+is safe with `trust` off, which the tests assert for `\href`, `\url`, `\includegraphics` and the `\html…` family.
 
 ## Note templates
 

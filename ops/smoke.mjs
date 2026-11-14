@@ -177,6 +177,19 @@ const login = await request("/login");
 const loginHtml = login.status === 200 ? await login.text() : "";
 report(login.status === 200 && loginHtml.includes("Sign in"), "the login page renders", `HTTP ${login.status}`);
 
+// The page policy (ROADMAP item 30): scripts only with this response's nonce, and the theme script carries that
+// same nonce. Enforced or report-only, the header must be there and must not open scripts to inline code.
+const policy = login.headers.get("content-security-policy") ?? login.headers.get("content-security-policy-report-only") ?? "";
+const scriptSource = /script-src ([^;]*)/.exec(policy)?.[1] ?? "";
+const policyNonce = /'nonce-([^']+)'/.exec(scriptSource)?.[1];
+const themeNonce = loginHtml.match(/<script nonce="([^"]+)"[^>]*>\(function\(\)\{var t="system"/)?.[1];
+const policyOk = Boolean(policyNonce) && !scriptSource.includes("'unsafe-inline'") && /frame-ancestors 'none'/.test(policy) && themeNonce === policyNonce;
+report(
+  policyOk,
+  "the page sends a Content-Security-Policy with a per-request nonce",
+  policyOk ? "" : policy ? "present, but the nonce or a rule is missing" : "no policy header",
+);
+
 const asset = loginHtml.match(/\/_next\/static\/[^"')\s]+\.js/)?.[0];
 if (asset) {
   const response = await request(asset);

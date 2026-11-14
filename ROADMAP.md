@@ -120,7 +120,7 @@ services. Nothing may need a paid API key.
 Free and self-hosted, like everything above. Numbered in the order they were added; the
 order below is the order to build them in, which keeps each dependency pointing backwards.
 
-- [ ] **30. Content-Security-Policy header** (S, security). The app sends none, and notes now
+- [x] **30. Content-Security-Policy header** (S, security). The app sends none, and notes now
   render maths and code. Read the CSP guide in `node_modules/next/dist/docs/` first. The
   inline theme script in `src/app/layout.tsx` needs a nonce or a hash, and KaTeX's stylesheet
   and fonts must keep loading. Start in report-only mode to see what it would block, then
