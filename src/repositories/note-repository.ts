@@ -414,3 +414,20 @@ export function listLiveNoteTitles(userId: string) {
   return prisma.note.findMany({ where: { userId, deletedAt: null }, select: { id: true, title: true, updatedAt: true }, take: 5_000 });
 }
 
+
+/**
+ * Live notes last changed before `before`, oldest first, capped: the candidates the dashboard's revisit card picks
+ * from (ROADMAP item 32). Only the fields the card shows are read.
+ */
+export async function listNotesChangedBefore(
+  userId: string,
+  before: Date,
+  take: number,
+): Promise<{ id: string; title: string; updatedAt: Date }[]> {
+  return prisma.note.findMany({
+    where: { userId, deletedAt: null, updatedAt: { lte: before } },
+    select: { id: true, title: true, updatedAt: true },
+    orderBy: { updatedAt: "asc" },
+    take,
+  });
+}

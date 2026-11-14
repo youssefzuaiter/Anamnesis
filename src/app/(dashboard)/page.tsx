@@ -174,6 +174,7 @@ export default async function DashboardPage() {
     cardsDue,
     indexedChunks,
     todayNote,
+    revisit,
   } = await getDashboard(userId, now);
 
   const firstName = session?.user?.name?.split(" ")[0] ?? "there";
@@ -426,6 +427,28 @@ export default async function DashboardPage() {
               )}
             </div>
           </div>
+
+          {revisit && (
+            <section aria-labelledby="revisit-title" className={`${CARD} mb-6`}>
+              <h2 id="revisit-title" className="px-5 pb-2 pt-4 text-base font-bold text-text">
+                Come back to
+              </h2>
+              <Link
+                href={`/notes/${revisit.note.id}`}
+                className="flex items-center gap-3 border-t border-border-subtle px-5 py-3 transition-colors hover:bg-surface-subtle"
+              >
+                <Icon name="notes" className="size-[18px] text-text-faint" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-text">{revisit.note.title}</p>
+                  <p className="text-[13px] text-text-faint">
+                    {revisit.reason === "onThisDay"
+                      ? `On this day, ${revisit.yearsAgo} ${revisit.yearsAgo === 1 ? "year" : "years"} ago`
+                      : `Not changed for ${revisit.daysAgo} days`}
+                  </p>
+                </div>
+              </Link>
+            </section>
+          )}
 
           <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-2">
             <section aria-labelledby="notes-title" className={CARD}>
