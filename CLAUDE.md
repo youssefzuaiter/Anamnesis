@@ -3620,6 +3620,35 @@ leak mutant had not matched its own pattern, so it was rerun and caught.
 signal, and the runbook says so); an outside monitor; alerts for an error that is only in the app's logs (the app
 logs an unhandled error to its own output, not to ntfy); different severities; quiet hours.
 
+### Notes that come back
+
+ROADMAP item 32 (S). The dashboard's **Come back to** card shows one older note of the caller's own: a note from this same
+day in an earlier year if there is one ("On this day, 2 years ago"), otherwise a note not changed for thirty days ("Not
+changed for 412 days"). The card is hidden when there is nothing to offer. Plan
+`docs/superpowers/plans/2026-11-14-notes-come-back.md`. Only `updatedAt` is read, as the roadmap asks: no migration, no model,
+nothing written.
+
+- **Pure rule, `pickRevisit` in `lib/note-revisit.ts`.** Anniversaries first (the newest of them); otherwise the untouched
+  note chosen by the day's number, so the card stays the same through a day and moves on the next. The candidates are sorted
+  by id before the choice, so the order the database returns them in cannot change the answer.
+- **29 February matches only 29 February**, so it is never "on this day" for 28 February in a year without it. A same day
+  of the month in another month is not an anniversary either (a mutant that ignored the month survived until a test was
+  added).
+- **Ownership and trash.** The query carries the caller's `userId` and excludes deleted notes. A test checks another account's
+  note with the same title and day is never offered, and a trashed note is never offered.
+- **Cost.** The query reads at most 1000 notes last changed before the cutoff, oldest first. A personal workspace fits; past
+  that the choice is made from the oldest 1000. Not measured at 1000 notes.
+
+**Tests.** 9 unit (`note-revisit`: the anniversary preference, this year's date not counting, the thirty-day line, the daily
+stability, 29 February, the month, the newest of two anniversaries, no candidates), 3 integration (`note-revisit`: the
+anniversary and another account's note; a trashed note and a recent one; an untouched note and an account with none), 3
+browser (`revisit.spec.ts`: the card shows a seeded note from this day two years ago with its reason; the phone in light and
+dark). **Mutation checks: 10 mutants, all caught** after two survived (the month, and the newest anniversary), each closed with a
+test.
+
+**Not done:** a "last opened" column (a migration, which the roadmap rules out for this item); more than one note on the card;
+a way to dismiss the card for a day.
+
 ## Target directory structure
 
 ```
