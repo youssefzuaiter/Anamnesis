@@ -3649,6 +3649,37 @@ test.
 **Not done:** a "last opened" column (a migration, which the roadmap rules out for this item); more than one note on the card;
 a way to dismiss the card for a day.
 
+### TODO lines become tasks
+
+ROADMAP item 33 (M). A note's unchecked checkboxes (`- [ ] …`) and `TODO: …` lines can become tasks. The note page's
+**Tasks from this note** card lists them, each ticked, and the person unticks what they do not want and confirms. Plan
+`docs/superpowers/plans/2026-11-14-todo-lines.md`. No model, no migration, and nothing changes until confirmed.
+
+- **The decision, made with the owner: dedup by title.** A line whose title matches any task the account has, open, done or
+  trashed, is not offered again. No migration. Stated limits: rewording a line makes it offerable again, and a task deleted
+  for good (purged) lets its line be offered again. The alternative was a migration recording each line's origin; the owner
+  chose the title rule.
+- **Parsing is pure (`todoTitles` in `lib/todo-lines.ts`).** Only unchecked boxes and a `TODO:` at the start of a line
+  count; fenced code is skipped (the shared fence rule); a done box is never offered; a title is cut to 200 characters; a
+  title appears once per note whatever its case or spacing.
+- **Confirmation follows Plan my day.** The browser sends the note id and the titles that were ticked. The server reads the
+  note again and only creates tasks for lines it finds there, and only for titles no task already has. A repeated
+  confirmation creates nothing. Tasks take the note's course, medium priority and no due date.
+- **Ownership.** Another account's note, a trashed note and a made-up id are the same "does not exist". A task of another
+  account with the same title does not block a line.
+
+**Tests.** 8 unit (`todo-lines`: the two markers, done boxes, fences, one title per note, empty markers and the cut, the
+marker as a whole word, markup kept as text, a 20,000-line note in linear time), 7 integration (`todo-tasks`: dedup against
+open, done and trashed tasks, another account's task, confirming on the note's course with only the note's lines, a second
+confirmation, a title sent twice, the refusals, an unticked line), 3 browser (`todo-tasks.spec.ts`: the card, unticking,
+confirming, the done line; the phone in light and dark), and the note-page specs (link suggestions, cards, summary, quiz,
+the CSP spec, shortcuts: 62 tests) still pass. **Mutation checks: 7 mutants, all caught** after one survived (the server
+ignoring the ticked list), closed with a test for an unticked line. One real bug was found by the browser spec and fixed:
+the untick handler read the event after React had released it.
+
+**Not done:** rewording-proof dedup (needs a migration); an origin per line; a "see the line in the note" link from the
+task; choosing a project or due date in the card.
+
 ## Target directory structure
 
 ```

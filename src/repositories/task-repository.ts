@@ -275,3 +275,12 @@ export function listOpenTaskTitles(userId: string) {
   });
 }
 
+
+/**
+ * Every title the account has ever given a task, trashed and done ones included, for the TODO-line dedup (ROADMAP
+ * item 33): a line already made into a task is not offered again while that task exists.
+ */
+export async function listAllTaskTitles(userId: string): Promise<string[]> {
+  const rows = await prisma.task.findMany({ where: { userId }, select: { title: true } });
+  return rows.map((row) => row.title);
+}
