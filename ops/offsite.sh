@@ -92,6 +92,10 @@ while IFS= read -r backup; do
   # same file; each finishes with its own whole file and the later rename replaces the earlier copy.
   tmp="$dir/.incomplete-$name.$$.tar.age"
   if ! tar -C "$BACKUP_DIR" -cf - "$name" | age -r "$recipient" -o "$tmp"; then
+    if command -v node >/dev/null 2>&1; then
+      node "$OPS_DIR/watch.mjs" --notify "Anamnesis: an off-site copy failed" \
+        "An encrypted copy could not be written. The local backups are fine; see ops/state/backup.log." >&2 || true
+    fi
     die "could not encrypt $name, so no copy was made of it (the local backup is untouched)"
   fi
   mv "$tmp" "$final"

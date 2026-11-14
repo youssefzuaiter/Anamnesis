@@ -113,7 +113,7 @@ services. Nothing may need a paid API key.
 - [x] **27. Session list and sign out everywhere** (S to M, security).
 - [x] **28. Encrypted off-machine backups** (S to M, ops, paid?). Encrypt first, then copy. An
   external drive is free; cloud storage costs money, so say so before building toward it.
-- [ ] **29. Error and uptime alerts** (S, ops). Reuse whatever 19 chose (ntfy: the app token may publish to `anamnesis-*`).
+- [x] **29. Error and uptime alerts** (S, ops). Reuse whatever 19 chose (ntfy: the app token may publish to `anamnesis-*`).
 
 ## G. Added 2026-10-28
 
