@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Installs (or removes) the three scheduled jobs on macOS:
+# Installs (or removes) the four scheduled jobs on macOS:
 #   update  — every 5 minutes: deploy a newly promoted release
 #   backup  — every night at 03:15
 #   verify  — Sundays 04:30: restore the newest backup into a scratch database
+#   watch   — every 5 minutes: alert the phone if the app, reminders, ntfy, backups or off-site copies fail
 #
 #   ops/install-launchd.sh [--uninstall]
 #
@@ -15,7 +16,7 @@ set -euo pipefail
 [ "$(uname -s)" = Darwin ] || die "this installer is for macOS; on Linux use cron or systemd timers to run the same scripts"
 
 AGENTS="$HOME/Library/LaunchAgents"
-JOBS="update backup verify"
+JOBS="update backup verify watch"
 DOMAIN="gui/$(id -u)"
 
 if [ "${1:-}" = "--uninstall" ]; then
@@ -34,10 +35,12 @@ mkdir -p "$AGENTS" "$STATE_DIR"
 # launchd starts jobs with a nearly empty PATH, which would not find docker or
 # node. Capture the one this shell found them in.
 JOB_PATH="$(dirname "$(command -v docker)"):$(dirname "$(command -v node 2>/dev/null || echo /usr/local/bin/node)"):/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+# The watcher runs under node directly; no node, no watcher (the backup alerts still work through the scripts).
+NODE_BIN="$(command -v node 2>/dev/null || echo /usr/local/bin/node)"
 
 for job in $JOBS; do
   target="$AGENTS/com.anamnesis.$job.plist"
-  sed -e "s#@ROOT@#$ROOT#g" -e "s#@PATH@#$JOB_PATH#g" \
+  sed -e "s#@ROOT@#$ROOT#g" -e "s#@PATH@#$JOB_PATH#g" -e "s#@NODE@#$NODE_BIN#g" \
     "$OPS_DIR/launchd/com.anamnesis.$job.plist.template" >"$target"
   plutil -lint "$target" >/dev/null || die "generated $target is not a valid plist"
   launchctl bootout "$DOMAIN/com.anamnesis.$job" 2>/dev/null || true
@@ -45,4 +48,4 @@ for job in $JOBS; do
   log "installed com.anamnesis.$job"
 done
 
-log "logs: $STATE_DIR/{update,backup,verify}.log   |   remove everything with: ops/install-launchd.sh --uninstall"
+log "logs: $STATE_DIR/{update,backup,verify}.log, $STATE_DIR/watch.log   |   remove everything with: ops/install-launchd.sh --uninstall"

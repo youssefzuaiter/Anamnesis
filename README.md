@@ -223,6 +223,7 @@ Merging to `main` publishes a container image. Moving it to production needs you
 - Registration closes once the first account exists. More accounts need the invite code in `REGISTRATION_CODE`; with none set, `/register` makes nothing.
 - Passwords are hashed with scrypt. Login is throttled after five failed attempts per email in a 15-minute window.
 - Settings lists every browser or device that is signed in (a label such as "Chrome on macOS", never an address) and can end one, all the others, or every session. An ended session is refused on its next request. Signing out also ends that session on the server, so a copied cookie stops working.
+- Error and uptime alerts go to your phone through the ntfy server (see `ops/README.md`, "Alerts"): the app is down, reminders stopped, a backup failed or is missing, or off-site copies stop arriving. Nothing is sent unless phone reminders are set up, and nothing can be sent while the Mac is off.
 - Two-factor sign-in is optional (Settings): a 6-digit code from an authenticator app, plus ten one-time recovery codes shown once. The key is stored encrypted under `NEXTAUTH_SECRET` and is never in the data export. A wrong code looks exactly like a wrong password.
 - Calendar feeds are fetched by the server. Requests to private and loopback addresses are refused.
 - Voice input uses the browser's built-in speech recognition. In Chrome, that recognition service runs on Google's servers, so the audio you speak can leave your machine.

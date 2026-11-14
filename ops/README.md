@@ -233,6 +233,27 @@ Tailscale steps above:
 **Not yet checked on a real iPhone or over Tailscale** (to do with the production step of item 19): that the
 session survives on the `:8443` address and that Auth.js accepts the forwarded host.
 
+## Alerts
+
+The phone gets a message when something needs you, and one when it is fixed again. It goes through the same ntfy server as reminders (ROADMAP item 29), to its own topic, `ALERT_TOPIC`, which `ops/ntfy-setup.sh` makes. **Nothing is sent unless phone reminders are set up**, because the ntfy server is what delivers it.
+
+What is watched, and what counts as wrong:
+
+| Message | When |
+| --- | --- |
+| the app is not answering | its health check fails (database, pgvector, migrations) or nothing answers |
+| reminders have stopped | reminders are on and the scheduler has not run for five minutes |
+| the phone server (ntfy) is not answering | its own health check fails |
+| no backup has been made / no recent backup | no backup folder, or the newest is more than 26 hours old |
+| off-site copies are not arriving | off-site copies are set up and the newest is older than three days |
+| the backup failed / the weekly backup check failed / an off-site copy failed | the job itself exits with an error (the message comes at once) |
+
+- **It takes two bad checks in a row** (ten minutes) before the phone is told, so a restart does not wake you. It is told once; the same problem does not repeat until it recovers, and then the recovery is announced once.
+- **It runs every five minutes**, from `ops/launchd/com.anamnesis.watch.plist.template`, installed by `ops/install-launchd.sh` with the other jobs. Its own record is `ops/state/watch.log`, and its state is `ops/state/watch.json`, which holds only counts and flags.
+- **The phone must subscribe to the alert topic too.** In the ntfy app, add a subscription to `ALERT_TOPIC` on the same server as the reminders; the phone can read it and the app can only write to it.
+- **What it cannot do.** If the Mac is off or asleep, nothing runs, and nothing can tell you so. An outside monitor would watch from somewhere else, but that means publishing the app's address to a third party; it is not built. Alerts reach you only as often as the phone is online for ntfy.
+- **Try it.** `ops/watch.mjs --notify "test" "a test alert"` sends one message now and prints why if it did not.
+
 ## Signed-in devices
 
 Settings lists each signed-in browser and can end it. The sign-in cookie is still a token, but it names a row in the `AuthSession` table and is refused the moment that row is gone (one indexed read per request, about 0.4 ms). **The deploy that first contains this signs everyone out once**: tokens made before it carry no session id, so each browser (the owner's phone and laptop) lands on the sign-in page once. Every smoke check signs in and so adds a row for the smoke account; an account keeps its newest 50 and drops rows idle for 30 days, so nothing builds up. The table is not in the data export, and a restore from a backup brings the old rows back with the data, so sessions that were ended after that backup was taken work again until they are ended once more.

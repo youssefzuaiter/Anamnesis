@@ -17,6 +17,19 @@ set -euo pipefail
 PRUNE=1
 [ "${1:-}" = "--no-prune" ] && PRUNE=0
 
+# Set before anything can fail, so a backup that cannot even start (Docker down, Postgres stopped) still
+# tells the phone (ops/watch.mjs, ROADMAP item 29). Never changes the exit status; the real error is on stderr.
+work=""
+on_exit() {
+  local code=$?
+  [ -n "$work" ] && rm -rf "$work"
+  if [ "$code" -ne 0 ] && command -v node >/dev/null 2>&1; then
+    node "$OPS_DIR/watch.mjs" --notify "Anamnesis: the backup failed" \
+      "A backup did not complete, so the newest good backup is the one before it. See ops/state/backup.log." >&2 || true
+  fi
+}
+trap on_exit EXIT
+
 need docker
 require_env_file
 compose ps --status running --services 2>/dev/null | grep -qx postgres \
@@ -31,7 +44,6 @@ dest="$BACKUP_DIR/anamnesis-$stamp"
 # Built under a name no restore or prune will ever treat as a backup, then
 # renamed in one step: a half-written backup can never be mistaken for a good one.
 work="$BACKUP_DIR/.incomplete-$stamp"
-trap 'rm -rf "$work"' EXIT
 mkdir "$work"
 
 log "dumping the database"

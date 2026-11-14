@@ -3576,6 +3576,51 @@ of every one; encrypting the local backups themselves (they are protected by fil
 the GNU `tar` path is first run in CI (the scripts use only the first character of a verbose listing, the name listing
 and `-xf -o`).
 
+### Error and uptime alerts
+
+ROADMAP item 29 (S, ops). The phone is told when something needs the owner, and again when it is fixed. Plan
+`docs/superpowers/plans/2026-11-14-alerts.md`. No dependency, no migration, no app code: the rules and the sender
+are `ops/watch.mjs`, and the failing jobs call it with `--notify`. It reuses the ntfy server from item 19, the
+app's token, and a topic of its own (`ALERT_TOPIC`, from `ops/ntfy-setup.sh`), which the existing access rules
+already allow (the app may publish to `anamnesis-*`, the phone may read it), so no ACL changed.
+
+- **Money: none.** Limit said plainly: nothing can alert while the Mac is off or asleep, because the watcher runs on
+  it. An outside monitor would need the app's public address; it is not built.
+- **Two producers, by what can report its own failure.** The watcher (every five minutes, launchd) checks what
+  cannot: the app answers its deep health check; reminders have ticked in the last five minutes, when they are on;
+  ntfy answers; a backup exists from the last 26 hours; off-site copies are fresh (`offsite.sh --check`, when
+  configured). The jobs (`backup.sh`, `verify-backup.sh` weekly, `offsite.sh` encryption) send one alert themselves
+  when they exit non-zero, because a job that fails before it could check anything is the one a poll cannot see.
+- **The rules are a pure function with two decisions.** `decide(state, observations, now)` alerts on the second
+  failing run in a row (`THRESHOLD`), once, and announces the recovery once. A check that is not configured (no
+  off-site folder, no phone server, no reminders) is not applicable and keeps its flag, so switching a thing off never
+  invents a recovery message. The state holds counts and flags only, never message text. An alert that could not be
+  delivered is retried on the next run instead of being counted as sent.
+- **The failure trap is set before anything can fail.** Found in review: `backup.sh` and `verify-backup.sh` installed
+  their trap after the "is Postgres running" and "any backups?" checks, so the most likely failures were silent.
+  Both now set it first. The weekly verify alerts only when run with no argument (launchd); a check of one named
+  folder by hand does not, because it is not the owner's scheduled check.
+- **Messages are plain and carry no address or token.** `publish` sends JSON to the ntfy root with the app's token;
+  failures are "ntfy answered 401" or "ntfy did not answer (ECONNREFUSED)". The reply body is never kept (a test
+  plants a secret in it).
+- **Never fails its caller.** An alert that cannot be sent is a line on stderr and an exit status of 0; the real error
+  of the job is still the one that counts. With no topic configured `--notify` says that nothing was sent.
+
+**Measured.** A real `backup.sh` run with no production stack (its "Postgres is running" check fails) sent
+"Anamnesis: the backup failed" to a stand-in ntfy server, with the app's token and the right topic, and exited 1 as
+before. The watcher against real HTTP servers: app down, still down (no repeat), back up (recovery), with exactly
+two messages. The weekly verify, run with no backup in its folder, sent its alert; a named folder that does not exist
+sent none. 17 unit tests (`watch`: the threshold, no repeats, recovery once, flapping silent, stalled scheduler, stale
+and missing backup, off-site and phone server not configured, the state holds no text, the env file read as data,
+the publisher against a real local server, `--notify` with an unreachable and an absent topic). **Mutation checks:
+14 mutants, all caught** after two survived at first: a check switched off after it had alerted could have
+invented a recovery message, and the phone server's configuration rule had no test (both now pinned). The reply-text
+leak mutant had not matched its own pattern, so it was rerun and caught.
+
+**Not done:** a message when the Mac has been off for longer than the alerts would have taken (silence is the only
+signal, and the runbook says so); an outside monitor; alerts for an error that is only in the app's logs (the app
+logs an unhandled error to its own output, not to ntfy); different severities; quiet hours.
+
 ## Target directory structure
 
 ```
