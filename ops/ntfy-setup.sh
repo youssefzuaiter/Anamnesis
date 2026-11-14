@@ -47,6 +47,9 @@ fi
 host_tz="$(readlink /etc/localtime 2>/dev/null | sed -n 's#.*zoneinfo/##p')"
 add TZ "${host_tz:-UTC}"
 add NTFY_PUBLIC_URL "http://localhost:2586"
+# Where error and uptime alerts go (ops/watch.mjs, ROADMAP item 29). A topic of its own, so the phone can
+# subscribe to alerts separately from reminders; the ntfy rules already let the app publish to anamnesis-*.
+add ALERT_TOPIC "anamnesis-ops-$(openssl rand -hex 12)"
 
 chmod 600 "$ENV_FILE"
 log "phone reminders are set up; the ntfy app signs in as 'phone' with NTFY_PHONE_PASSWORD from $ENV_FILE"

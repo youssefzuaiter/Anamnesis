@@ -13,6 +13,23 @@ set -euo pipefail
 
 need docker
 
+# Set before anything can fail, so a weekly check that finds no backup, or a damaged one, still tells the
+# phone (ops/watch.mjs, ROADMAP item 29).
+name="anamnesis-verify-$$"
+# Read at script level: inside cleanup, $1 would be the function's argument, not the script's.
+weekly=0
+[ -z "${1:-}" ] && weekly=1
+cleanup() {
+  local code=$?
+  docker rm -f "$name" >/dev/null 2>&1 || true
+  # The weekly run (no argument, from launchd) tells the phone when the newest backup does not restore.
+  if [ "$code" -ne 0 ] && [ "$weekly" = 1 ] && command -v node >/dev/null 2>&1; then
+    node "$OPS_DIR/watch.mjs" --notify "Anamnesis: the weekly backup check failed" \
+      "The newest backup did not restore into a scratch database. Do not rely on it until ops/state/verify.log says why." >&2 || true
+  fi
+}
+trap cleanup EXIT
+
 backup="${1:-}"
 if [ -z "$backup" ]; then
   backup="$(find "$BACKUP_DIR" -maxdepth 1 -type d -name 'anamnesis-*T*Z' 2>/dev/null | sort | tail -n 1)"
@@ -23,9 +40,6 @@ fi
 log "verifying $(basename "$backup")"
 (cd "$backup" && sha256 -c SHA256SUMS >/dev/null) || die "checksums do not match — this backup is damaged"
 
-name="anamnesis-verify-$$"
-cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; }
-trap cleanup EXIT
 
 docker run -d --name "$name" \
   -e POSTGRES_PASSWORD=verify -e POSTGRES_DB=verify \

@@ -155,6 +155,24 @@ mkdir "$EMPTY"
 if ANAMNESIS_OFFSITE_DIR="$EMPTY" "$OPS_DIR/verify-backup.sh" >/dev/null 2>&1; then fail "the weekly verify passed with no off-site copies"; fi
 log "  ok  the weekly verify fails when copies stop arriving"
 
+step "the watcher sees the running app, and an alert reaches the phone server"
+# One pass against the real app (deep health), the real backup folder and the real off-site folder. The
+# sandbox was set up by bootstrap.sh, so it has ntfy and an alert topic: an alert sent now must go through
+# the stack's own ntfy, which is the delivery path the owner's phone uses. (No topic is covered in
+# tests/unit/watch.test.ts, where it is the only case under test.)
+node "$OPS_DIR/watch.mjs" >/dev/null 2>&1 || fail "the watcher's pass failed"
+[ -f "$ANAMNESIS_STATE_DIR/watch.json" ] || fail "the watcher did not save its state"
+app_failures="$(node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(s.app.failures)' "$ANAMNESIS_STATE_DIR/watch.json")"
+expect "the watcher finds the app answering" 0 "$app_failures"
+backup_failures="$(node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(s.backup.failures)' "$ANAMNESIS_STATE_DIR/watch.json")"
+expect "the watcher finds a recent backup" 0 "$backup_failures"
+node "$OPS_DIR/watch.mjs" --notify "Anamnesis: rehearsal" "the alert path works" 2>"$SANDBOX/notify.err" \
+  || fail "an alert must not fail its caller"
+grep -q "alert sent: Anamnesis: rehearsal" "$ANAMNESIS_STATE_DIR/watch.log" \
+  || fail "the alert was not delivered to the phone server ($(cat "$SANDBOX/notify.err"))"
+log "  ok  an alert is delivered through the stack's ntfy"
+log "  ok  an alert in the stack is delivered through its own ntfy server"
+
 step "a release that fails its smoke check must roll back and keep serving"
 if ANAMNESIS_EXPECT_VERSION=not-the-running-release \
    "$OPS_DIR/deploy.sh" --ref "$IMAGE_REF" --no-pull >"$SANDBOX/rollback.log" 2>&1; then
