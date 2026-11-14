@@ -125,7 +125,7 @@ order below is the order to build them in, which keeps each dependency pointing 
   inline theme script in `src/app/layout.tsx` needs a nonce or a hash, and KaTeX's stylesheet
   and fonts must keep loading. Start in report-only mode to see what it would block, then
   enforce; the e2e suite must pass under it.
-- [ ] **31. Weekly review** (S, demo). A read-only page: tasks finished, notes written, how
+- [x] **31. Weekly review** (S, demo). A read-only page: tasks finished, notes written, how
   goals and courses moved, what is overdue and what comes next week. Plain queries over the
   existing repositories; no model, and nothing is written.
 - [ ] **32. Notes that come back** (S). A dashboard card with one older note ("on this day",
