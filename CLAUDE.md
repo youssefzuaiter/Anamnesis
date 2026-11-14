@@ -1475,9 +1475,8 @@ formula at 375px fails by 4,196px without the `.katex-display` scroll rule. **No
 checked:** `projects/[id]/page.tsx` and `calendar/page.tsx` use a similar
 `grid gap-4 sm:grid-cols-N` pattern and were not looked at.
 
-**Accepted, not fixed:** the app sends no Content-Security-Policy header anywhere, so none
-was added for this feature alone; KaTeX's output is safe with `trust` off, which the
-tests assert for `\href`, `\url`, `\includegraphics` and the `\html…` family.
+**Content-Security-Policy:** since item 30 every page sends one (see "Content-Security-Policy"); KaTeX's output
+is safe with `trust` off, which the tests assert for `\href`, `\url`, `\includegraphics` and the `\html…` family.
 
 ## Note templates
 
@@ -3575,6 +3574,48 @@ current tree. A rehearsal after any migration needs a fresh image.
 of every one; encrypting the local backups themselves (they are protected by file permissions and the disk, as before);
 the GNU `tar` path is first run in CI (the scripts use only the first character of a verbose listing, the name listing
 and `-xf -o`).
+
+### Content-Security-Policy
+
+ROADMAP item 30 (S, security). Every page sends a Content-Security-Policy: scripts run only with a nonce that is new for
+each response, so an injected `<script>` in a note or a page cannot run. Plan `docs/superpowers/plans/2026-11-14-csp.md`.
+No dependency. The rules are a pure function, `contentSecurityPolicy` in `src/lib/csp.ts`; `src/proxy.ts` makes a nonce per
+request and sends the header; the root layout applies the nonce to the theme script (the app's only inline script), and
+Next applies it to its own framework scripts. Because a nonce is per request, every page is now rendered per request.
+
+**The rules, exactly.** `script-src 'self' 'nonce-…' 'strict-dynamic'`, with `'unsafe-eval'` in development only (React's
+debugging needs it). `style-src 'self' 'nonce-…'` for style elements. `style-src-attr 'unsafe-inline'`: KaTeX writes
+`style="…"` attributes into the server's HTML, and a style attribute cannot carry a nonce, so that one directive is the
+narrow exception, recorded here. `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`,
+`img-src 'self' blob: data:` (the QR code is a data URL), `font-src 'self'`. **No `upgrade-insecure-requests`**: the local
+production server speaks plain http on 127.0.0.1, and the directive would break it. In development only,
+`style-src 'unsafe-inline'`: the dev server's hot reload injects CSS as `<style>` elements at runtime, which no nonce covers
+(production has none). **A client cannot choose its nonce**: the proxy always overwrites `x-nonce`.
+
+**Measured, in report-only mode first, on the production build** (`pnpm build` and `pnpm start`, the browser spec
+`tests/e2e/csp.spec.ts` recording every `securitypolicyviolation`): the first run reported **`script-src blocked eval`**
+on every page, the sign-in page included. The cause was Zod, not the app: Zod 4 checks whether the page may evaluate code by
+calling `new Function("")` once, when a schema is first built. The check is caught, but the browser still reports it. Zod has
+a supported switch for this, `config({ jitless: true })`, which skips the check and keeps validation the same (only its
+speed-up is lost). It is set in `src/instrumentation-client.ts`, which Next runs before the app's code in the browser. Under
+the dev server the same spec also reported `style-src-elem` (the hot reload above); none of that is in production.
+
+**Enforced, after the measurement was clean.** Production with the enforcing header: the CSP spec passes (4 of 4: every
+signed-out and signed-in page visited, including a note with maths and a code fence, the command palette and the assistant
+panel, zero violations). The flow specs (registration, two-factor, sessions, summaries, cards, quizzes, calendar feed: 66
+tests) pass against the enforcing production server, and the same spec set passes against the development server as CI runs
+it (70 tests). `ops/smoke.mjs` now checks the served policy: a nonce in `script-src`, no inline scripts, `frame-ancestors
+'none'`, and the theme script carrying the header's nonce. It passes against production.
+
+**Found along the way.** (1) A browser clears a script's `nonce` attribute once the script has run, so reading it from the
+live page returns "" — the spec reads it from the server's HTML instead. (2) Zod's probe, above, was the only production
+violation; without measuring in report-only mode first it would have looked like a broken page.
+
+**Not done:** no `report-uri`/`report-to` endpoint, so violations from real visitors are not collected anywhere (the browser
+console is the only record); the style-attribute exception stays until KaTeX's output is changed to use classes; no HSTS or
+other headers (none asked for here); the cost of every page being dynamically rendered is not measured (the pages were
+already dynamic in practice, behind the session check). **Not run here:** the rehearsal's container smoke (it runs the
+same smoke check against the image, so it covers the header in the container).
 
 ## Target directory structure
 
