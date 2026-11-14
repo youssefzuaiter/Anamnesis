@@ -128,7 +128,7 @@ order below is the order to build them in, which keeps each dependency pointing 
 - [ ] **31. Weekly review** (S, demo). A read-only page: tasks finished, notes written, how
   goals and courses moved, what is overdue and what comes next week. Plain queries over the
   existing repositories; no model, and nothing is written.
-- [ ] **32. Notes that come back** (S). A dashboard card with one older note ("on this day",
+- [x] **32. Notes that come back** (S). A dashboard card with one older note ("on this day",
   or one not touched for a while). Use `updatedAt`; a "last opened" column would be a
   migration for a small nicety.
 - [ ] **33. TODO lines become tasks** (M). Find unchecked `- [ ]` lines and `TODO:` lines in a
