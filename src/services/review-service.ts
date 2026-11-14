@@ -1,8 +1,11 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { completeJson, type ChatMessage } from "@/lib/ollama";
-import { z } from "zod";
-import { AppError } from "@/lib/api-response";
+import { tasksPerCourse, tasksPerGoal } from "@/lib/weekly-review";
+
+/**
+ * The weekly review (ROADMAP item 31): plain queries over the caller's own rows, and nothing is written. No model
+ * is involved; the page says what happened, in numbers and titles.
+ */
 
 export type WeeklyReview = {
   from: Date;
@@ -13,6 +16,9 @@ export type WeeklyReview = {
   eventsAttended: number;
   cardsReviewed: number;
   upcoming: { id: string; title: string; dueDate: Date }[];
+  goalsMoved: { id: string; title: string; progress: number; doneTasks: number }[];
+  coursesMoved: { id: string; code: string; title: string; doneTasks: number }[];
+  assessmentsDue: { id: string; title: string; dueDate: Date; courseId: string; courseCode: string }[];
 };
 
 /** Midnight seven days ago, so the window is whole days rather than a rolling
@@ -36,7 +42,7 @@ export async function buildWeeklyReview(
   const nextWeek = new Date(now);
   nextWeek.setDate(nextWeek.getDate() + 7);
 
-  const [completed, slipped, notesWritten, eventsAttended, cardsReviewed, upcoming] =
+  const [completed, slipped, notesWritten, eventsAttended, cardsReviewed, upcoming, finishedThisWeek, assessments] =
     await Promise.all([
       prisma.task.findMany({
         where: {
@@ -81,7 +87,58 @@ export async function buildWeeklyReview(
         select: { id: true, title: true, dueDate: true },
         orderBy: { dueDate: "asc" },
       }),
+      // Finished this week, with the goal a project gives it when the project is still live.
+      prisma.task.findMany({
+        where: {
+          userId,
+          deletedAt: null,
+          status: "done",
+          completedAt: { gte: from, lte: to },
+        },
+        select: {
+          id: true,
+          goalId: true,
+          courseId: true,
+          project: { select: { goalId: true, deletedAt: true } },
+        },
+      }),
+      // Unscored assessments due in the next week, on live courses. A scored one is not "due".
+      prisma.assessment.findMany({
+        where: {
+          userId,
+          score: null,
+          dueDate: { gte: startOfToday, lte: nextWeek },
+          course: { deletedAt: null },
+        },
+        select: {
+          id: true,
+          title: true,
+          dueDate: true,
+          courseId: true,
+          course: { select: { code: true } },
+        },
+        orderBy: { dueDate: "asc" },
+      }),
     ]);
+
+  const goalCounts = tasksPerGoal(
+    finishedThisWeek.map((task) => ({
+      id: task.id,
+      goalId: task.goalId,
+      projectGoalId: task.project && !task.project.deletedAt ? task.project.goalId : null,
+    })),
+  );
+  const courseCounts = tasksPerCourse(finishedThisWeek);
+  const [goals, courses] = await Promise.all([
+    prisma.goal.findMany({
+      where: { userId, deletedAt: null, id: { in: [...goalCounts.keys()] } },
+      select: { id: true, title: true, progress: true },
+    }),
+    prisma.course.findMany({
+      where: { userId, deletedAt: null, id: { in: [...courseCounts.keys()] } },
+      select: { id: true, code: true, title: true },
+    }),
+  ]);
 
   return {
     from,
@@ -98,70 +155,18 @@ export async function buildWeeklyReview(
     upcoming: upcoming.flatMap((task) =>
       task.dueDate ? [{ ...task, dueDate: task.dueDate }] : [],
     ),
+    goalsMoved: goals
+      .map((goal) => ({ id: goal.id, title: goal.title, progress: goal.progress, doneTasks: goalCounts.get(goal.id) ?? 0 }))
+      .sort((a, b) => b.doneTasks - a.doneTasks),
+    coursesMoved: courses
+      .map((course) => ({ id: course.id, code: course.code, title: course.title, doneTasks: courseCounts.get(course.id) ?? 0 }))
+      .sort((a, b) => b.doneTasks - a.doneTasks),
+    assessmentsDue: assessments.map((assessment) => ({
+      id: assessment.id,
+      title: assessment.title,
+      dueDate: assessment.dueDate as Date,
+      courseId: assessment.courseId,
+      courseCode: assessment.course.code,
+    })),
   };
-}
-
-const SUMMARY_SCHEMA = {
-  type: "object",
-  properties: {
-    summary: { type: "string" },
-    suggestion: { type: "string" },
-  },
-  required: ["summary", "suggestion"],
-} as const;
-
-const summaryOutput = z.object({
-  summary: z.string().trim().min(1).max(1200),
-  suggestion: z.string().trim().min(1).max(600),
-});
-
-function titles(items: { title: string }[], limit: number): string {
-  if (items.length === 0) return "none";
-  return items
-    .slice(0, limit)
-    .map((item) => item.title)
-    .join("; ");
-}
-
-/**
- * An optional narrative over the counts above. The numbers are computed in
- * code and rendered whether or not this succeeds — the model writes prose
- * about a week, it is never the source of what happened.
- */
-export async function summariseWeek(
-  review: WeeklyReview,
-): Promise<{ summary: string; suggestion: string }> {
-  const messages: ChatMessage[] = [
-    {
-      role: "system",
-      content: [
-        "You write a short, plain weekly review for a student, in the second person.",
-        "Two or three sentences of summary, then one concrete suggestion for next week.",
-        "Use only the figures given. Never invent work that is not listed.",
-        "No praise padding, no motivational filler.",
-      ].join(" "),
-    },
-    {
-      role: "user",
-      content: [
-        `Tasks finished (${review.completed.length}): ${titles(review.completed, 12)}`,
-        `Tasks past their due date and still open (${review.slipped.length}): ${titles(review.slipped, 12)}`,
-        `Notes written or edited (${review.notesWritten.length}): ${titles(review.notesWritten, 10)}`,
-        `Calendar events: ${review.eventsAttended}`,
-        `Flashcards reviewed: ${review.cardsReviewed}`,
-        `Due in the next seven days (${review.upcoming.length}): ${titles(review.upcoming, 12)}`,
-      ].join("\n"),
-    },
-  ];
-
-  const parsed = summaryOutput.safeParse(
-    await completeJson(messages, SUMMARY_SCHEMA),
-  );
-  if (!parsed.success) {
-    throw new AppError(
-      "AI_OUTPUT_INVALID",
-      "The model did not return a usable summary.",
-    );
-  }
-  return parsed.data;
 }
