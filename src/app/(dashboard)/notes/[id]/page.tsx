@@ -30,6 +30,8 @@ import { findRelated } from "@/services/search-service";
 import { findMentionsOf, suggestLinks, type LinkSuggestion } from "@/services/link-suggestion-service";
 import { LinkCard, type LinkRow } from "@/components/link-card";
 import { RAIL_CARD } from "@/components/rail-card";
+import { TodoCard } from "@/components/todo-card";
+import { proposeTodoTasks } from "@/services/todo-service";
 import { reasonLine } from "@/lib/link-reason";
 import { normalizeTitle } from "@/lib/wiki-links";
 import { Icon } from "@/components/icons";
@@ -65,6 +67,7 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
 
   const note = await getNote(userId, id);
   if (!note) notFound();
+  const todoTitles = await proposeTodoTasks(userId, note.id);
 
   const cited = citedKeys(note.content);
   const [projects, courses, outgoing, backlinks, titles, focusSwitches, cards, attachments, references] =
@@ -247,6 +250,12 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
         <section className={RAIL_CARD} aria-label="Summary">
           <SummaryCard noteId={note.id} />
         </section>
+
+        {todoTitles.length > 0 && (
+          <section className={RAIL_CARD} aria-label="Tasks from this note">
+            <TodoCard key={note.id} noteId={note.id} titles={todoTitles} />
+          </section>
+        )}
 
         <section className={RAIL_CARD}>
           <NoteAttachments

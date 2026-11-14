@@ -131,7 +131,7 @@ order below is the order to build them in, which keeps each dependency pointing 
 - [x] **32. Notes that come back** (S). A dashboard card with one older note ("on this day",
   or one not touched for a while). Use `updatedAt`; a "last opened" column would be a
   migration for a small nicety.
-- [ ] **33. TODO lines become tasks** (M). Find unchecked `- [ ]` lines and `TODO:` lines in a
+- [x] **33. TODO lines become tasks** (M). Find unchecked `- [ ]` lines and `TODO:` lines in a
   note and propose tasks. Propose, confirm, then re-validate on the server, the same shape
   as Plan my day. The parsing is pure and lives in `lib/`. Decide what happens when the note
   is edited later so a line is never proposed twice.
