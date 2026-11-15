@@ -203,13 +203,13 @@ export type VaultImportReport = {
 };
 
 /** A name from the zip as text for a report: no control characters, at most 200 characters. */
-const label = (name: string) => name.replace(/\p{Cc}/gu, "?").slice(0, 200);
+export const label = (name: string) => name.replace(/\p{Cc}/gu, "?").slice(0, 200);
 
 const zipRefusal = (error: unknown): unknown =>
   error instanceof ZipError ? new AppError("VALIDATION_ERROR", `${error.message} Choose a vault zip made by Anamnesis or by Obsidian.`) : error;
 
 /** Id by lower-cased name; a name used twice maps to null, so it matches nothing rather than the wrong one. */
-function uniqueIds(items: { id: string; key: string }[]): Map<string, string | null> {
+export function uniqueIds(items: { id: string; key: string }[]): Map<string, string | null> {
   const map = new Map<string, string | null>();
   for (const { id, key } of items) {
     const name = key.trim().toLowerCase();
@@ -222,7 +222,7 @@ function uniqueIds(items: { id: string; key: string }[]): Map<string, string | n
  * One attachment out of the zip, or why it cannot be used: unsupported (too large, encrypted),
  * unreadable (a lying size or checksum), or bytes that are not what the file name says.
  */
-async function readAttachment(
+export async function readAttachment(
   zip: ReturnType<typeof openZip>,
   entry: ZipEntry,
 ): Promise<{ ok: true; data: Buffer; mime: string; fileName: string } | { ok: false; reason: string }> {

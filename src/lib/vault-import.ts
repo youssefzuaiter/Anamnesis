@@ -120,7 +120,7 @@ function cutUnits(text: string, max: number): string {
   return text.slice(0, end);
 }
 
-function cleanTitle(raw: string): string {
+export function cleanTitle(raw: string): string {
   return cutUnits(raw.normalize("NFC").replace(/\p{Cc}/gu, " ").trim(), MAX_TITLE).trimEnd();
 }
 
