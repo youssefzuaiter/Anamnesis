@@ -71,12 +71,18 @@ export default async function NotesPage({
             {query && mode === "keyword" && " · keyword match (model offline)"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/notes/graph"
             className="rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-subtle"
           >
             Graph view
+          </Link>
+          <Link
+            href="/notes/duplicates"
+            className="rounded-lg border border-border-subtle px-3.5 py-2 text-sm text-text transition-colors hover:bg-surface-subtle"
+          >
+            Duplicates
           </Link>
           <Link
             href="/notes/import"

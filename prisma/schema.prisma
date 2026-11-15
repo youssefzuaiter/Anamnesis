@@ -26,28 +26,29 @@ model User {
   recoveryCodes RecoveryCode[]
   authSessions  AuthSession[]
 
-  profile     UserProfile?
-  projects    Project[]
-  notes       Note[]
-  tasks       Task[]
-  events      Event[]
-  links       EntityLink[]
-  embeddings  WorkspaceEmbedding[]
-  telemetry   FocusTelemetry[]
-  auditLogs   AuditEvent[]
-  calendars   CalendarSubscription[]
-  flashcards  Flashcard[]
-  courses     Course[]
-  assessments Assessment[]
-  noteVersions NoteVersion[]
-  conversations Conversation[]
-  messages     Message[]
-  attachments  Attachment[]
+  profile            UserProfile?
+  projects           Project[]
+  notes              Note[]
+  tasks              Task[]
+  events             Event[]
+  links              EntityLink[]
+  embeddings         WorkspaceEmbedding[]
+  telemetry          FocusTelemetry[]
+  auditLogs          AuditEvent[]
+  calendars          CalendarSubscription[]
+  flashcards         Flashcard[]
+  courses            Course[]
+  assessments        Assessment[]
+  noteVersions       NoteVersion[]
+  conversations      Conversation[]
+  messages           Message[]
+  attachments        Attachment[]
   taskChecklistItems TaskChecklistItem[]
-  goals        Goal[]
-  studySessions StudySession[]
+  goals              Goal[]
+  studySessions      StudySession[]
   reminderDeliveries ReminderDelivery[]
-  references   Reference[]
+  references         Reference[]
+  duplicateDecisions DuplicateDecision[]
 }
 
 model UserProfile {
@@ -154,13 +155,15 @@ model Note {
   updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
 
-  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project    Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  course     Course?       @relation(fields: [courseId], references: [id], onDelete: SetNull)
-  tasks       Task[]
-  flashcards  Flashcard[]
-  versions    NoteVersion[]
-  attachments Attachment[]
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project           Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  course            Course?             @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  tasks             Task[]
+  flashcards        Flashcard[]
+  versions          NoteVersion[]
+  attachments       Attachment[]
+  keptApartAsFirst  DuplicateDecision[] @relation("DuplicateFirst")
+  keptApartAsSecond DuplicateDecision[] @relation("DuplicateSecond")
 
   @@index([userId])
 }
@@ -194,12 +197,12 @@ model Task {
   updatedAt        DateTime  @updatedAt
   deletedAt        DateTime?
 
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  course  Course?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
-  note    Note?    @relation(fields: [noteId], references: [id], onDelete: SetNull)
-  goal    Goal?    @relation(fields: [goalId], references: [id], onDelete: SetNull)
-  assessment Assessment? @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project        Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  course         Course?             @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  note           Note?               @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  goal           Goal?               @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  assessment     Assessment?         @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
   checklistItems TaskChecklistItem[]
 
   @@index([userId])
@@ -229,25 +232,25 @@ model TaskChecklistItem {
 }
 
 model Event {
-  id          String   @id @default(uuid())
-  userId      String
-  projectId   String?
-  courseId    String?
-  title       String
-  description String?
-  startTime   DateTime
-  endTime     DateTime
-  location    String?
+  id             String   @id @default(uuid())
+  userId         String
+  projectId      String?
+  courseId       String?
+  title          String
+  description    String?
+  startTime      DateTime
+  endTime        DateTime
+  location       String?
   // Shared by every occurrence generated from the same "repeats" request.
   // Null means the event is a one-off — see the matching Task field.
-  recurrenceId String?
+  recurrenceId   String?
   // Set only on events materialized from an imported calendar feed. The pair
   // (subscriptionId, externalUid) is the idempotency key that makes re-syncing
   // the same feed update rows instead of duplicating them.
   subscriptionId String?
   externalUid    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   project      Project?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -264,13 +267,13 @@ model Event {
 /// re-fetched on demand rather than by a background job: this app has no job
 /// runner, and a timetable changes a handful of times a term.
 model CalendarSubscription {
-  id           String    @id @default(uuid())
-  userId       String
-  name         String
-  url          String
-  lastSyncedAt DateTime?
-  lastEventCount Int     @default(0)
-  createdAt    DateTime  @default(now())
+  id             String    @id @default(uuid())
+  userId         String
+  name           String
+  url            String
+  lastSyncedAt   DateTime?
+  lastEventCount Int       @default(0)
+  createdAt      DateTime  @default(now())
 
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   events Event[]
@@ -308,26 +311,26 @@ model Flashcard {
 /// convention. Deleting one detaches its contents rather than cascading, for
 /// the same reason Project does.
 model Course {
-  id        String    @id @default(uuid())
-  userId    String
-  code      String
-  title     String
-  term      String
+  id         String    @id @default(uuid())
+  userId     String
+  code       String
+  title      String
+  term       String
   /// What the course is worth, in the university's own unit. Null until set; a
   /// course without credits is not counted in the GPA.
-  credits   Float?
+  credits    Float?
   /// The official final letter, as the person recorded it. Never worked out from
   /// the marks, because many universities curve. Null while the course is open.
   finalGrade String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
 
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  notes       Note[]
-  tasks       Task[]
-  events      Event[]
-  assessments Assessment[]
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes         Note[]
+  tasks         Task[]
+  events        Event[]
+  assessments   Assessment[]
   focusSessions FocusTelemetry[]
   studySessions StudySession[]
 
@@ -409,14 +412,14 @@ model Message {
 /// directory rather than in Postgres — a database is a poor blob store, and
 /// keeping them out of it keeps the JSON export and the backups small.
 model Attachment {
-  id        String   @id @default(uuid())
-  userId    String
-  noteId    String
-  filename  String
-  mimeType  String
-  byteSize  Int
-  storageKey String  @unique
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  userId     String
+  noteId     String
+  filename   String
+  mimeType   String
+  byteSize   Int
+  storageKey String   @unique
+  createdAt  DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
@@ -544,7 +547,6 @@ model Reference {
   @@index([userId, updatedAt])
 }
 
-
 /// A one-time code for signing in without the authenticator. Only a hash is kept; `usedAt` ends it.
 model RecoveryCode {
   id        String    @id @default(uuid())
@@ -572,4 +574,22 @@ model AuthSession {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, lastSeenAt])
+}
+
+/// "These two notes are not duplicates" (ROADMAP item 36): a pair the person chose to keep, so the cleanup page stops
+/// offering it. The pair is stored with the smaller id first, so one row holds the decision whichever way it is named.
+/// Deleting either note deletes the decision. A choice about two ids, so it is not exported (ids change on a restore).
+model DuplicateDecision {
+  id        String   @id @default(uuid())
+  userId    String
+  noteAId   String
+  noteBId   String
+  createdAt DateTime @default(now())
+
+  user  User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  noteA Note @relation("DuplicateFirst", fields: [noteAId], references: [id], onDelete: Cascade)
+  noteB Note @relation("DuplicateSecond", fields: [noteBId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, noteAId, noteBId])
+  @@index([userId])
 }
