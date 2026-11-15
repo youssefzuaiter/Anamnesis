@@ -38,6 +38,8 @@ export const NOT_EXPORTED: Readonly<Record<string, string>> = {
     "Which browsers are signed in to this server right now: the server's security state, not the person's data, and meaningless on another server.",
   RecoveryCode:
     "Hashes of the one-time codes for two-factor sign-in: credentials, so they never leave the database.",
+  DuplicateDecision:
+    "A choice about two notes' ids (\"these are not duplicates\"); ids are new after a restore, so it would mean nothing there. The cleanup page offers a pair again.",
   ReminderDelivery:
     "A log of which reminders this server already sent, kept only so a restart does not send them twice; it means nothing to another server and is deleted after 30 days.",
 };
