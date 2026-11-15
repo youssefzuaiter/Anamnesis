@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { getDashboard, type TodayBlock } from "@/services/dashboard-service";
 import { daysUntilLabel } from "@/lib/grades";
 import { TaskRow } from "@/components/task-row";
+import { ExamReadinessCard } from "@/components/exam-readiness-card";
 import { QuickCapture } from "@/components/quick-capture";
 import { PlanDay } from "@/components/plan-day";
 import { ShutDownDay } from "@/components/shut-down-day";
@@ -171,6 +172,7 @@ export default async function DashboardPage() {
     activeProjects,
     activeGoals,
     nextAssessment,
+    examReadiness,
     cardsDue,
     indexedChunks,
     todayNote,
@@ -205,7 +207,9 @@ export default async function DashboardPage() {
     todayBlocks.length === 0 &&
     recentNotes.length === 0 &&
     activeProjects.length === 0 &&
-    activeGoals.length === 0;
+    activeGoals.length === 0 &&
+    // An exam ahead is something to show: the header already names it, so the page must not call itself empty.
+    examReadiness === null;
 
   const summary = [
     todayEvents.length > 0 ? plural(todayEvents.length, "event") : null,
@@ -329,31 +333,7 @@ export default async function DashboardPage() {
                 />
               </section>
 
-              {nextAssessment && (
-                <section aria-labelledby="exam-title" className={`${CARD} px-5 py-4`}>
-                  <p id="exam-title" className="text-xs font-semibold text-text-faint">
-                    Next exam
-                  </p>
-                  <p className="mt-1 text-lg font-bold leading-snug text-text">
-                    {nextAssessment.title}
-                  </p>
-                  <p className="text-sm text-text-muted">
-                    {nextAssessment.course.code} · {SHORT_DAY.format(nextAssessment.dueDate)} ·{" "}
-                    {TIME.format(nextAssessment.dueDate)}
-                  </p>
-                  <div className="mt-3 flex items-center justify-between gap-2">
-                    <span className="rounded-full bg-warn-soft px-2 py-0.5 text-xs font-semibold text-warn">
-                      {daysUntilLabel(nextAssessment.dueDate, now).replace(/^./, (c) => c.toUpperCase())}
-                    </span>
-                    <Link
-                      href={`/courses/${nextAssessment.course.id}`}
-                      className="text-[13px] font-semibold text-accent-ink hover:underline"
-                    >
-                      Open course
-                    </Link>
-                  </div>
-                </section>
-              )}
+              {examReadiness && <ExamReadinessCard readiness={examReadiness} />}
 
               {nextEvent && (
                 <section aria-labelledby="next-title" className={`${CARD} px-5 py-4`}>
