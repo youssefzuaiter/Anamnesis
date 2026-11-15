@@ -142,7 +142,7 @@ order below is the order to build them in, which keeps each dependency pointing 
   file with a preview of what would change before anything is written. The file is client
   input: every row is re-owned by the session's user, every id re-checked, and a user id or
   `passwordHash` in the file is never trusted. Importing twice must not duplicate anything.
-- [ ] **36. Duplicate-note cleanup** (M, model, builds on 7). Pairs of notes whose embeddings
+- [x] **36. Duplicate-note cleanup** (M, model, builds on 7). Pairs of notes whose embeddings
   are very close, on a review page: keep both, or merge (the other goes to the trash and its
   links are re-pointed). Measure the similarity threshold on real notes the way
   `RELEVANCE_FLOOR` was measured. Never merge without a confirmation.

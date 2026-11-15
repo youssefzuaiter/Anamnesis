@@ -39,7 +39,7 @@ async function syncNoteIndex(userId: string, note: Note): Promise<void> {
   }
 }
 
-async function syncNoteLinks(userId: string, note: Note): Promise<void> {
+export async function syncNoteLinks(userId: string, note: Note): Promise<void> {
   const titles = parseWikiLinks(note.content);
   const { resolved } = await linkRepository.resolveNoteTitles(userId, titles);
   await linkRepository.replaceOutgoingLinks(

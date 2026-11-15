@@ -3833,6 +3833,78 @@ machine and passed on the next run (the known flake).
 keeping `createdAt`; choosing which tables to restore; restoring a deleted-parent's children; a transaction; a per-row
 "what changed" preview of existing rows (a restore never changes them); a progress bar for a large file.
 
+### Duplicate-note cleanup
+
+ROADMAP item 36 (tagged *M, model, builds on 7*): **Notes → Duplicates** (`/notes/duplicates`) lists pairs of notes that look like one
+note written twice; for each pair the person chooses which to keep and either **merges** (after a plain confirmation) or **keeps both**.
+Not tagged *demo*, so it was built from the roadmap sentence and looked at in the browser (1280 and 375 px, light and dark). The forks
+were decided by me inline, not by independent voices; none was owner-level.
+
+- **A pair is offered for a reason a person can read.** The vectors are already stored, so finding candidates needs no model call and
+  works with Ollama off for whatever was indexed. A note's vector is the **mean of its chunk vectors** (what the whole note is about),
+  not the best single chunk that link suggestions use: two notes that merely share a paragraph are not duplicates (a test: one chunk
+  identical, one elsewhere, mean 0.71, best chunk 1.0, not offered). Candidates are then judged by the **words** (`lib/duplicates.ts`):
+  *Same text* (identical words, or alike in meaning at 0.90 and at least 80% of the shorter note's three-word runs inside the longer)
+  and *Same ideas, different words* (0.88 and above in meaning, little text in common). Notes whose text is identical once case,
+  spacing and punctuation are ignored are found **without any vector**, so a note pasted twice is caught even if the index never saw it.
+- **The thresholds are measured, not guessed, and the sample is small.** 28 notes on 6 topics, `nomic-embed-text`, one run
+  (log: `scratchpad/measure-duplicates.log`). Cosine of the means: a copy with other spacing and markup **0.929 to 1.000** (n=6), a copy
+  with a sentence added **0.969 to 0.988** (n=6), the same facts reworded **0.828 to 0.956**, median 0.895 (n=6), a different note in the
+  same field **0.635 to 0.837** (n=24), unrelated notes **0.423 to 0.704** (n=375). Three-word-run containment: copies and edits 1.000,
+  reworded 0 to 0.077, different notes 0 to 0.026. So 0.88 keeps every copy and edit, about three in five rewordings and no different
+  note, and 0.90 with the text check is what calls a pair a copy. **Synthetic, short notes**: read it as a picture, not as rates; the
+  rewordings overlap the top of "same field" (0.83 to 0.84), so the lower floor trades some of them away on purpose.
+- **A merge keeps one note and loses nothing.** The kept note's text is untouched; each paragraph (a fenced code block counts as one)
+  of the other note whose words are not already inside the kept note, in order, goes at the end under `## Merged from <title>`. Tags are
+  united (at most 12), and the kept note inherits a star, project or course it lacked. A version of the old text is kept, so **History
+  undoes it**. Tasks, flashcards and attachments that pointed at the other note now point at the kept one. A note that wrote
+  `[[Other title]]` now writes `[[Kept title]]` (not inside code), with a version of each; with one title for both nothing is rewritten
+  and the links are re-read after the other note is trashed. The other note goes to the **trash** (restorable), **last**: the order is
+  the kept note, the children, the links, then the trash, so a failure part-way loses nothing and running it again finishes it.
+- **The server decides the text, the browser says only which two notes.** The action takes the two ids and the edit time each note had
+  when it was shown (a note changed since is refused: "changed since this was shown"); the ids go through one lookup scoped by `userId`
+  and `deletedAt`, and a foreign, deleted, missing or identical id gets the same refusal. A merge that would pass 100,000 characters (also
+  after links are renamed) is refused with nothing written, and so is one with 500 or more notes linking to the other.
+- **"Keep both" is remembered: one additive table, `DuplicateDecision`** (user, the two note ids with the smaller first, unique per
+  pair, deleted with either note). Without it the same pair would come back every visit. It is a choice about two ids, so the export lists
+  it under `NOT_EXPORTED` (ids change on a restore). The migration is `prisma migrate diff` of the live schema (checked: only a
+  `CREATE TABLE`, an index and three foreign keys), so the previous release keeps working.
+- **Cost, measured.** `vectorPairs` over the newest 2,000 notes with every pair a match (the worst case) took 2.6 s; `listDuplicates`
+  2.6 s. Notes beyond the newest 2,000 are not compared; 50 pairs are shown and the rest counted.
+
+**What the security review and testing turned up.**
+
+- **Replaying the real actions** (session stubbed): no session `AUTH_REQUIRED`; another account's note as keep or drop, a missing id: the
+  same `RESOURCE_NOT_FOUND`; the same id twice, string times and an array: `VALIDATION_ERROR`; a body with `userId`, `content` and `title`
+  keys is ignored (the keys are not read); a stale time refused. After all of those the account's own notes were unchanged and the other
+  account's rows were identical byte for byte.
+- **The first browser run found a real bug the service tests could not.** After a merge the page refreshes and the pair is no longer
+  offered, so the card that said what happened disappeared with it (the same class of problem the link cards have): the e2e failed with
+  "Merging…" on screen. `DuplicateList` keeps the pairs as they were when the page opened and shows each one's result in its place, and
+  always renders so an empty refresh does not drop the message. The only test that can see it is the browser one (a mutant that renders
+  the refreshed list fails it).
+- **A bug in my SQL, found by the first direct test:** grouping notes by the hash of their normalised text left a trailing space where
+  the text ended in punctuation, so "...theta!" and "...theta" were two groups; `btrim`.
+- **A false alarm worth recording:** my first mutation run showed every mutant "CAUGHT" because a new test was failing without any
+  mutation. The baseline must be green before a mutant means anything; the whole run was redone.
+- **43 mutants over the repository, service and list, all caught** after four survived and exposed missing tests (a star or project alone
+  carried over, links renamed past the length limit, 500 linking notes, and the trash filters of the readers, each masked by a later
+  layer and now tested directly with a second account). One survives by design: the stored-link lookup's `userId`, whose outer query
+  filters the same way.
+
+**Tests.** 12 unit (`duplicates`: words, containment and jaccard, every threshold at its boundary, blocks and fences, merge planning,
+whole-word matching, link rewriting outside code, a 100,000-word and million-character hostile run in 4 s), 14 integration
+(`duplicates`: copies and rewordings by exact cosines, the mean rather than the best chunk, the trash, other accounts and orphaned
+vectors, keep both in either order, a full merge with tasks, cards, attachments, links and versions, one title for both, the kept note
+that links to the other, a stale note, a second account's notes, the length limit, the star and project, 500 linking notes, and each
+reader directly) and 6 browser (`duplicates.spec.ts`: the confirmation and cancel, a paragraph added under a heading, keep both, a
+changed note refused, the phone in both themes with touch-sized buttons). The existing notes, export and isolation suites still pass.
+**Not run locally:** the whole e2e suite, `pnpm build` and the evals (CI runs them).
+
+**Not done:** comparing notes beyond the newest 2,000; a note pasted inside a much longer one (contained in words but far in meaning);
+duplicates of tasks, events or cards; merging three notes at once; moving a note's version history; a model-written merge; undoing
+"keep both" (the pair is gone until one of the notes is deleted); a count of pairs on the notes page.
+
 ## Target directory structure
 
 ```
