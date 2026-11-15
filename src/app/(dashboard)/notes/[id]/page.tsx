@@ -35,6 +35,7 @@ import { proposeTodoTasks } from "@/services/todo-service";
 import { reasonLine } from "@/lib/link-reason";
 import { normalizeTitle } from "@/lib/wiki-links";
 import { Icon } from "@/components/icons";
+import { PrintButton } from "@/components/print-button";
 import { citedKeys } from "@/lib/citations";
 import { referencesByKeys } from "@/services/reference-service";
 import { citationContext } from "@/components/note-citations";
@@ -102,11 +103,11 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
   const deleteThisNote = deleteNoteAction.bind(null, note.id);
 
   return (
-    <div className="mx-auto grid max-w-6xl grid-cols-1 gap-x-10 gap-y-8 xl:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="mx-auto grid max-w-6xl grid-cols-1 print:block gap-x-10 gap-y-8 xl:grid-cols-[minmax(0,1fr)_300px]">
       <article className="min-w-0">
         <nav
           aria-label="Breadcrumb"
-          className="mb-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[13px] text-text-faint"
+          className="mb-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[13px] text-text-faint print:hidden"
         >
           <span className="min-w-0 truncate">
             <Link href="/notes" className="font-medium transition-colors hover:text-text">
@@ -135,6 +136,7 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
               <Icon name="clock" className="size-4" />
               History
             </Link>
+            <PrintButton />
           </span>
         </nav>
 
@@ -207,7 +209,7 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
           />
         )}
 
-        <section className="mt-10 flex flex-col gap-3 border-t border-border-subtle pt-6">
+        <section className="mt-10 flex flex-col gap-3 border-t border-border-subtle pt-6 print:hidden">
           <GenerateCards noteId={note.id} existing={cards.length} />
           <CardMaker noteId={note.id} />
         </section>
@@ -215,7 +217,7 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
 
       {/* The note's context sits beside it on a wide screen and below it on a
           narrow one; in the DOM it always follows the note itself. */}
-      <aside aria-label="Note context" className="flex flex-col gap-4 xl:pt-12">
+      <aside aria-label="Note context" className="flex flex-col gap-4 xl:pt-12 print:hidden">
         <section className={RAIL_CARD}>
           <NoteLinks
             outgoing={outgoing}

@@ -209,3 +209,100 @@ input[type="radio"] {
 .hljs-deletion {
   color: var(--danger);
 }
+
+/*
+ * Printing (ROADMAP item 34): the browser's "Save as PDF" is the export, so
+ * nothing is hosted. The tokens are replaced by black on white whatever the
+ * theme, so a person in dark mode does not print a dark page or pale text. The
+ * app's chrome (sidebar, header, tab bar, assistant, a note's rail and buttons)
+ * is hidden with `print:hidden` where it is rendered. Every selector names both
+ * themes, so this block wins over `:root[data-theme="dark"]` by order.
+ */
+@page {
+  margin: 16mm;
+}
+
+@media print {
+  :root:root,
+  :root[data-theme="light"],
+  :root[data-theme="dark"] {
+    color-scheme: light;
+    --canvas: #ffffff;
+    --surface: #ffffff;
+    --surface-subtle: #ffffff;
+    --surface-hover: #ffffff;
+    --border: #000000;
+    --border-strong: #000000;
+    --control: #000000;
+    --text: #000000;
+    --text-muted: #000000;
+    --text-faint: #000000;
+    --accent: #000000;
+    --accent-hover: #000000;
+    --accent-soft: #ffffff;
+    --accent-ink: #000000;
+    --on-accent: #ffffff;
+    --ai: #000000;
+    --ai-soft: #ffffff;
+    --warn: #000000;
+    --warn-soft: #ffffff;
+    --danger: #000000;
+    --danger-soft: #ffffff;
+    --ok: #000000;
+    --ok-soft: #ffffff;
+    --shadow: none;
+  }
+
+  body {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  /* A code block wraps instead of scrolling or being cut at the page edge, and
+     keeps a visible edge now that its grey ground is gone. */
+  pre {
+    white-space: pre-wrap;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    border: 1px solid #000000;
+    break-inside: avoid;
+  }
+
+  .katex-display {
+    overflow: visible;
+    break-inside: avoid;
+  }
+
+  /* Syntax colours carry no meaning on paper; weight and slant do. */
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-built_in,
+  .hljs-type,
+  .hljs-title,
+  .hljs-section {
+    font-weight: 700;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    break-after: avoid;
+  }
+
+  img,
+  table,
+  blockquote {
+    break-inside: avoid;
+  }
+
+  /* A quote loses its grey ground on paper, so it gets a rule instead. */
+  blockquote {
+    border-left: 3px solid #000000;
+    border-radius: 0;
+  }
+
+  a {
+    text-decoration: underline;
+  }
+}

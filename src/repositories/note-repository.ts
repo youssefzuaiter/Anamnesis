@@ -431,3 +431,17 @@ export async function listNotesChangedBefore(
     take,
   });
 }
+
+/**
+ * A course's live notes in the order they were written, with their text, for one
+ * printed document. `take` bounds it; the caller asks for one more than it shows
+ * to learn whether any were left out.
+ */
+export async function listCourseNotesForPrint(userId: string, courseId: string, take: number) {
+  return prisma.note.findMany({
+    where: { userId, courseId, deletedAt: null },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true, title: true, content: true, tags: true, updatedAt: true },
+    take,
+  });
+}

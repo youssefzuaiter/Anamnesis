@@ -91,7 +91,7 @@ export function AssistantToggle({ variant }: { variant: "bar" | "fab" }) {
         aria-label="Ask Anamnesis"
         aria-expanded={false}
         aria-controls="assistant-panel"
-        className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-30 inline-flex size-14 items-center justify-center rounded-full bg-ai text-surface shadow-card sm:hidden"
+        className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-30 print:hidden inline-flex size-14 items-center justify-center rounded-full bg-ai text-surface shadow-card sm:hidden"
       >
         <Icon name="assistant" className="size-6" />
       </button>
@@ -134,7 +134,7 @@ export function AssistantPanel() {
       onKeyDown={(event) => {
         if (event.key === "Escape") setOpen(false);
       }}
-      className="fixed inset-0 z-40 flex flex-col bg-surface sm:sticky sm:top-0 sm:z-auto sm:h-dvh sm:w-[400px] sm:shrink-0 sm:border-l sm:border-border-subtle"
+      className="fixed inset-0 z-40 print:hidden flex flex-col bg-surface sm:sticky sm:top-0 sm:z-auto sm:h-dvh sm:w-[400px] sm:shrink-0 sm:border-l sm:border-border-subtle"
     >
       <div className="flex items-center gap-2.5 border-b border-border-subtle px-4 pb-3 pt-4">
         <span

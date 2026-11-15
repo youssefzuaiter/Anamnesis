@@ -39,11 +39,11 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
         >
           Skip to content
         </a>
-        <div className="flex min-h-dvh flex-1">
+        <div className="flex min-h-dvh flex-1 print:block print:min-h-0">
           <AppSidebar displayName={displayName} badges={badges} />
 
-          <div className="flex min-w-0 flex-1 flex-col">
-            <header className="flex min-h-14 items-center justify-between gap-3 px-4 sm:justify-end sm:px-8">
+          <div className="flex min-w-0 flex-1 flex-col print:block">
+            <header className="flex min-h-14 items-center print:hidden justify-between gap-3 px-4 sm:justify-end sm:px-8">
               <Link href="/" aria-label="Anamnesis, go to Today" className="sm:hidden">
                 <BrandLockup height={40} />
               </Link>
@@ -56,7 +56,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
                 bottom padding on a phone clears the fixed tab bar. */}
             <main
               id="main"
-              className="min-w-0 flex-1 px-4 pb-32 pt-2 sm:px-8 sm:pb-12 lg:px-10"
+              className="min-w-0 flex-1 px-4 pb-32 pt-2 sm:px-8 sm:pb-12 lg:px-10 print:p-0"
             >
               {children}
             </main>
