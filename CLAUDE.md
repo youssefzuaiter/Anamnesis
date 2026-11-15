@@ -3711,6 +3711,49 @@ the untick handler read the event after React had released it.
 **Not done:** rewording-proof dedup (needs a migration); an origin per line; a "see the line in the note" link from the
 task; choosing a project or due date in the card.
 
+### Print-ready notes
+
+ROADMAP item 34 (tagged *demo*): a note and a whole course print as black on white with no app chrome, so the
+browser's "Save as PDF" is the export and nothing is hosted. It was shown as a design (light, dark, a 375 px
+phone, the printed note and the printed course) and approved before any code. No migration, no dependency.
+
+- **One stylesheet block, and tokens, not overrides.** `@media print` in `globals.css` replaces every colour token with
+  black or white (both `data-theme` selectors, so a dark-mode reader does not print a dark page); components keep using
+  their tokens. Code loses its grey ground and gets a black edge and wraps (`pre-wrap`, `overflow-wrap: anywhere`, no
+  scrolling box); syntax colours become bold keywords, since colour means nothing on paper; a quote gets a left rule;
+  headings keep with what follows, and code, formulas, tables and quotes do not split across a page where they can
+  avoid it. `@page` sets 16 mm margins so every browser prints the same.
+- **Chrome is hidden where it is rendered**, with `print:hidden`: the sidebar, the top bar, the phone tab bar, the
+  assistant panel and button, a note's breadcrumb row, Edit button, rail and card tools. The layout's flex shell becomes
+  `block` and `main` loses its padding in print so the note starts at the page edge.
+- **A course prints from `/courses/[id]/print`.** One document: the course heading, a contents list, then each note
+  on a page of its own (`break-before: page`), in the order they were written, each with its tags and edit date,
+  rendered by the same `NoteContent` (maths, code, `[[links]]`, citations). One lookup resolves every link and every
+  cited work in the document. **Bounded at 100 notes** (`PRINT_NOTE_LIMIT`, `lib/print.ts`), a judgement, not a
+  measured limit: every note is rendered on the server, and the page says when it shows fewer than the course holds.
+  The query is scoped by `userId`, `courseId` and `deletedAt: null`; another account's course id is a 404.
+- **Print buttons** call `window.print()` (a note's breadcrumb row and the course print page; the course page links to the
+  print page). There is no PDF library and no route that returns a file.
+
+**Looked at, not only tested.** A real note and a two-note course were printed to PDF from Chromium in both themes:
+the dark one comes out black on white, a note is one page, the course is three (contents, then one note each). The phone
+(375 px, dark) shows the print page and the note page with no horizontal overflow.
+
+**Tests.** 3 unit (`print`), 2 integration (`course-print`: the caller's own live notes of that course in the order
+written, another account's course gives nothing, the bound applied after the order), 7 browser (`print.spec.ts`, with the
+print media emulated: no chrome, black on white and a black code line in both themes, a very long code line wrapping inside
+the page, the button calling `print()`, the course printing its own notes one per page, an empty course, a stranger's id, the phone).
+**Mutation checks: 14 mutants**; the ones that survived were an unused sidebar-hiding class on the skip link (removed),
+a code-wrapping rule (closed with the long-line test), and two I wrote wrongly (a replace that hit another function) and
+re-ran correctly; one survives by design: dropping `--surface` from the print tokens, because nothing on a note page
+paints it (a card would).
+
+**Not done:** printing a course's tasks or grades; a table of contents with page numbers (the browser does not give a
+reliable page number to CSS); printing the URL after a link; a formula wider than the page is cut at the page edge
+(it cannot be wrapped); choosing which notes or the order; printing a project or a search. A course's contents page is a
+page of its own, mostly empty for a short list. **Not run locally:** the whole e2e suite and `pnpm build` (CI runs them;
+the new client component imports nothing from the server).
+
 ## Target directory structure
 
 ```

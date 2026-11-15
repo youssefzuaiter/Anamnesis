@@ -25,7 +25,7 @@ export function AppSidebar({
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-border-subtle bg-surface-subtle px-3 pb-3 pt-4 sm:flex">
+    <aside className="sticky top-0 hidden print:hidden h-dvh w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-border-subtle bg-surface-subtle px-3 pb-3 pt-4 sm:flex">
       <Link href="/" aria-label="Anamnesis, go to Today" className="block w-fit">
         <BrandLockup height={64} />
       </Link>

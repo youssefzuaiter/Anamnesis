@@ -28,6 +28,7 @@ Anamnesis brings together parts of academic and personal life that usually sit i
 - **Weekly review.** The last seven days in one read-only page: tasks finished and slipped, notes touched, how each goal and course moved, assessments due next week, and what is coming up. Plain queries; nothing is written and no model is involved.
 - **Come back to.** The dashboard offers one older note of yours: one from this day in an earlier year, or one not changed for thirty days. Read only.
 - **TODO lines become tasks.** Unchecked boxes and `TODO:` lines in a note are offered as tasks on the note page. You untick what you do not want and confirm; a line already made into a task is not offered again.
+- **Print or save as PDF.** A note, or all of a course's notes (Courses → a course → Print this course's notes), prints as black on white with the app's chrome removed, whatever theme you use; maths and code stay legible. The browser's print dialog does the rest.
 - **Dashboard.** Today's tasks and schedule, recent notes, active projects and goals, and a "Plan my day" button. It proposes a plan that fits open tasks into your free time and changes nothing until you confirm.
 - **Daily note and Shut down day.** One button opens today's note, started with that day's schedule and open tasks, and finds the same note again after that. "Shut down day" lists what is unfinished (tasks due today ticked, overdue ones left for you to tick) and moves the ones you confirm to tomorrow.
 

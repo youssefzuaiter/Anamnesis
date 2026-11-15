@@ -59,7 +59,7 @@ export function NoteView({
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="inline-flex min-h-9 shrink-0 items-center rounded-lg border border-border-strong px-3.5 text-sm font-semibold text-text transition-colors hover:bg-surface-subtle"
+          className="inline-flex min-h-9 shrink-0 items-center rounded-lg border border-border-strong px-3.5 text-sm font-semibold text-text transition-colors hover:bg-surface-subtle print:hidden"
         >
           Edit
         </button>

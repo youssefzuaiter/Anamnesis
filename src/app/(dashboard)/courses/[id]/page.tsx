@@ -93,6 +93,9 @@ export default async function CoursePage({
           <Link href={quizHref({ kind: "course", id: course.id })} className="text-accent hover:underline">
             Quiz me on this course
           </Link>
+          <Link href={`/courses/${course.id}/print`} className="text-accent hover:underline">
+            Print this course&apos;s notes
+          </Link>
         </div>
       </header>
 

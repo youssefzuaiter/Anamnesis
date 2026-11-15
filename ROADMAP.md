@@ -135,7 +135,7 @@ order below is the order to build them in, which keeps each dependency pointing 
   note and propose tasks. Propose, confirm, then re-validate on the server, the same shape
   as Plan my day. The parsing is pure and lives in `lib/`. Decide what happens when the note
   is edited later so a line is never proposed twice.
-- [ ] **34. Print-ready notes** (S, demo). A print stylesheet for a note and for a course's
+- [x] **34. Print-ready notes** (S, demo). A print stylesheet for a note and for a course's
   notes: no app chrome, black on white whatever the theme, maths and code still legible. The
   browser's "Save as PDF" does the rest, so nothing needs hosting.
 - [ ] **35. Restore from your JSON export** (M, security, depends on 11). Import an export

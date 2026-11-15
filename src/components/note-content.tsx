@@ -208,7 +208,7 @@ export async function NoteContent({
   }
 
   return (
-    <div className="flex max-w-[68ch] flex-col gap-4 font-serif text-[17px] leading-[1.75] text-text">
+    <div className="flex max-w-[68ch] flex-col gap-4 print:max-w-none font-serif text-[17px] leading-[1.75] text-text">
       {rendered}
       {citations && <NoteReferences ctx={citations} />}
     </div>
