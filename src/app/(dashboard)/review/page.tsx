@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { requireUserId } from "@/lib/session";
 import { buildWeeklyReview } from "@/services/review-service";
-import { WeekSummary } from "@/components/week-summary";
 
 export const metadata = { title: "Weekly review · Anamnesis" };
 
@@ -81,10 +80,6 @@ export default async function ReviewPage() {
         <Stat label="Cards reviewed" value={review.cardsReviewed} />
       </section>
 
-      <div className="mt-6">
-        <WeekSummary />
-      </div>
-
       <List
         title="Finished"
         empty="Nothing was marked done this week."
@@ -104,6 +99,39 @@ export default async function ReviewPage() {
           title: task.title,
           href: `/tasks/${task.id}`,
           when: `due ${DAY.format(task.dueDate)}`,
+        }))}
+      />
+
+      <List
+        title="Goals moved"
+        empty="No goal had a task finished toward it this week."
+        items={review.goalsMoved.map((goal) => ({
+          id: goal.id,
+          title: goal.title,
+          href: `/goals/${goal.id}`,
+          when: `${goal.doneTasks} done · ${goal.progress}%`,
+        }))}
+      />
+
+      <List
+        title="Courses"
+        empty="No course had a task finished this week."
+        items={review.coursesMoved.map((course) => ({
+          id: course.id,
+          title: `${course.code} ${course.title}`,
+          href: `/courses/${course.id}`,
+          when: `${course.doneTasks} done`,
+        }))}
+      />
+
+      <List
+        title="Assessments due next week"
+        empty="No unscored assessment falls due in the next seven days."
+        items={review.assessmentsDue.map((item) => ({
+          id: item.id,
+          title: `${item.courseCode} · ${item.title}`,
+          href: `/courses/${item.courseId}`,
+          when: `due ${DAY.format(item.dueDate)}`,
         }))}
       />
 
