@@ -149,5 +149,3 @@ order below is the order to build them in, which keeps each dependency pointing 
 - [x] **37. Notion import** (M, security). Notion's Markdown and CSV export is free. Pages
   become notes, a database becomes a course or a project (the user chooses), and internal
   links become `[[wiki links]]`. Reuse the size and type caps of `/notes/import`.
-
-Polish, any time: **Turkish interface** (M, demo). Dates and numbers are already en-GB.
