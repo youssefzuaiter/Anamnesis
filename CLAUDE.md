@@ -3833,6 +3833,77 @@ machine and passed on the next run (the known flake).
 keeping `createdAt`; choosing which tables to restore; restoring a deleted-parent's children; a transaction; a per-row
 "what changed" preview of existing rows (a restore never changes them); a progress bar for a large file.
 
+### Notion import
+
+ROADMAP item 37 (tagged *M, security*): **Notes → Import → From Notion** reads a Notion export made with Format "Markdown &
+CSV". Pages become notes, links between pages become `[[wiki links]]`, the files a page uses become that note's attachments, and
+each database becomes a project or a course (the person chooses, per database). Not tagged *demo*, so it was built from the
+roadmap sentence and looked at in the browser (1280 and 375 px, light and dark). No migration, no dependency. The forks were decided
+by me inline, not by independent voices; none was owner-level.
+
+- **It reuses the vault importer's machinery on purpose** ("reuse the size and type caps"): the same zip reader and limits
+  (`ZIP_LIMITS`: 100 MiB, 20,000 entries, 10 MiB an entry, 400 MiB declared), `checkUpload`/`readBody` for the route (a session, a
+  request from this app's own pages, `mode` given once, a bounded body), `planImport` for "already here", `readAttachment`
+  (size, and the bytes must match the extension) and `putAttachment` under a generated key, a page of at most 512 KB and 100,000
+  characters, 500 notes a run, 20 files a note, and a byte budget per run. `POST /api/import/notion?mode=preview|apply`, and
+  `db=<database id>:<project|course|none>` (repeatable, at most 200, only a 32-hex id and a known choice count). Preview and apply are
+  one function (`runNotionImport`): apply only adds the writes.
+- **What a Notion export looks like** (`lib/notion.ts`): a page is `Title <32 hex>.md`; its sub-pages and files sit in a folder of the
+  same name; a database is `Name <32 hex>.csv` (and `_all.csv`) with each row's page in the folder of that name; a link to another
+  page is a relative, URL-encoded Markdown link to that file. The layout is read from names alone (a page directly inside a database's
+  folder is a row; a sub-page of a page is not). The first `# Heading` is the title and leaves the body; the properties lines Notion
+  writes under a row's title stay as text.
+- **Links become `[[Title]]` with the pages' ORIGINAL titles.** A link is found by its path, or by the id in the file name or in a
+  `notion.so` address. Doing this with original titles, not the titles a renamed note ends up with, is what keeps the import idempotent:
+  the text a second run builds is the text the first stored, so its hash matches and nothing is added. **Cost accepted** (the vault
+  importer's, too): a link in an imported note to a page that had to be renamed points at the note the account already had. A link to a
+  page not in the export, a title that cannot be written as a link, an image of a page, and every other relative path keep their
+  words, and a database's CSV is not imported (the rows' pages are).
+- **A file a page shows becomes that note's attachment**, and its line reads `(attached: name.png)` (a relative image would point at
+  nothing in this app). Only types the app attaches, checked against their bytes; names are never paths.
+- **A database becomes a project or a course by NAME among the account's own.** A project's title or a course's code (the name, cut to
+  20 characters, term "Notion import") is looked up case-insensitively: found means used, none means made, **two means "none"** (never a
+  guess). It is made only when a row of it will be created, so importing again, or after deleting the project, does not bring it back.
+  Rows of a database that is "just notes" and every page that is not a row are never filed in a project.
+- **The zip is hostile data, and a name is never a path.** Climbing, absolute, drive-letter and control-character names are skipped and
+  counted; hidden folders and macOS metadata are ignored; a name used twice uses the first; symlinks and encrypted entries are
+  skipped. **A link target that is not inside the zip is not a link in the note**: `../../etc/passwd.png`, `/api/export`, `javascript:`,
+  `data:` and `file:` keep only their words, so an import cannot plant an image or link that points the person's own browser at a path of
+  this app (only `http`, `https` and `mailto` addresses survive). A zip that is HTML, nested (Notion splits big exports into an outer zip
+  of inner ones) or has no pages is refused with a sentence that says what to do.
+- **Measured:** the route, replayed with forged input and no session: no session 401; another site 403; no or two `mode`s, a declared
+  200 MiB, an empty body, text that is not a zip, an HTML export: the right refusals; a forged export that names another account's note
+  by id, a database named like another account's project, and `?userId=` of another account made one note and one project of its own
+  and left the other account byte for byte as it was. **500 pages with 3,000 links: preview 35 ms, apply 12 s, the second run 47 ms**
+  (the apply is the notes being saved, indexed and linked, with Ollama off).
+
+**What testing and review turned up.**
+
+- **My first version kept unresolved links as written.** The tests for `../../etc/passwd.png` showed the note would hold an image
+  that the browser would request from this app's own origin. Any path that does not resolve inside the zip, and any scheme but
+  `http`, `https` and `mailto`, is now only its words.
+- **The browser spec found the form had two buttons named "Check the file"** (the vault form's and this one): the Notion buttons are
+  named "Check the Notion export" and "Import N notes from Notion".
+- **A page-result region that is `role="status"` would collide with the vault card on the same page**; the card's regions are
+  `role="group"` with `aria-live`, as on Settings.
+- **26 mutants, all caught** after six survived and exposed missing tests (the page size limit, the project made only when a row is
+  created, the byte budget, the 20-file limit, a name used twice, and a dead line removed). **Accepted, not covered:** a symlink entry
+  and the cleanup of a stored file when its record fails to save are covered for the vault importer (the helpers are shared) but have
+  no Notion test of their own, because the first needs a hand-built zip and the second a failing store.
+
+**Tests.** 11 unit (`notion`: names and ids, the layout of pages, rows, databases, files and the three non-exports, link targets and
+every way to climb, titles, wiki links by path, by Notion address and by file-name id, code left alone, attachments, links that are not
+safe, titles that cannot be links, a hostile run in under 4 s), 17 integration (`notion-import`: a preview that writes nothing, a full
+import with links, an attachment and a project, a second run adding nothing, course and none, existing and ambiguous names, another
+account untouched, a renamed note, hostile names and links, the refusals, a wrapper folder, the run limit, bad and over-long files, the
+file and byte budgets, a name twice, the choices parser) and 5 browser (`notion-import.spec.ts`: check, change a database's choice,
+import, import again, the route's 403, 400 and 401, the phone in both themes). The vault import suite (whose helpers this shares)
+still passes. **Not run locally:** the whole e2e suite, `pnpm build` and the evals (CI runs them).
+
+**Not done:** Notion's HTML export and a nested zip (the sentence says what to export instead); a database's CSV (its properties live in
+each row page's first lines as text); the page hierarchy (sub-pages come in flat; a link between them is the only trace); Notion's
+inline databases and synced blocks; a page's cover and icon; tags from a database's Tags property; a Notion export per workspace member.
+
 ## Target directory structure
 
 ```

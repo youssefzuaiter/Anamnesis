@@ -146,7 +146,7 @@ order below is the order to build them in, which keeps each dependency pointing 
   are very close, on a review page: keep both, or merge (the other goes to the trash and its
   links are re-pointed). Measure the similarity threshold on real notes the way
   `RELEVANCE_FLOOR` was measured. Never merge without a confirmation.
-- [ ] **37. Notion import** (M, security). Notion's Markdown and CSV export is free. Pages
+- [x] **37. Notion import** (M, security). Notion's Markdown and CSV export is free. Pages
   become notes, a database becomes a course or a project (the user chooses), and internal
   links become `[[wiki links]]`. Reuse the size and type caps of `/notes/import`.
 

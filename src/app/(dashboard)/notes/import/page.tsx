@@ -1,3 +1,4 @@
+import { NotionImportForm } from "@/components/notion-import-form";
 import Link from "next/link";
 import { PdfImportForm } from "@/components/pdf-import-form";
 import { MarkdownImportForm } from "@/components/markdown-import-form";
@@ -73,6 +74,19 @@ export default async function ImportPdfPage({ searchParams }: PageProps<"/notes/
         notes; import the same file again for the rest.
       </p>
       <VaultImportForm />
+
+      <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
+        From Notion
+      </h2>
+      <p className="mb-2 text-sm text-text-muted">
+        In Notion, export a page or a workspace with Format set to &ldquo;Markdown &amp; CSV&rdquo; and
+        choose that zip here. Pages become notes, links between pages become{" "}
+        <code className="font-mono text-xs">[[wiki links]]</code>, files a page uses become
+        its attachments, and each database becomes a project or a course (you choose, per
+        database). You see what would happen before anything is saved, and importing the
+        same export again adds nothing.
+      </p>
+      <NotionImportForm />
     </div>
   );
 }
