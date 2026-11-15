@@ -3905,6 +3905,41 @@ changed note refused, the phone in both themes with touch-sized buttons). The ex
 duplicates of tasks, events or cards; merging three notes at once; moving a note's version history; a model-written merge; undoing
 "keep both" (the pair is gone until one of the notes is deleted); a count of pairs on the notes page.
 
+### Exam readiness card
+
+ROADMAP item 38 (tagged *S, demo*): Today's **Next exam** card is now a readiness card. It was shown as a design (the card as it was
+beside the new one, light, dark and 375 px) and approved before any code. Read only, no migration, no dependency.
+
+- **What it shows, all read from the account:** the days left (whole calendar days, the task buckets' convention; "Today" and
+  "Tomorrow" in words), the review sessions planned for **this** assessment (done of planned, a bar, and the next one still ahead), the
+  flashcards of this course that are due (a link to that deck), the mark so far, and the best possible mark in the course. Buttons: Plan
+  review / Plan more review (to the course's Exam prep card, `#exam-prep`) and Open course. With no sessions it says "No review planned for
+  this exam."; with nothing marked, "nothing marked yet".
+- **One deviation from the approved design, on purpose.** The design had "Needed here for a 70% course average". **No target is stored**:
+  the grade panel's target is a field on the course page whose default (80) is not saved, so a number on Today would be a guess. It shows
+  the mark so far and the best possible instead, both from the same `summarise` the course page uses. A stored per-course target is a
+  migration and a decision for another item.
+- **Where the rules are.** `lib/exam-readiness.ts` is pure (`countdown`, `sessionProgress`: done and total, the next session is the
+  earliest one not done that starts now or later, so a missed session is never "next"); `daysUntil` was split out of `daysUntilLabel` in
+  `lib/grades.ts` so the label and the card count days one way. `services/exam-readiness-service.ts` reads three things in parallel, each
+  scoped by `userId`: the assessment's live sessions (`listPrepSessionsDetailed`), the course's due cards (`countDueForCourse`, the
+  `liveCards` rule, so a trashed note's cards are not counted) and the course's marks (`listMarks`, a live course only). The dashboard
+  loads it after the soonest assessment is known, and only when there is one.
+- **Found by the browser test, and it was older than this item:** a workspace whose only content is an upcoming exam showed "Your
+  workspace is empty" under a header that says "Midterm today", and hid the card. An exam ahead now counts as content.
+- **Found by looking:** in the narrow right rail "8, review now" wrapped onto three lines; the values no longer wrap.
+
+**Tests.** 5 unit (`exam-readiness`: whole-day counting across a month boundary and a clock change, the countdown words, the sessions'
+done, total, next and percentage, a session starting right now still ahead), 5 integration (`exam-readiness`: no exam or a past or marked
+one gives nothing; only this assessment's live sessions, this course's due live cards and its marks are counted; no sessions, no marks;
+another account's sessions, cards and marks that name this assessment and course are never counted; the marks reader on its own for a
+deleted course and a second account) and 4 browser (`exam-readiness.spec.ts`: the full card and its link to `#exam-prep`, the empty card, the
+phone in both themes with touch-sized links). The exam-prep and workspace specs still pass. **Mutation checks: 18 mutants, all caught**
+after one survived (the marks reader's live-course filter, masked by the caller, now tested directly).
+
+**Not done:** the mark the exam must reach (needs a stored target); a readiness card for the second exam; notes of the course not touched
+lately; a countdown on the course page.
+
 ## Target directory structure
 
 ```

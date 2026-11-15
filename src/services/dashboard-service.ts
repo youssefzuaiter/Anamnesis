@@ -1,3 +1,4 @@
+import { getExamReadiness, type ExamReadiness } from "@/services/exam-readiness-service";
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import * as noteRepository from "@/repositories/note-repository";
@@ -38,6 +39,8 @@ export type Dashboard = {
   activeGoals: GoalSummary[];
   /** The soonest unscored assessment across all courses, for "Next exam". */
   nextAssessment: UpcomingAssessment | null;
+  /** How ready the person is for that exam (ROADMAP item 38), or null with no exam ahead. */
+  examReadiness: ExamReadiness | null;
   cardsDue: number;
   indexedChunks: number;
   /** Today's daily note if one exists; never created by loading the page. */
@@ -100,6 +103,8 @@ export async function getDashboard(
     getRevisit(userId, now),
   ]);
 
+  const examReadiness = nextAssessment ? await getExamReadiness(userId, nextAssessment, now) : null;
+
   const overdueTasks = openTasks.filter(
     (task) => bucketOf(task, now) === "overdue",
   );
@@ -136,6 +141,7 @@ export async function getDashboard(
       .filter((goal) => goal.progress < 100)
       .slice(0, ACTIVE_GOAL_COUNT),
     nextAssessment,
+    examReadiness,
     cardsDue,
     indexedChunks,
     todayNote,
