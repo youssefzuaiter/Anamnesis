@@ -138,7 +138,7 @@ order below is the order to build them in, which keeps each dependency pointing 
 - [x] **34. Print-ready notes** (S, demo). A print stylesheet for a note and for a course's
   notes: no app chrome, black on white whatever the theme, maths and code still legible. The
   browser's "Save as PDF" does the rest, so nothing needs hosting.
-- [ ] **35. Restore from your JSON export** (M, security, depends on 11). Import an export
+- [x] **35. Restore from your JSON export** (M, security, depends on 11). Import an export
   file with a preview of what would change before anything is written. The file is client
   input: every row is re-owned by the session's user, every id re-checked, and a user id or
   `passwordHash` in the file is never trusted. Importing twice must not duplicate anything.

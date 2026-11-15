@@ -3754,6 +3754,85 @@ reliable page number to CSS); printing the URL after a link; a formula wider tha
 page of its own, mostly empty for a short list. **Not run locally:** the whole e2e suite and `pnpm build` (CI runs them;
 the new client component imports nothing from the server).
 
+### Restore from the JSON export
+
+ROADMAP item 35 (tagged *M, security, depends on 11*): Settings → **Restore from a JSON export** reads a file made by
+`/api/export`, shows what it would add (nothing is saved by checking), and adds it on a second click. Plan
+`docs/superpowers/plans/2026-11-15-restore-json.md`. Not tagged *demo*, so it was built from the plan and looked at in
+the browser. No migration, no dependency. The forks were decided by me inline, not by independent voices; none was
+owner-level.
+
+- **Nothing from the file is an id, an owner or a derived value.** Ids are global primary keys, so a file from another
+  server (or a forged one) could name another account's row. Every row made gets a **fresh id**; an id in the file is only
+  a key inside one run that links a task to its project, a card to its note (`IdMap` in `lib/restore.ts`). A link that does
+  not resolve to a row **restored in this run or already in this account** becomes "none" and is counted, so a row of the file
+  can never attach to someone else's project, course, goal, assessment or note. A row keeps only the fields in its schema:
+  `userId`, `passwordHash`, `progress`, `deletedAt`, the profile and every column on `OMITTED_COLUMNS` are dropped.
+  Progress is recalculated and `completedAt` follows `status` (an open task with a completion time in the file gets none).
+- **Identity is what a row is, never an id, so restoring twice adds nothing and nothing is overwritten or deleted.**
+  Keys (`keys` in `lib/restore.ts`): course = code + term; project and goal = title; assessment = course + title + due
+  date; task = title + due date + course; event = title + start + end; card = note + question + cloze number; reference =
+  key; note = the vault importer's rule (same title family and the SHA-256 of the LF-normalised text; a different note under
+  a title the account already uses comes in as `Title (imported)`, so it does not take `[[Title]]` from the real one). A
+  match is **only added around, never changed**, and still takes part in the id map so children attach to it. The trash is not
+  "here": a live copy is added beside a trashed one. **Cost accepted:** two identical rows in a file collapse to one; a task
+  restored into an account that already has one of the same title, date and course is left as it is.
+- **What is restored:** courses with grades, goals, projects, notes (tags, favourite, links to project and course; links
+  between notes are rebuilt from the text), tasks (with their series kept together under a new series id) and checklist
+  steps, events, references, and cards of the restored notes with their review schedule. **What is not**, listed in the
+  card (`NOT_RESTORED`): the profile and settings, the audit trail, conversations, study and focus records, note versions,
+  attachment files, calendar feeds, and events a feed brought in (adding the feed again brings them back).
+- **Preview and apply are one function** (`runJsonRestore(userId, bytes, { apply })`): apply only adds the writes, so
+  what the preview says is what apply does. The browser keeps the `File` and posts it twice to `POST /api/import/json?mode=`
+  (the vault's `checkUpload`/`readBody`: a session, a request from this app's own pages, `mode` given once, a body bounded
+  at 100 MiB, read with a running total).
+- **Written through the existing paths where they matter, in bulk where they do not.** Notes, goals and projects go
+  through their services (index, links, ownership checks); references through `createReference` (one schema checks every
+  field; a preview validates them too); courses, assessments, tasks, steps, events and cards by `createMany` with fresh
+  ids in chunks of 1,000, then progress is recalculated once and courses re-indexed. **Cost accepted:** restored tasks,
+  events and cards are not in semantic search until "Rebuild search index" (the card says so). Restored rows get their
+  fields back but not their old `createdAt`/`updatedAt`.
+- **Strict where a silent change would lose data.** A date must be an exact UTC ISO time (30 February fails the row
+  instead of becoming 2 March), a note over 100,000 characters fails its row instead of arriving empty, and credits, weights
+  and scores outside their ranges fail the row. A row that fails is skipped and counted; enums and counters that have a
+  harmless default (a priority, an ease factor) fall back to it.
+- **Limits** (`RESTORE_LIMITS`): file 100 MiB, 20,000 rows per table, **200 notes created per run** (each is indexed). A
+  run that stops at the note limit **defers the tasks and cards that belong to the deferred notes**, because a task made
+  without its note could never get the link back (the next run would see it as already there); run it again and it carries on.
+- **Not a transaction.** A failure part-way leaves what was written; the same file run again completes it.
+
+**What the security review and testing turned up.**
+
+- **Replaying the real route** (session stubbed with the Node module mocks; the 12 refusals, not read): no session 401;
+  `Sec-Fetch-Site: cross-site` and a foreign `Origin` 403; no `mode`, two, or a wrong one 400; a declared 200 MiB 413; an
+  empty body, text that is not JSON, and a newer format 400, each with a sentence; a `?userId=` of another account in the query
+  is ignored (the other account has no new note); a preview writes nothing. **Cost at 5,000 tasks: 1.1 s to apply, 73 ms for
+  the second run** (all present). Another account's rows were never touched by a forged file naming their ids.
+- **Two bugs of mine, found by the first unit tests, not by reading.** (1) A date that failed its check was turned into "no date"
+  with `.catch(null)`, and a note too long to store was restored **empty** (`.catch("")`): silent data loss. Both are strict now.
+  (2) `30 February` passed because JavaScript moves it to March; the month no longer matches, so the row fails.
+- **Found by looking at it:** the report said "1 imported calendar events are not restored", "1 rows could not be read" and
+  "1 link to notes cannot be kept" (a note's link to a project says nothing about notes). Reworded and pluralised. And the
+  card's result regions were first `role="status"` and `role="alert"`, which broke the existing Settings specs' selectors the
+  way "a second `role="status"` on Settings" already did (CLAUDE.md, item 26): they are `role="group"` with `aria-live`.
+- **33 mutants over the repository, service, schema and route: all caught**, after four survived and exposed missing tests: the
+  assessments, flashcards and tasks readers had no direct test, because each is masked by a second layer (the key contains a
+  new id another account cannot hold), so each reader is now tested directly with a second account and a trashed row.
+  One mutant (the day-of-month check) was redundant with the month check and was removed rather than tested.
+
+**Tests.** 13 unit (`restore`: every refusal, the version rule, stripped fields, bad rows counted, dates, hostile keys
+and million-character titles, keys, the id map, schedules), 11 integration (`restore`: a full round trip into another
+account with every link checked, a second run adding nothing, a forged file naming another account's ids, trashed rows,
+the rename, the note limit and what waits on it, feed events and ranges, refusals, references, and each reader directly), 6
+browser (`restore.spec.ts`: check, restore, restore again; two refusals; the route's 403, 400 and 401; the phone in both
+themes, with touch-sized buttons), and the calendar-feed spec (the other cards on Settings) still passes. **Not run locally:**
+the whole e2e suite, `pnpm build` and the evals (CI runs them). One unit test, the bibtex timing one, failed once on a loaded
+machine and passed on the next run (the known flake).
+
+**Not done:** restoring settings, note versions, conversations and the audit trail; attachment files (a vault holds them);
+keeping `createdAt`; choosing which tables to restore; restoring a deleted-parent's children; a transaction; a per-row
+"what changed" preview of existing rows (a restore never changes them); a progress bar for a large file.
+
 ## Target directory structure
 
 ```

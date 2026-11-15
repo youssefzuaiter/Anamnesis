@@ -347,7 +347,7 @@ export type ImportPlan = { create: PlannedNote[]; present: ParsedNote[]; deferre
 
 const IMPORTED_SUFFIX = / \(imported(?: \d+)?\)$/;
 /** A note's title without the numbering an earlier import gave it, compared as a link is. */
-const family = (title: string) => normalizeTitle(title.replace(IMPORTED_SUFFIX, ""));
+export const family = (title: string) => normalizeTitle(title.replace(IMPORTED_SUFFIX, ""));
 
 /**
  * What an import does with the notes in a file, given what the account already holds (title and

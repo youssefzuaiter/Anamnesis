@@ -1,3 +1,5 @@
+import { RestoreForm } from "@/components/restore-form";
+import { NOT_RESTORED } from "@/lib/restore";
 import Link from "next/link";
 import { auth } from "@/auth";
 import { requireUserId } from "@/lib/session";
@@ -109,6 +111,11 @@ export default async function SettingsPage() {
           Review what the assistant proposed and what you approved
         </Link>
       </div>
+
+      <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
+        Restore from a JSON export
+      </h2>
+      <RestoreForm notRestored={Object.values(NOT_RESTORED)} />
 
       <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
         Calendar feed
