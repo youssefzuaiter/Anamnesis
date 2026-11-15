@@ -3620,6 +3620,37 @@ leak mutant had not matched its own pattern, so it was rerun and caught.
 signal, and the runbook says so); an outside monitor; alerts for an error that is only in the app's logs (the app
 logs an unhandled error to its own output, not to ntfy); different severities; quiet hours.
 
+### Weekly review
+
+ROADMAP item 31 (S, demo). `/review` is a read-only page of the last seven days: tasks finished, tasks that slipped past
+their due date, notes touched, cards reviewed, what is coming up, and now three sections more: **goals moved** (each live
+goal with a task finished toward it this week, its current progress), **courses** (live courses with tasks finished this
+week) and **assessments due next week** (unscored, on live courses). Plan `docs/superpowers/plans/2026-11-14-weekly-review.md`.
+Plain queries over the caller's rows, no model, nothing written, no migration.
+
+- **The page already existed** (an earlier item), and it had an optional model-written summary. The roadmap says "no
+  model", so the summary was removed with its action and component. The page is now the queries alone.
+- **A task counts once for a goal**, even when it is linked to that goal directly and through its project, the same rule
+  the goal's own progress uses (`tasksPerGoal` in `lib/weekly-review.ts`, pure).
+- **A deleted project does not pass its goal on.** A task finished through a soft-deleted project is not counted for that
+  project's goal, because the project no longer counts.
+- **Ownership at two layers.** Every query carries the caller's `userId`, and a goal or course must also be live. A test
+  writes a task of one account linked straight to another account's goal, past the ownership check: that goal is not
+  listed. The first version of the goal query was filtered only through the task list, and a mutant removing its own
+  `userId` filter survived until that test existed (the same masked layer as in "Link suggestions").
+- **The limit, stated plainly:** assessments store no time of scoring, so "assessments scored this week" would need a
+  migration. The page therefore shows what is due next week (unscored), not what was scored.
+
+**Tests.** 4 unit (`weekly-review`: the once-per-task rule, a task with no goal, two goals, courses), 6 integration
+(`weekly-review`: goals with the three paths and a shared task, another account's and deleted goals, a task through a
+deleted project, courses, another account's course and a deleted one, assessments due and scored, a cross-account goal link,
+an assessment on a deleted course). **Mutation checks: 9 mutants, all caught** after two survived (the deleted-course
+assessments, and the goal's user filter), each closed with a test. 3 browser tests (`review.spec.ts`: the goals section
+with its real goal and progress, no summary button; the phone in light and dark). Full suites: tsc, lint, unit 19 render
++ the unit tests, and integration 369 pass.
+
+**Not done:** scored-this-week assessments (a migration: a timestamp on the score); a history of goal progress (goals keep
+only their current progress, so "moved" means the tasks finished, not the percentage's change); exporting the review.
 ### Notes that come back
 
 ROADMAP item 32 (S). The dashboard's **Come back to** card shows one older note of the caller's own: a note from this same
