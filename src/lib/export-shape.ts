@@ -42,6 +42,8 @@ export const NOT_EXPORTED: Readonly<Record<string, string>> = {
     "A choice about two notes' ids (\"these are not duplicates\"); ids are new after a restore, so it would mean nothing there. The cleanup page offers a pair again.",
   ActiveTimer:
     "The focus timer running right now, if any: a moment-to-moment state of this server, not the person's data. The study time it saves is exported with the study sessions.",
+  CardReview:
+    "A log of when each card was reviewed, kept for the stats page. The cards keep their own schedule (and it is exported); a restore starts the log again.",
   ReminderDelivery:
     "A log of which reminders this server already sent, kept only so a restart does not send them twice; it means nothing to another server and is deleted after 30 days.",
 };

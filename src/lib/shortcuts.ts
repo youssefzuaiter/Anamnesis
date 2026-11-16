@@ -26,6 +26,7 @@ export const GO_TO_SHORTCUTS: readonly GoToShortcut[] = [
   { key: "d", href: "/cards", label: "Cards" },
   { key: "b", href: "/references", label: "References" },
   { key: "r", href: "/review", label: "Review" },
+  { key: "m", href: "/stats", label: "Stats" },
   { key: "f", href: "/focus", label: "Focus" },
   { key: "a", href: "/audit", label: "Audit trail" },
   { key: "x", href: "/trash", label: "Trash" },

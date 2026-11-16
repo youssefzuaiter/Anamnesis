@@ -168,6 +168,11 @@ export async function applyReview(
   return count > 0;
 }
 
+/** One line in the review log (ROADMAP item 39): the stats page counts these, since a card keeps only its latest review date. */
+export async function recordReview(userId: string, cardId: string, grade: string, at: Date): Promise<void> {
+  await prisma.cardReview.create({ data: { userId, cardId, grade, reviewedAt: at } });
+}
+
 export async function deleteCard(
   userId: string,
   cardId: string,

@@ -3940,6 +3940,61 @@ after one survived (the marks reader's live-course filter, masked by the caller,
 **Not done:** the mark the exam must reach (needs a stored target); a readiness card for the second exam; notes of the course not touched
 lately; a countdown on the course page.
 
+### Study stats
+
+ROADMAP item 39 (tagged *M, demo*): **Stats** in the Study group of the sidebar (`/stats`, `g` then `m`, and under More on a phone) shows a
+streak and eight weeks of what the app records: tasks finished, cards reviewed and study time. It was shown as a design (light, dark,
+375 px and a new account's empty page) and approved before any code. One additive table, `CardReview`.
+
+- **A day counts** when a task was finished on it, a card was reviewed on it, or at least 60 seconds of study time were recorded on it
+  (`activeDays` in `lib/study-stats.ts`; a few stray seconds are not a day of study). Days are the server's local calendar days, as
+  everywhere else in the app. The **current streak ends today when today counts, else yesterday**, so a streak is not broken by a day that
+  has not finished; the longest streak is the longest run anywhere in the last 400 days (a bounded read: 50,000 rows per source).
+- **Why a table: a card keeps only its latest review date.** Without a log, a day on which cards were reviewed would vanish the next time
+  the same cards were reviewed, and a streak would silently forget days. `CardReview` (user, card, grade, when) gets one line from
+  `reviewCard` (so a quiz grade counts too). **No foreign key to the card**, so deleting a card does not delete the day it was reviewed
+  on; the account's deletion does delete the log. If the log line cannot be written, the review has still happened and the failure is
+  logged, not shown. **The migration backfills** one line (no grade) for every card that already had a review date, so the chart is not
+  empty on day one; the page says so ("Before 15 Nov 2026, each card counts once, on its last review"). It is listed under
+  `NOT_EXPORTED`: the cards keep their own schedule and are exported, and a restore starts the log again.
+- **Counted, not predicted.** Tasks finished are counted from `completedAt` **including tasks that were deleted afterwards** (the
+  finish happened); study time is the existing timer recorder, so it is empty while "Remember timer sessions" is off (Focus page), and the
+  page says so and links there. Nothing on the page reads the text of anything: the repository selects timestamps only, each query scoped
+  by `userId`.
+- **Weeks are Monday to Sunday, by calendar day.** The first version placed a day in a week by dividing milliseconds by seven days, which
+  puts a Monday after a clock change in the **previous** week (a week with a clock change is 167 or 169 hours). A test under Europe/Berlin,
+  America/New_York and Australia/Sydney, around both changes, fails the old code (checked) and passes the new (`dayNumber`).
+- **The page.** A streak card (the number, the longest, seven dots for the last seven days with their state in text), then three bar
+  charts built from divs (no chart library) with the numbers in each chart's label, then one sentence on what counts. Phone and desktop
+  share one layout (one column, three on a wide screen).
+
+**What testing and review turned up.**
+
+- **A test of mine was vacuous, and I wrote it that way:** the first "the backfill gave every card a line" assertion was
+  `>= 0`. It now runs the migration's own `INSERT ... SELECT` inside a transaction that is rolled back, against a card with a review date and
+  one without.
+- **A mutation run once reported everything "caught" because a new test was failing without any mutation** (an insert named a column
+  `UserProfile` does not have); the baseline must be green first, and it is now checked before each run.
+- **Found by looking:** "This week 1 tasks". The unit follows the number now (`counted`).
+- **A browser test of the phone's More sheet cannot click its button in `next dev`:** the framework's own badge sits over it (CLAUDE.md,
+  "Design system"), so the click is dispatched on the button; and a second click would close the sheet, so it waits for React to attach and
+  clicks once. The `g then m` test presses until the hint shows, since a key before hydration is not heard.
+- **The app quit while this was being built** (after the mutation run, before the last test and the docs); Docker and the dev database
+  were restarted and every file was checked for a leftover mutant before going on.
+- **17 mutants, all caught** after one survived (the chart's "recorder is off" note accepted either wording in the test; it now switches the
+  flag on and off and restores it).
+
+**Tests.** 11 unit (`study-stats`: the local day and the Monday week, what counts as a day, the streak at its edges, the longest across
+gaps, month and year boundaries, clock changes in three zones, the last seven days, the weekly totals including nothing outside the window
+and nothing from the future, an empty account, 100,000 timestamps in under 1.5 s, the counts' units), 4 integration (`card-review-log`:
+a line per review for its owner, none for a refused review, a deleted card keeps its days and a deleted account its log, the backfill) and
+6 (`study-stats`: an empty account, the weeks and the streak from all three sources, a deleted task, another account's rows, a streak
+longer than eight weeks with tomorrow ignored, 59 versus 60 seconds), and 6 browser (`study-stats.spec.ts`: the page, the recorder note
+both ways, `g` then `m`, the phone's More sheet, the phone in both themes). The shortcut, workspace-navigation, cards and exam specs still pass.
+
+**Not done:** a longer range or a chosen one; a per-course breakdown; the streak's "freeze" days; card history before the log (only each
+card's last review); the focus (writing) minutes, which are a separate opt-in; notes written per week.
+
 ### Focus timer on a task
 
 ROADMAP item 40 (*M, demo*; shown as a clickable design, redone once at the owner's request, then approved). The task page already had a
