@@ -115,8 +115,9 @@ export function ExamPrep({
 
   return (
     <section
+      id="exam-prep"
       aria-labelledby="prep-title"
-      className="mb-6 rounded-xl border border-border-subtle bg-surface p-5"
+      className="mb-6 scroll-mt-4 rounded-xl border border-border-subtle bg-surface p-5"
     >
       <h2 id="prep-title" className="text-base font-bold text-text">
         Exam prep

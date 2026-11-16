@@ -277,3 +277,14 @@ export async function listCourseNoteTitles(
   ]);
   return { notes, total };
 }
+
+/** The marks of one live course, for an average and a best possible mark: nothing else of the assessments is read. */
+export async function listMarks(
+  userId: string,
+  courseId: string,
+): Promise<{ weight: number; score: number | null; maxScore: number }[]> {
+  return prisma.assessment.findMany({
+    where: { userId, courseId, course: { userId, deletedAt: null } },
+    select: { weight: true, score: true, maxScore: true },
+  });
+}

@@ -284,3 +284,14 @@ export async function listAllTaskTitles(userId: string): Promise<string[]> {
   const rows = await prisma.task.findMany({ where: { userId }, select: { title: true } });
   return rows.map((row) => row.title);
 }
+
+/** The live review sessions of one assessment with what the Next exam card shows of them: status, planned start and length. */
+export async function listPrepSessionsDetailed(
+  userId: string,
+  assessmentId: string,
+): Promise<{ status: string; scheduledStart: Date | null; estimatedMinutes: number }[]> {
+  return prisma.task.findMany({
+    where: { userId, assessmentId, deletedAt: null },
+    select: { status: true, scheduledStart: true, estimatedMinutes: true },
+  });
+}
