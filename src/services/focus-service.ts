@@ -85,25 +85,6 @@ export async function recordWritingSession(
   });
 }
 
-export async function recordTimerSession(
-  userId: string,
-  input: { taskId: string; seconds: number },
-): Promise<{ saved: boolean; seconds: number; courseCode: string | null }> {
-  if (input.seconds < MIN_SESSION_SECONDS) return { saved: false, seconds: 0, courseCode: null };
-
-  // The switch answers before the task is looked at, so a refusal never says whether a task exists.
-  if (!(await focusRepository.getSettings(userId)).timer) {
-    throw new AppError("FORBIDDEN", "Remembering timer sessions is off.");
-  }
-
-  // The course is the task's own, found on the server: the browser sends a task, never a course.
-  const task = await focusRepository.findTimedTask(userId, input.taskId);
-  if (!task) throw new AppError("RESOURCE_NOT_FOUND", "That task no longer exists.");
-
-  await focusRepository.recordTimerSession(userId, { seconds: input.seconds, courseId: task.courseId });
-  return { saved: true, seconds: input.seconds, courseCode: task.courseCode };
-}
-
 export function clearHistory(userId: string): Promise<number> {
   return focusRepository.deleteAllSessions(userId);
 }

@@ -59,13 +59,6 @@ export async function recordSession(
   return prisma.focusTelemetry.create({ data: { ...session, userId } });
 }
 
-export async function recordTimerSession(
-  userId: string,
-  session: { seconds: number; courseId: string | null },
-): Promise<void> {
-  await prisma.studySession.create({ data: { ...session, userId } });
-}
-
 /** Whether a course belongs to this account. Deleted or trashed does not matter: it is a question of whose it is. */
 export async function ownsCourse(userId: string, courseId: string): Promise<boolean> {
   const course = await prisma.course.findFirst({
@@ -73,25 +66,6 @@ export async function ownsCourse(userId: string, courseId: string): Promise<bool
     select: { id: true },
   });
   return course !== null;
-}
-
-/**
- * The course of a task the timer ran on, and its code for the confirmation line. Null when the task is
- * not this account's or is in the trash; the code is null when the course is in the trash.
- */
-export async function findTimedTask(
-  userId: string,
-  taskId: string,
-): Promise<{ courseId: string | null; courseCode: string | null } | null> {
-  const task = await prisma.task.findFirst({
-    where: { id: taskId, userId, deletedAt: null },
-    select: { courseId: true, course: { select: { code: true, deletedAt: true } } },
-  });
-  if (!task) return null;
-  return {
-    courseId: task.courseId,
-    courseCode: task.course && task.course.deletedAt === null ? task.course.code : null,
-  };
 }
 
 export async function listSessions(

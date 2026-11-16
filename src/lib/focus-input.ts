@@ -17,10 +17,14 @@ export const writingSessionSchema = z.object({
   courseId: z.uuid().nullish(),
 });
 
-/** One run of the study timer: the task it ran on, never a course (the server finds the task's own). */
-export const timerSessionSchema = z.object({
+/**
+ * Starting the focus timer: a task, a length and whether to ring the phone. Never a duration, a course, a time or an account (the server keeps
+ * the clock and finds the course); only the lengths in the design are accepted, and the service checks that too.
+ */
+export const timerStartSchema = z.object({
   taskId: z.uuid(),
-  seconds: z.coerce.number().int().min(0).max(MAX_SESSION_SECONDS),
+  minutes: z.number().int().min(1).max(240),
+  notify: z.boolean(),
 });
 
 /** A switch is a real boolean: not the string "true", not an object. */
