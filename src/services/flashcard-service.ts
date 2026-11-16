@@ -225,8 +225,15 @@ export async function reviewCard(
     grade,
   );
 
+  const reviewedAt = new Date();
   await flashcardRepository.applyReview(userId, cardId, next);
-  return { ...card, ...next, lastReviewed: new Date() };
+  // The log feeds the stats page only; the review itself has happened, so a failed log line is reported and does not undo it.
+  try {
+    await flashcardRepository.recordReview(userId, cardId, grade, reviewedAt);
+  } catch (error) {
+    console.error("[WARN] A card review could not be logged for the stats page:", error);
+  }
+  return { ...card, ...next, lastReviewed: reviewedAt };
 }
 
 export async function deleteCard(userId: string, cardId: string): Promise<void> {

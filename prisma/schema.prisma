@@ -49,6 +49,7 @@ model User {
   reminderDeliveries ReminderDelivery[]
   references         Reference[]
   duplicateDecisions DuplicateDecision[]
+  cardReviews        CardReview[]
 }
 
 model UserProfile {
@@ -592,4 +593,20 @@ model DuplicateDecision {
 
   @@unique([userId, noteAId, noteBId])
   @@index([userId])
+}
+
+/// One line for every time a card was reviewed (ROADMAP item 39): when, and how it was graded. It exists for the stats page: a card
+/// keeps only its latest review date, so without this log a streak would forget every day whose cards were reviewed again later.
+/// No foreign key to the card, so deleting a card does not delete the day it was reviewed on. Cards that already had a review date
+/// when this was added got one line each, with no grade.
+model CardReview {
+  id         String   @id @default(uuid())
+  userId     String
+  cardId     String?
+  grade      String?
+  reviewedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, reviewedAt])
 }
