@@ -155,7 +155,7 @@ order below is the order to build them in, which keeps each dependency pointing 
 Eight more, chosen with the owner after the numbered list ended. One at a time, in this order; the ones tagged *demo* are shown as a design and wait for a yes first.
 
 - [x] **38. Exam readiness card** (S, demo). Today's "Next exam" becomes a readiness card: days left, review sessions done of planned and the next one, cards due for the course, the mark so far and the best possible. Read only, no migration. (The mark the exam must reach was in the design and was left out: no target is stored.)
-- [ ] **39. Study streaks and stats page** (M, demo). One page: a weekly chart of what the app already records (study time, cards reviewed, tasks finished) and a streak. A day counts when at least one of them happened; nothing nags.
+- [x] **39. Study streaks and stats page** (M, demo). One page: a weekly chart of what the app already records (study time, cards reviewed, tasks finished) and a streak. A day counts when at least one of them happened; nothing nags.
 - [ ] **40. Focus timer on a task** (M, demo). A Pomodoro-style timer started from a task that logs its minutes to the task's course through the existing study-time record, off unless started, with the existing reminder channel for "time is up".
 - [ ] **41. Ask about a PDF with page references** (M, model). An imported paper keeps its page of origin per passage, and "ask about this paper" answers with the pages it used. Builds on the PDF import and the scoped assistant.
 - [ ] **42. Weak-spots deck** (S to M, model?). Cards you keep failing and quiz questions you missed, collected into one deck to review. No new scheduling: it only selects from what SM-2 and the quiz already record.
