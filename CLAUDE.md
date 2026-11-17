@@ -3995,40 +3995,41 @@ both ways, `g` then `m`, the phone's More sheet, the phone in both themes). The 
 **Not done:** a longer range or a chosen one; a per-course breakdown; the streak's "freeze" days; card history before the log (only each
 card's last review); the focus (writing) minutes, which are a separate opt-in; notes written per week.
 
-### Weak-spots deck
+### Focus timer on a task
 
-ROADMAP item 42 (*S to M, model?*; built from the roadmap sentence and looked at in the browser). A **Weak spots** deck on the Cards page
-(`/cards?weak=1`): the cards you keep failing. **No migration and no model**: it only selects from the review log item 39 added
-(`CardReview`, one line per grade), so SM-2 is untouched.
+ROADMAP item 40 (*M, demo*; shown as a clickable design, redone once at the owner's request, then approved). The task page already had a
+client-side timer (item 18); this replaces it with one that lives on the server. Migration `20261116120000_active_timer`, additive.
 
-- **The rule, exactly** (`lib/weak-spots.ts`, pure): a card is weak when it was graded "again" **at least twice in the last 30 days** and has
-  **not been mended since**, meaning its latest two graded answers are not both "good" or "easy" (one lucky answer does not clear it, and "hard"
-  does not either). A card that fails again after being mended is weak again. Lines with no card, no grade (cards that existed before the log
-  kept grades) or outside the window count for nothing. Worst first: most failures, then most recent failure, then id. The numbers (2, 30 and
-  the two-answer run) are judgements, not measurements; they are constants in one file.
-- **Quiz questions you missed:** a quiz card's grade goes through the same review as any card, so a card missed in a quiz is already in the log
-  and in this deck. A quiz question the model *generated* has no row and no log line (item 10 stores nothing about a session), so it cannot be
-  in the deck. Storing missed generated questions would be a new table and a new feature, and was not built.
-- **It practises cards that are not due.** Grading one is an ordinary review: SM-2 moves it from its current state, so a "good" on a card that
-  is not due yet is a full step taken early (the same cost noted for the quiz). The page says nothing is rescheduled just for being there.
-- **Reads:** three queries, all scoped by `userId` (candidate ids by `groupBy` with `having`, capped at 500; those cards' log lines; the live
-  cards among the ids by the same `liveCards` rule as the queue, so a trashed note's cards are not offered and return with the note). A
-  deleted card's log lines match nothing. The deck chip appears only while there is a weak card (or it is open). Measured on a throwaway
-  account, 5,000 cards and 100,000 log lines (every card weak, so the 500 cap was hit): 76 to 149 ms.
-- **Found by looking, not by a test:** the review counter read "1 of 3 due" for cards that were not due, and the empty state said "Nothing
-  due right now"; `CardReview` takes a `weak` flag for both.
+- **One `ActiveTimer` row per account, authoritative on the server.** A timer is exactly one of running (`endsAt`), paused
+  (`pausedRemaining`) or finished (`finishedAt`); a DB `CHECK` refuses any other state. The browser sends only a task id, a length from
+  25 / 50 / 15 and a boolean (`timerStartSchema`); it never sends seconds, a course or an owner. The old `recordTimerSession` action and
+  its client-supplied seconds are gone. Rules are pure in `lib/focus-timer.ts` (state machine, 11 unit tests).
+- **Writes are compare-and-set on `updatedAt`**, in one transaction with the study time they earn, so two tabs, the minute tick and the
+  in-process `setTimeout` finish a phase once, save once, and ring the phone once (only the winner of the finalizing CAS pushes).
+- **Study time:** only focus phases, only if "Remember timer sessions" is on, only 30 s or more (`MIN_SESSION_SECONDS`), under the task's
+  course (a trashed course keeps the link; a purged task gives none). Breaks are never study time. Pausing in the very first second reads
+  as "ready", not "paused" (remaining is rounded up), which only a test can do.
+- **Rounds:** session 1 of 4 dots; the break after the fourth is 15 minutes; starting again on the same task keeps the round, another task
+  starts a new one. Nothing starts by itself: a finished phase waits for Start break / Skip break / Stop the round.
+- **Everywhere in the app:** `TimerProvider` in the dashboard layout holds the snapshot, counts down locally from the server's end time,
+  asks the server to finish at zero, re-reads every 30 s and when the tab returns; `TimerChip` in the header pauses and resumes. The
+  browser notification is asked for on Start, never on load.
+- **Phone:** the existing ntfy push (`ntfyPublisher`, `getPushProfile`); a failing publisher never breaks the timer.
+- **Looking is a GET, not a server action** (`GET /api/focus-timer`). The first version read the timer with a server action, which is a POST on every page load, every poll and every tab return; CI's board and time-grid specs, which fail on any POST ("sends nothing"), failed 11 tests while the same specs passed here. **Lesson: a provider mounted in the layout must not send a POST by itself.**
+- **Not exported:** `ActiveTimer` is in `NOT_EXPORTED` (moment-to-moment state); the study time it saves is exported with study sessions.
 
-**Tests.** 8 unit (`weak-spots`: the threshold, mending by two good answers and not by one or by "hard", failing again after mending, the
-window edge, ungraded lines, ordering, a 100,000-line log in under 1.5 s), 8 integration (`weak-spots`: the real review path moving a card in
-and out, the trash, a deleted card, courses, another account's log lines naming my card, and the two log reads on their own, because the
-service's second filter masks a missing `userId` on either), 3 browser (`weak-spots.spec.ts`: no deck while nothing is weak, a not-due weak
-card shown and graded, a phone). 13 mutants: all caught after four exposed missing tests (ungraded lines, and `userId` on each log read, which
-the service masked); three more are equivalent (the `having` and the window on the candidate query only narrow what `rankWeak` re-checks, and
-the run-length guard cannot fail because a weak card has at least two lines).
+**Verified.** 28 unit and integration tests for the timer (plus the focus-input and study-time ones); 13 mutants on the rules, the
+repository's `userId` and `updatedAt` scoping, the service and the schema: 5 survived at first and exposed missing tests (a long break
+rule at zero sessions, a delete that ignored a newer state, the same-task round, the no-timer message, a schema bound), all now caught. The
+real actions were replayed with a stubbed session: no session gives `AUTH_REQUIRED` everywhere; another account's task is the same
+"no longer exists"; forged minutes, ids, strings, null and arrays are validation errors; extra `userId` / `seconds` / `courseId` keys are
+dropped and nothing of the other account is touched or saved. 3 browser tests (`focus-timer.spec.ts`: the chip follows to another page and
+pauses the task page, the break flow, a phone) and the three old timer tests in `study-time.spec.ts` rewritten for a server timer ("time
+passing" is `endsAt` moved with SQL plus a `visibilitychange` so the page looks again). Looked at in the browser at 1280 and 375 px, light
+and dark: no horizontal overflow, chip and buttons touch sized. **Not run locally:** `pnpm build`, the whole e2e suite (shortcuts and
+workspace specs, the ones touching the header, pass), the evals and the container rehearsal; CI runs them.
 
-**Not done:** weak generated quiz questions; a per-course weak deck in the page (the service takes a deck, the page does not); a count on Today
-or the sidebar; leech handling (suspending a card that stays weak); the cap of 500 candidates is a judgement. **Not run locally:** `pnpm build`,
-the whole e2e suite and the container rehearsal; CI runs them.
+**Not done:** a long break length setting, the timer on a note, sound, and a timer per task at once (one per account, by design).
 
 ## Target directory structure
 
