@@ -159,6 +159,6 @@ Eight more, chosen with the owner after the numbered list ended. One at a time, 
 - [x] **40. Focus timer on a task** (M, demo). A Pomodoro-style timer started from a task that logs its minutes to the task's course through the existing study-time record, off unless started, with the existing reminder channel for "time is up".
 - [ ] **41. Ask about a PDF with page references** (M, model). An imported paper keeps its page of origin per passage, and "ask about this paper" answers with the pages it used. Builds on the PDF import and the scoped assistant.
 - [ ] **42. Weak-spots deck** (S to M, model?). Cards you keep failing and quiz questions you missed, collected into one deck to review. No new scheduling: it only selects from what SM-2 and the quiz already record.
-- [ ] **43. Paper reading tracker** (M, demo). To read, reading, done, with a one-line takeaway, linked to the note and the reference. A thin layer over references.
+- [x] **43. Paper reading tracker** (M, demo). To read, reading, done, with a one-line takeaway, linked to the note and the reference. A thin layer over references.
 - [ ] **44. Weekly goals** (S, demo). A small target such as "three study sessions this week", checked automatically against what the app counts. Needs one additive table.
 - [ ] **45. Home-screen quick capture** (S). A one-tap "add to inbox" shortcut for the phone's home screen, over the capture that already exists.
