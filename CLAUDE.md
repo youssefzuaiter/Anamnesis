@@ -4156,6 +4156,78 @@ all caught after one (the 8,000-character read) was pinned with a test; one more
 share target still opens the clip card for links); a sidebar item or a `g` key for it; a service worker for offline capture. **Not run locally:**
 `pnpm build`, the whole e2e suite, the evals and the container rehearsal; CI runs them.
 
+### PDF page references
+
+ROADMAP item 41 (*M, model*; built from the roadmap sentence and looked at in the browser, not shown as a mock). An imported paper keeps the
+page each passage came from, and an answer that drew on it names the pages. One additive column, `WorkspaceEmbedding.page` (migration
+`20261117100000_embedding_page`); the previous release does not write it and keeps working.
+
+- **The pages were already in the text.** `pdf-parse` appends `-- N of T --` on its own line after each page, so every imported PDF note
+  already carries its page boundaries. Nothing about the import changed, and notes imported before this item get pages on their next save or
+  "Rebuild the search index". `lib/pdf-pages.ts` (pure) reads them back: `splitPdfPages` returns the pages only when the markers make a
+  believable sequence (one total, numbers that increase, none past the total, each on its own line), else null, and the note is chunked as
+  before. A marker deleted by hand leaves the others usable; text after the last marker is the next page (a document cut at 100,000
+  characters). **Cost accepted:** a note that happens to hold such a sequence of lines is read as a paper.
+- **A chunk never crosses a page, so its page is exact** (`chunkPages`). A paragraph that runs over a page break becomes two chunks. Short
+  fragments (a page number, a figure label) add no chunk, as `chunkText` already dropped them. Only notes are read this way
+  (`indexEntity(..., { pages: true })` from `note-service` and the reindex), so a task whose text looks like markers gets no pages.
+- **The page comes from the stored chunk, never from the model.** `Citation.page` is read from the retrieved row; the prompt and the relevance
+  floor are untouched (the injection evals measured them), so the model is not shown page numbers and cannot invent one. The assistant shows
+  `p. 3` beside each citation and one sentence per paper above the list ("Used pages 3 and 7 of <title>", `lib/pages-used.ts`). A paper's note
+  page offers "Ask about this paper" (the existing scoped question) instead of "Ask about this note".
+
+**Measured.** Real embedder, five unrelated pages, one question each, scoped to the paper: the top citation was on the right page 5 of 5 (the
+`EVAL_ONLY=pages` slice, which also checks every citation names a page and that nothing of another account appears). 100,000-character
+hostile inputs (7,000 markers, near-markers, newlines, a 99,000-digit marker, 50,000 spaces before one) took at most 5.7 ms through the
+page split and the chunking. 15 mutants on the split rules, the stored and read column, the flag and the citation: 3 survived at first (text
+after the final page, the line anchor masked by the length guard, and the length guard itself, which only skips work), two were closed with
+tests and the guard is an optimisation.
+
+**Tests.** 10 unit (`pdf-pages`) and 3 (`pages-used`); 5 integration (`pdf-pages`: a stubbed embedder, pages stored for a PDF note and none for
+a plain one or a task, search and the citation return the page, an edit re-indexes and removing the markers removes the pages, another
+account's pages never appear); 1 browser test (`pdf-pages.spec.ts`: a hand-made two-page PDF is imported, shows its markers and offers "Ask about this
+paper"; a plain note does not); the eval slice above. Looked at in the browser (the stream mocked) at 1280 and 375 px, light and dark.
+
+**Not done:** a link from a citation to its page in the note (the note's reading view does not anchor the markers); pages on the `/search`
+results and on Related; the PDF's own page labels (a paper numbered from its cover); scanned PDFs (no text, as before); pages for a PDF
+attached rather than imported; a page range for a chunk (a chunk is one page by construction). **Not run locally:** `pnpm build`, the whole
+e2e suite and the container rehearsal; CI runs them.
+
+### Weak-spots deck
+
+ROADMAP item 42 (*S to M, model?*; built from the roadmap sentence and looked at in the browser). A **Weak spots** deck on the Cards page
+(`/cards?weak=1`): the cards you keep failing. **No migration and no model**: it only selects from the review log item 39 added
+(`CardReview`, one line per grade), so SM-2 is untouched.
+
+- **The rule, exactly** (`lib/weak-spots.ts`, pure): a card is weak when it was graded "again" **at least twice in the last 30 days** and has
+  **not been mended since**, meaning its latest two graded answers are not both "good" or "easy" (one lucky answer does not clear it, and "hard"
+  does not either). A card that fails again after being mended is weak again. Lines with no card, no grade (cards that existed before the log
+  kept grades) or outside the window count for nothing. Worst first: most failures, then most recent failure, then id. The numbers (2, 30 and
+  the two-answer run) are judgements, not measurements; they are constants in one file.
+- **Quiz questions you missed:** a quiz card's grade goes through the same review as any card, so a card missed in a quiz is already in the log
+  and in this deck. A quiz question the model *generated* has no row and no log line (item 10 stores nothing about a session), so it cannot be
+  in the deck. Storing missed generated questions would be a new table and a new feature, and was not built.
+- **It practises cards that are not due.** Grading one is an ordinary review: SM-2 moves it from its current state, so a "good" on a card that
+  is not due yet is a full step taken early (the same cost noted for the quiz). The page says nothing is rescheduled just for being there.
+- **Reads:** three queries, all scoped by `userId` (candidate ids by `groupBy` with `having`, capped at 500; those cards' log lines; the live
+  cards among the ids by the same `liveCards` rule as the queue, so a trashed note's cards are not offered and return with the note). A
+  deleted card's log lines match nothing. The deck chip appears only while there is a weak card (or it is open). Measured on a throwaway
+  account, 5,000 cards and 100,000 log lines (every card weak, so the 500 cap was hit): 76 to 149 ms.
+- **Found by looking, not by a test:** the review counter read "1 of 3 due" for cards that were not due, and the empty state said "Nothing
+  due right now"; `CardReview` takes a `weak` flag for both.
+
+**Tests.** 8 unit (`weak-spots`: the threshold, mending by two good answers and not by one or by "hard", failing again after mending, the
+window edge, ungraded lines, ordering, a 100,000-line log in under 1.5 s), 8 integration (`weak-spots`: the real review path moving a card in
+and out, the trash, a deleted card, courses, another account's log lines naming my card, and the two log reads on their own, because the
+service's second filter masks a missing `userId` on either), 3 browser (`weak-spots.spec.ts`: no deck while nothing is weak, a not-due weak
+card shown and graded, a phone). 13 mutants: all caught after four exposed missing tests (ungraded lines, and `userId` on each log read, which
+the service masked); three more are equivalent (the `having` and the window on the candidate query only narrow what `rankWeak` re-checks, and
+the run-length guard cannot fail because a weak card has at least two lines).
+
+**Not done:** weak generated quiz questions; a per-course weak deck in the page (the service takes a deck, the page does not); a count on Today
+or the sidebar; leech handling (suspending a card that stays weak); the cap of 500 candidates is a judgement. **Not run locally:** `pnpm build`,
+the whole e2e suite and the container rehearsal; CI runs them.
+
 ## Target directory structure
 
 ```
