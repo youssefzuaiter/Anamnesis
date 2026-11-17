@@ -4228,6 +4228,28 @@ the run-length guard cannot fail because a weak card has at least two lines).
 or the sidebar; leech handling (suspending a card that stays weak); the cap of 500 candidates is a judgement. **Not run locally:** `pnpm build`,
 the whole e2e suite and the container rehearsal; CI runs them.
 
+### Found by testing the whole app with fake data (2026-11-17)
+
+A demo account (`look-demo@test.local`: 3 courses, 15 notes, 28 tasks, 13 events, 6 cards, references, goals, study sessions) was filled through the
+app's own services, and every page was visited by script in four ways (desktop and phone, light and dark; 184 visits, none with a server error or
+an error screen) and every feature was driven by 47 interactive checks, the model-backed ones included (the assistant with citations, a scoped
+question, a proposal confirmed and audited, a summary, a generated quiz question). The scripts are throwaway and not in the repo. What it found:
+
+- **The calendar overflowed a phone, by 17px with the demo's tasks and by 494px with one long task title.** The "Add event" and "Unscheduled" section
+  was `grid gap-4 sm:grid-cols-3`: below `sm` a grid with no column track sizes its single column to its widest content, and a task title in the
+  tray was that content. This is the same trap as the dashboard's and the note page's (see "Design system" and "Maths and code in notes"), and
+  it was in the pages those sections said had not been looked at. Fixed with `grid-cols-1`; `tests/e2e/phone-overflow.spec.ts` fails without it
+  (checked). The project page had the identical pattern and got the same class; **its test passes without the fix too, so that fix is unproven.**
+  **Rule: a grid with breakpoint columns always names its mobile track (`grid-cols-1`).** No other `grid gap-N sm:grid-cols-N` remains in `src`.
+- **`/notes/graph` logged a hydration mismatch in every mode.** The force layout runs 300 iterations of floating point, and the server's Node and the
+  browser's V8 end a few units in the last place apart (`522.0456801531518` against `522.0456801531517`). Positions are rounded to two decimals now
+  (`lib/graph-layout.ts`, pure, tested; without the rounding the test fails).
+- **Not bugs, so they cost time:** a "hydration mismatch" on the project page was Playwright's own screenshot adding `caret-color: transparent`
+  (already written up under "Quiz me"; `screenshot({ caret: "initial" })`); slow page loads and 120 s timeouts came from a machine at load average 45
+  (a browser, a VM and the model at once); four failures of a repeated run were the demo data drifting (Shut down day had moved the tasks, a Save
+  button is correctly disabled when nothing changed).
+- **An observation, not changed:** the hourly week grid opens at 00:00, so a day's 09:00 events are below the visible area until you scroll.
+
 ## Target directory structure
 
 ```
