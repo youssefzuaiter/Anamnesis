@@ -182,3 +182,37 @@ export async function deleteCard(
   });
   return count > 0;
 }
+
+/** Cards graded "again" at least `minFails` times since `since`, as ids: the candidates for the weak-spots deck (the review log, item 39). */
+export async function weakCandidateIds(userId: string, since: Date, minFails: number, take: number): Promise<string[]> {
+  const rows = await prisma.cardReview.groupBy({
+    by: ["cardId"],
+    where: { userId, grade: "again", cardId: { not: null }, reviewedAt: { gte: since } },
+    having: { cardId: { _count: { gte: minFails } } },
+    orderBy: { _count: { cardId: "desc" } },
+    take,
+  });
+  return rows.flatMap((row) => (row.cardId === null ? [] : [row.cardId]));
+}
+
+/** Every graded line of these cards since `since`, for working out which are still weak. Bounded: a card is reviewed a few times a month. */
+export async function reviewLinesFor(
+  userId: string,
+  cardIds: string[],
+  since: Date,
+): Promise<{ cardId: string | null; grade: string | null; reviewedAt: Date }[]> {
+  if (cardIds.length === 0) return [];
+  return prisma.cardReview.findMany({
+    where: { userId, cardId: { in: cardIds }, reviewedAt: { gte: since } },
+    select: { cardId: true, grade: true, reviewedAt: true },
+    take: 50_000,
+  });
+}
+
+/** The live cards among these ids (not another account's, not a trashed note's), optionally one deck's. */
+export async function listLiveByIds(userId: string, ids: string[], deck?: string): Promise<Flashcard[]> {
+  if (ids.length === 0) return [];
+  return prisma.flashcard.findMany({
+    where: { AND: [liveCards(userId), deckWhere(deck), { id: { in: ids } }] },
+  });
+}
