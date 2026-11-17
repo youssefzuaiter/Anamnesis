@@ -5,6 +5,7 @@ import { AppError } from "@/lib/api-response";
 import { MAX_CARD_ANSWER, MAX_CARD_QUESTION } from "@/lib/domain";
 import { answerFor, validateCloze } from "@/lib/cloze";
 import { scheduleReview, type ReviewGrade } from "@/lib/spaced-repetition";
+import { rankWeak, windowStart, WEAK_MIN_FAILS } from "@/lib/weak-spots";
 import * as courseRepository from "@/repositories/course-repository";
 import * as flashcardRepository from "@/repositories/flashcard-repository";
 import * as noteRepository from "@/repositories/note-repository";
@@ -241,4 +242,22 @@ export async function deleteCard(userId: string, cardId: string): Promise<void> 
   if (!deleted) {
     throw new AppError("RESOURCE_NOT_FOUND", "That card no longer exists.");
   }
+}
+
+const WEAK_CANDIDATES = 500;
+
+/**
+ * The weak-spots deck (ROADMAP item 42): live cards that were graded "again" at least twice in the last 30 days and have not been mended
+ * since (`rankWeak`), worst first, optionally one course's. It only selects: grading one of them is an ordinary review and SM-2 decides
+ * when it is due, so a weak card that is not due yet is still practised here on request.
+ */
+export async function listWeakSpots(userId: string, now: Date, deck?: string): Promise<{ card: Flashcard; fails: number }[]> {
+  const since = windowStart(now);
+  const candidates = await flashcardRepository.weakCandidateIds(userId, since, WEAK_MIN_FAILS, WEAK_CANDIDATES);
+  const ranked = rankWeak(await flashcardRepository.reviewLinesFor(userId, candidates, since), now);
+  const cards = new Map((await flashcardRepository.listLiveByIds(userId, ranked.map((weak) => weak.cardId), deck)).map((card) => [card.id, card]));
+  return ranked.flatMap((weak) => {
+    const card = cards.get(weak.cardId);
+    return card ? [{ card, fails: weak.fails }] : [];
+  });
 }

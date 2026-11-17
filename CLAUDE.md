@@ -3995,6 +3995,41 @@ both ways, `g` then `m`, the phone's More sheet, the phone in both themes). The 
 **Not done:** a longer range or a chosen one; a per-course breakdown; the streak's "freeze" days; card history before the log (only each
 card's last review); the focus (writing) minutes, which are a separate opt-in; notes written per week.
 
+### Weak-spots deck
+
+ROADMAP item 42 (*S to M, model?*; built from the roadmap sentence and looked at in the browser). A **Weak spots** deck on the Cards page
+(`/cards?weak=1`): the cards you keep failing. **No migration and no model**: it only selects from the review log item 39 added
+(`CardReview`, one line per grade), so SM-2 is untouched.
+
+- **The rule, exactly** (`lib/weak-spots.ts`, pure): a card is weak when it was graded "again" **at least twice in the last 30 days** and has
+  **not been mended since**, meaning its latest two graded answers are not both "good" or "easy" (one lucky answer does not clear it, and "hard"
+  does not either). A card that fails again after being mended is weak again. Lines with no card, no grade (cards that existed before the log
+  kept grades) or outside the window count for nothing. Worst first: most failures, then most recent failure, then id. The numbers (2, 30 and
+  the two-answer run) are judgements, not measurements; they are constants in one file.
+- **Quiz questions you missed:** a quiz card's grade goes through the same review as any card, so a card missed in a quiz is already in the log
+  and in this deck. A quiz question the model *generated* has no row and no log line (item 10 stores nothing about a session), so it cannot be
+  in the deck. Storing missed generated questions would be a new table and a new feature, and was not built.
+- **It practises cards that are not due.** Grading one is an ordinary review: SM-2 moves it from its current state, so a "good" on a card that
+  is not due yet is a full step taken early (the same cost noted for the quiz). The page says nothing is rescheduled just for being there.
+- **Reads:** three queries, all scoped by `userId` (candidate ids by `groupBy` with `having`, capped at 500; those cards' log lines; the live
+  cards among the ids by the same `liveCards` rule as the queue, so a trashed note's cards are not offered and return with the note). A
+  deleted card's log lines match nothing. The deck chip appears only while there is a weak card (or it is open). Measured on a throwaway
+  account, 5,000 cards and 100,000 log lines (every card weak, so the 500 cap was hit): 76 to 149 ms.
+- **Found by looking, not by a test:** the review counter read "1 of 3 due" for cards that were not due, and the empty state said "Nothing
+  due right now"; `CardReview` takes a `weak` flag for both.
+
+**Tests.** 8 unit (`weak-spots`: the threshold, mending by two good answers and not by one or by "hard", failing again after mending, the
+window edge, ungraded lines, ordering, a 100,000-line log in under 1.5 s), 8 integration (`weak-spots`: the real review path moving a card in
+and out, the trash, a deleted card, courses, another account's log lines naming my card, and the two log reads on their own, because the
+service's second filter masks a missing `userId` on either), 3 browser (`weak-spots.spec.ts`: no deck while nothing is weak, a not-due weak
+card shown and graded, a phone). 13 mutants: all caught after four exposed missing tests (ungraded lines, and `userId` on each log read, which
+the service masked); three more are equivalent (the `having` and the window on the candidate query only narrow what `rankWeak` re-checks, and
+the run-length guard cannot fail because a weak card has at least two lines).
+
+**Not done:** weak generated quiz questions; a per-course weak deck in the page (the service takes a deck, the page does not); a count on Today
+or the sidebar; leech handling (suspending a card that stays weak); the cap of 500 candidates is a judgement. **Not run locally:** `pnpm build`,
+the whole e2e suite and the container rehearsal; CI runs them.
+
 ## Target directory structure
 
 ```

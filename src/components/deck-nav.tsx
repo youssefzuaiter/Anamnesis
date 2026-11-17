@@ -12,13 +12,19 @@ export function DeckNav({
   decks,
   active,
   all,
+  weak,
 }: {
   decks: DeckSummary[];
   active: string | null;
   all: { total: number; due: number };
+  /** The weak-spots deck: how many cards are in it, and whether it is the one open. Hidden while it is empty and not open. */
+  weak: { count: number; open: boolean };
 }) {
   const items = [
     { key: null, label: "All decks", title: null, href: "/cards", ...all },
+    ...(weak.count > 0 || weak.open
+      ? [{ key: "weak", label: "Weak spots", title: "Cards you got wrong at least twice in the last 30 days and have not got right twice since", href: "/cards?weak=1", total: weak.count, due: -1 }]
+      : []),
     ...decks.map((deck) => ({
       key: deck.id ?? "none",
       label: deck.label,
@@ -33,7 +39,7 @@ export function DeckNav({
     <nav aria-label="Decks" className="mb-5">
       <ul className="flex flex-wrap gap-2">
         {items.map((item) => {
-          const current = item.key === active;
+          const current = item.key === "weak" ? weak.open : !weak.open && item.key === active;
           return (
             <li key={item.key ?? "all"} className="max-w-full">
               <Link
@@ -48,7 +54,7 @@ export function DeckNav({
               >
                 <span className="break-all font-semibold">{item.label}</span>
                 <span className="text-xs tabular-nums text-text-muted">
-                  {item.due} due · {plural(item.total)}
+                  {item.due < 0 ? plural(item.total) : `${item.due} due · ${plural(item.total)}`}
                 </span>
               </Link>
             </li>
