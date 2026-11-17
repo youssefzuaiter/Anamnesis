@@ -25,8 +25,6 @@ after(async () => {
 
 const makeCourse = (userId: string, code: string, extra: Record<string, unknown> = {}) =>
   prisma.course.create({ data: { userId, code, title: `Title of ${code}`, term: "Fall 2026", ...extra } });
-const makeTask = (userId: string, extra: Record<string, unknown> = {}) =>
-  prisma.task.create({ data: { userId, title: "A task", ...extra } });
 
 const refused = (code: AppError["code"], message: string) => (error: unknown) =>
   error instanceof AppError && error.code === code && error.message === message;
@@ -134,61 +132,7 @@ test("another account's course, and one that does not exist, are stored as no co
   assert.equal((await written(theirs.id)).length, 0);
 });
 
-// --- Timer sessions -----------------------------------------------------------------------------------
-
-test("a timer session is refused while the switch is off, whatever the task, and nothing is stored", async () => {
-  const user = await newUser();
-  const task = await makeTask(user.id);
-  await assert.rejects(() => focus.recordTimerSession(user.id, { taskId: task.id, seconds: 1500 }), refused("FORBIDDEN", "Remembering timer sessions is off."));
-  const theirs = await newUser();
-  const foreignTask = await makeTask(theirs.id);
-  await assert.rejects(() => focus.recordTimerSession(user.id, { taskId: foreignTask.id, seconds: 1500 }), refused("FORBIDDEN", "Remembering timer sessions is off."), "the off switch answers before the task is looked at");
-  assert.equal((await timed(user.id)).length, 0);
-});
-
-test("a remembered timer session stores the seconds and the task's course, and says which course", async () => {
-  const user = await newUser();
-  const course = await makeCourse(user.id, "CS 301");
-  const task = await makeTask(user.id, { courseId: course.id });
-  const bare = await makeTask(user.id);
-  await focus.setTimerSessions(user.id, true);
-  assert.deepEqual(await focus.recordTimerSession(user.id, { taskId: task.id, seconds: 1500 }), { saved: true, seconds: 1500, courseCode: "CS 301" });
-  assert.deepEqual(await focus.recordTimerSession(user.id, { taskId: bare.id, seconds: 600 }), { saved: true, seconds: 600, courseCode: null });
-  const rows = await timed(user.id);
-  assert.deepEqual(rows.map((row) => [row.seconds, row.courseId]).sort(), [[1500, course.id], [600, null]]);
-});
-
-test("another account's task, a trashed task and a task that does not exist all get the same refusal and store nothing", async () => {
-  const mine = await newUser();
-  const theirs = await newUser();
-  const foreign = await makeTask(theirs.id);
-  const trashed = await makeTask(mine.id, { deletedAt: new Date() });
-  await focus.setTimerSessions(mine.id, true);
-  for (const taskId of [foreign.id, trashed.id, randomUUID()]) {
-    await assert.rejects(() => focus.recordTimerSession(mine.id, { taskId, seconds: 1500 }), refused("RESOURCE_NOT_FOUND", "That task no longer exists."), taskId);
-  }
-  assert.equal((await timed(mine.id)).length, 0);
-  assert.equal((await timed(theirs.id)).length, 0);
-});
-
-test("a task whose course is in the trash is still remembered, without naming the course", async () => {
-  const user = await newUser();
-  const trashedCourse = await makeCourse(user.id, "OLD 1", { deletedAt: new Date() });
-  const task = await makeTask(user.id, { courseId: trashedCourse.id });
-  await focus.setTimerSessions(user.id, true);
-  assert.deepEqual(await focus.recordTimerSession(user.id, { taskId: task.id, seconds: 900 }), { saved: true, seconds: 900, courseCode: null });
-  assert.equal((await timed(user.id))[0].courseId, trashedCourse.id, "it comes back if the course is restored");
-});
-
-test("a timer run under thirty seconds is dropped quietly, exactly thirty is kept", async () => {
-  const user = await newUser();
-  const task = await makeTask(user.id);
-  assert.deepEqual(await focus.recordTimerSession(user.id, { taskId: task.id, seconds: 10 }), { saved: false, seconds: 0, courseCode: null }, "switch off and short: no error either");
-  await focus.setTimerSessions(user.id, true);
-  assert.equal((await focus.recordTimerSession(user.id, { taskId: task.id, seconds: 29 })).saved, false);
-  assert.equal((await focus.recordTimerSession(user.id, { taskId: task.id, seconds: 30 })).saved, true);
-  assert.deepEqual((await timed(user.id)).map((row) => row.seconds), [30]);
-});
+// --- Timer sessions (saved by the server's own timer: see tests/integration/focus-timer.test.ts) ----------------------
 
 test("a timer row can only say how long and for which course, never what on", async () => {
   const columns = await prisma.$queryRaw<{ column_name: string }[]>`

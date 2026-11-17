@@ -49,6 +49,7 @@ model User {
   reminderDeliveries ReminderDelivery[]
   references         Reference[]
   duplicateDecisions DuplicateDecision[]
+  activeTimer        ActiveTimer?
   cardReviews        CardReview[]
 }
 
@@ -596,6 +597,28 @@ model DuplicateDecision {
 
   @@unique([userId, noteAId, noteBId])
   @@index([userId])
+}
+
+/// The focus timer that is running, paused or waiting for a choice (ROADMAP item 40): at most one per account. It lives here, not in a
+/// browser tab, so it keeps counting while the person browses and can ring their phone when it ends. Exactly one of `endsAt` (running),
+/// `pausedRemaining` (paused, or ready to start) and `finishedAt` (ran out, waiting for the next step) is set; the database checks it.
+/// `taskId` is not a foreign key: the timer outlives a deleted task, whose study time still goes under its course (none if the task is gone for good).
+model ActiveTimer {
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  taskId          String?
+  phase           String
+  focusMinutes    Int
+  phaseSeconds    Int
+  endsAt          DateTime?
+  pausedRemaining Int?
+  finishedAt      DateTime?
+  completedFocus  Int       @default(0)
+  savedSeconds    Int       @default(0)
+  notifyPhone     Boolean   @default(false)
+  updatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 /// One line for every time a card was reviewed (ROADMAP item 39): when, and how it was graded. It exists for the stats page: a card

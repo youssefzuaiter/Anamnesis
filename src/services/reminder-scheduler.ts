@@ -1,6 +1,7 @@
 import "server-only";
 import { ntfyPublisher, type Publish } from "@/lib/ntfy";
 import { runReminderTick } from "@/services/reminder-push-service";
+import { finishDueTimers } from "@/services/focus-timer-service";
 
 /*
  * What fires reminders while no tab is open: a timer inside the app server itself, started once from
@@ -45,7 +46,14 @@ export function startReminderScheduler(
 
   current.configured = true;
   const publish = ntfyPublisher(url, token);
-  const run = options.run ?? runReminderTick;
+  // The minute tick also finishes focus timers that ran out while the server's own timeouts were lost (a restart): the phone is rung then.
+  const run =
+    options.run ??
+    (async (now: Date, publish: Publish) => {
+      const reminders = await runReminderTick(now, publish);
+      await finishDueTimers(now, publish).catch((error) => console.error("[timer] tick failed:", error instanceof Error ? error.message : "unknown"));
+      return reminders;
+    });
   let busy = false;
 
   const tick = async () => {
