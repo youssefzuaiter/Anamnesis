@@ -43,6 +43,7 @@ test.afterEach(async () => {
   );
   await sql(`DELETE FROM "FocusTelemetry" WHERE "userId" IN ${ME}`);
   await sql(`DELETE FROM "StudySession" WHERE "userId" IN ${ME}`);
+  await sql(`DELETE FROM "ActiveTimer" WHERE "userId" IN ${ME}`);
 });
 
 const tracking = (page: Page) => main(page).getByLabel("Record focus sessions", { exact: true });
@@ -67,11 +68,13 @@ test("the course switch waits for tracking, each switch sticks, and turning trac
 
   // The timer is its own consent: it moves without the others.
   await timer(page).check();
+  await expect.poll(async () => (await sql<{ on: boolean }>(`SELECT "timerSessionsEnabled" AS on FROM "UserProfile" WHERE "userId" IN ${ME}`))[0]?.on).toBe(true);
   await page.reload();
   await expect(timer(page)).toBeChecked();
 
   await tracking(page).uncheck();
   await expect(includeCourse(page)).toBeDisabled();
+  await expect.poll(async () => (await sql<{ on: boolean }>(`SELECT "focusTrackingEnabled" AS on FROM "UserProfile" WHERE "userId" IN ${ME}`))[0]?.on).toBe(false);
   await page.reload();
   await expect(tracking(page)).not.toBeChecked();
   await expect(includeCourse(page)).not.toBeChecked();
@@ -234,8 +237,15 @@ async function makeTaskIn(page: Page, courseId: string, title: string) {
   made.tasks.push(page.url().split("/").pop()!);
 }
 
+/** Lets the stored timer run out in two seconds, and makes the open page look again (it polls every half minute, and when the tab returns). */
+async function endsSoon(page: Page) {
+  await sql(`UPDATE "ActiveTimer" SET "endsAt" = now() + interval '2 seconds' WHERE "userId" IN ${ME}`);
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+}
+
 const clock = (page: Page) => main(page).getByRole("region", { name: "Study timer" });
 const timerSessions = () => rows<{ courseId: string | null; seconds: number }>("StudySession", `"courseId", seconds`);
+
 
 test("a remembered timer saves once when it finishes, and a reset afterwards adds nothing", async ({ page }) => {
   const code = `STT ${Date.now() % 100000}`;
@@ -243,19 +253,22 @@ test("a remembered timer saves once when it finishes, and a reset afterwards add
   await seedFlags(false, false, true);
   await makeTaskIn(page, courseId, `Timed ${Date.now()}`);
 
-  await page.clock.install({ time: new Date() });
   await page.reload();
   await expect(clock(page)).toContainText(`Remembered under ${code}`);
   await clock(page).getByRole("button", { name: "Start" }).click();
-  await page.clock.fastForward("26:00");
+  await expect(clock(page).getByRole("button", { name: "Pause" })).toBeVisible();
+  // The timer lives on the server: let it run out there, and the page catches up by itself.
+  await endsSoon(page);
 
-  await expect(clock(page).getByRole("status").filter({ hasText: "Done" })).toContainText(`Saved 25 min under ${code}.`);
+  await expect(clock(page).getByRole("status").filter({ hasText: "Saved" })).toContainText(`Saved 25 min under ${code}.`, { timeout: 20_000 });
   await expect.poll(async () => (await timerSessions()).length).toBe(1);
   expect((await timerSessions())[0]).toEqual({ courseId, seconds: 1500 });
 
-  await clock(page).getByRole("button", { name: "Reset" }).click();
+  // Skipping the break and stopping the round add nothing more.
+  await clock(page).getByRole("button", { name: "Skip the break" }).click();
   await clock(page).getByRole("button", { name: "Start" }).click();
   await clock(page).getByRole("button", { name: "Pause" }).click();
+  await clock(page).getByRole("button", { name: "Stop the round" }).click();
   await page.waitForTimeout(500);
   expect(await timerSessions()).toHaveLength(1);
 });
@@ -266,32 +279,37 @@ test("a timer reset part way saves what ran, once", async ({ page }) => {
   await seedFlags(false, false, true);
   await makeTaskIn(page, courseId, `Part ${Date.now()}`);
 
-  await page.clock.install({ time: new Date() });
   await page.reload();
   await clock(page).getByRole("button", { name: "Start" }).click();
-  await page.clock.fastForward("10:00");
+  await page.waitForTimeout(1200); // a pause in the very first second is still "ready", not "paused"
   await clock(page).getByRole("button", { name: "Pause" }).click();
-  await clock(page).getByRole("button", { name: "50m" }).click();
+  await expect(clock(page).getByRole("button", { name: "Resume" })).toBeVisible();
+  // 15 of the 25 minutes left means 10 have run.
+  await sql(`UPDATE "ActiveTimer" SET "pausedRemaining" = 900 WHERE "userId" IN ${ME}`);
+  await page.reload();
+  await clock(page).getByRole("button", { name: "Reset" }).click();
 
-  await expect(clock(page).getByRole("status")).toContainText(`Saved 10 min under ${code}.`);
   await expect.poll(async () => (await timerSessions()).length).toBe(1);
   const [row] = await timerSessions();
   expect(row.courseId).toBe(courseId);
   expect(row.seconds).toBeGreaterThanOrEqual(599);
   expect(row.seconds).toBeLessThanOrEqual(601);
+  await expect(clock(page).getByRole("button", { name: "Start" })).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(await timerSessions()).toHaveLength(1);
 });
 
 test("with remembering off the timer says so and stores nothing", async ({ page }) => {
   const courseId = await makeCourse(page, `STO ${Date.now() % 100000}`);
   await makeTaskIn(page, courseId, `Off ${Date.now()}`);
 
-  await page.clock.install({ time: new Date() });
   await page.reload();
   await expect(clock(page)).toContainText("Not remembered. This is just a clock.");
   await expect(clock(page).getByRole("link", { name: "Focus page" })).toHaveAttribute("href", "/focus");
   await clock(page).getByRole("button", { name: "Start" }).click();
-  await page.clock.fastForward("26:00");
-  await expect(clock(page).getByRole("status").filter({ hasText: "Done" })).not.toContainText("Saved");
+  await expect(clock(page).getByRole("button", { name: "Pause" })).toBeVisible();
+  await endsSoon(page);
+  await expect(clock(page).getByRole("status").filter({ hasText: "Done" })).not.toContainText("Saved", { timeout: 20_000 });
   await page.waitForTimeout(500);
   expect(await timerSessions()).toHaveLength(0);
 });

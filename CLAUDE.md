@@ -3995,42 +3995,41 @@ both ways, `g` then `m`, the phone's More sheet, the phone in both themes). The 
 **Not done:** a longer range or a chosen one; a per-course breakdown; the streak's "freeze" days; card history before the log (only each
 card's last review); the focus (writing) minutes, which are a separate opt-in; notes written per week.
 
-### PDF page references
+### Focus timer on a task
 
-ROADMAP item 41 (*M, model*; built from the roadmap sentence and looked at in the browser, not shown as a mock). An imported paper keeps the
-page each passage came from, and an answer that drew on it names the pages. One additive column, `WorkspaceEmbedding.page` (migration
-`20261117100000_embedding_page`); the previous release does not write it and keeps working.
+ROADMAP item 40 (*M, demo*; shown as a clickable design, redone once at the owner's request, then approved). The task page already had a
+client-side timer (item 18); this replaces it with one that lives on the server. Migration `20261116120000_active_timer`, additive.
 
-- **The pages were already in the text.** `pdf-parse` appends `-- N of T --` on its own line after each page, so every imported PDF note
-  already carries its page boundaries. Nothing about the import changed, and notes imported before this item get pages on their next save or
-  "Rebuild the search index". `lib/pdf-pages.ts` (pure) reads them back: `splitPdfPages` returns the pages only when the markers make a
-  believable sequence (one total, numbers that increase, none past the total, each on its own line), else null, and the note is chunked as
-  before. A marker deleted by hand leaves the others usable; text after the last marker is the next page (a document cut at 100,000
-  characters). **Cost accepted:** a note that happens to hold such a sequence of lines is read as a paper.
-- **A chunk never crosses a page, so its page is exact** (`chunkPages`). A paragraph that runs over a page break becomes two chunks. Short
-  fragments (a page number, a figure label) add no chunk, as `chunkText` already dropped them. Only notes are read this way
-  (`indexEntity(..., { pages: true })` from `note-service` and the reindex), so a task whose text looks like markers gets no pages.
-- **The page comes from the stored chunk, never from the model.** `Citation.page` is read from the retrieved row; the prompt and the relevance
-  floor are untouched (the injection evals measured them), so the model is not shown page numbers and cannot invent one. The assistant shows
-  `p. 3` beside each citation and one sentence per paper above the list ("Used pages 3 and 7 of <title>", `lib/pages-used.ts`). A paper's note
-  page offers "Ask about this paper" (the existing scoped question) instead of "Ask about this note".
+- **One `ActiveTimer` row per account, authoritative on the server.** A timer is exactly one of running (`endsAt`), paused
+  (`pausedRemaining`) or finished (`finishedAt`); a DB `CHECK` refuses any other state. The browser sends only a task id, a length from
+  25 / 50 / 15 and a boolean (`timerStartSchema`); it never sends seconds, a course or an owner. The old `recordTimerSession` action and
+  its client-supplied seconds are gone. Rules are pure in `lib/focus-timer.ts` (state machine, 11 unit tests).
+- **Writes are compare-and-set on `updatedAt`**, in one transaction with the study time they earn, so two tabs, the minute tick and the
+  in-process `setTimeout` finish a phase once, save once, and ring the phone once (only the winner of the finalizing CAS pushes).
+- **Study time:** only focus phases, only if "Remember timer sessions" is on, only 30 s or more (`MIN_SESSION_SECONDS`), under the task's
+  course (a trashed course keeps the link; a purged task gives none). Breaks are never study time. Pausing in the very first second reads
+  as "ready", not "paused" (remaining is rounded up), which only a test can do.
+- **Rounds:** session 1 of 4 dots; the break after the fourth is 15 minutes; starting again on the same task keeps the round, another task
+  starts a new one. Nothing starts by itself: a finished phase waits for Start break / Skip break / Stop the round.
+- **Everywhere in the app:** `TimerProvider` in the dashboard layout holds the snapshot, counts down locally from the server's end time,
+  asks the server to finish at zero, re-reads every 30 s and when the tab returns; `TimerChip` in the header pauses and resumes. The
+  browser notification is asked for on Start, never on load.
+- **Phone:** the existing ntfy push (`ntfyPublisher`, `getPushProfile`); a failing publisher never breaks the timer.
+- **Looking is a GET, not a server action** (`GET /api/focus-timer`). The first version read the timer with a server action, which is a POST on every page load, every poll and every tab return; CI's board and time-grid specs, which fail on any POST ("sends nothing"), failed 11 tests while the same specs passed here. **Lesson: a provider mounted in the layout must not send a POST by itself.**
+- **Not exported:** `ActiveTimer` is in `NOT_EXPORTED` (moment-to-moment state); the study time it saves is exported with study sessions.
 
-**Measured.** Real embedder, five unrelated pages, one question each, scoped to the paper: the top citation was on the right page 5 of 5 (the
-`EVAL_ONLY=pages` slice, which also checks every citation names a page and that nothing of another account appears). 100,000-character
-hostile inputs (7,000 markers, near-markers, newlines, a 99,000-digit marker, 50,000 spaces before one) took at most 5.7 ms through the
-page split and the chunking. 15 mutants on the split rules, the stored and read column, the flag and the citation: 3 survived at first (text
-after the final page, the line anchor masked by the length guard, and the length guard itself, which only skips work), two were closed with
-tests and the guard is an optimisation.
+**Verified.** 28 unit and integration tests for the timer (plus the focus-input and study-time ones); 13 mutants on the rules, the
+repository's `userId` and `updatedAt` scoping, the service and the schema: 5 survived at first and exposed missing tests (a long break
+rule at zero sessions, a delete that ignored a newer state, the same-task round, the no-timer message, a schema bound), all now caught. The
+real actions were replayed with a stubbed session: no session gives `AUTH_REQUIRED` everywhere; another account's task is the same
+"no longer exists"; forged minutes, ids, strings, null and arrays are validation errors; extra `userId` / `seconds` / `courseId` keys are
+dropped and nothing of the other account is touched or saved. 3 browser tests (`focus-timer.spec.ts`: the chip follows to another page and
+pauses the task page, the break flow, a phone) and the three old timer tests in `study-time.spec.ts` rewritten for a server timer ("time
+passing" is `endsAt` moved with SQL plus a `visibilitychange` so the page looks again). Looked at in the browser at 1280 and 375 px, light
+and dark: no horizontal overflow, chip and buttons touch sized. **Not run locally:** `pnpm build`, the whole e2e suite (shortcuts and
+workspace specs, the ones touching the header, pass), the evals and the container rehearsal; CI runs them.
 
-**Tests.** 10 unit (`pdf-pages`) and 3 (`pages-used`); 5 integration (`pdf-pages`: a stubbed embedder, pages stored for a PDF note and none for
-a plain one or a task, search and the citation return the page, an edit re-indexes and removing the markers removes the pages, another
-account's pages never appear); 1 browser test (`pdf-pages.spec.ts`: a hand-made two-page PDF is imported, shows its markers and offers "Ask about this
-paper"; a plain note does not); the eval slice above. Looked at in the browser (the stream mocked) at 1280 and 375 px, light and dark.
-
-**Not done:** a link from a citation to its page in the note (the note's reading view does not anchor the markers); pages on the `/search`
-results and on Related; the PDF's own page labels (a paper numbered from its cover); scanned PDFs (no text, as before); pages for a PDF
-attached rather than imported; a page range for a chunk (a chunk is one page by construction). **Not run locally:** `pnpm build`, the whole
-e2e suite and the container rehearsal; CI runs them.
+**Not done:** a long break length setting, the timer on a note, sound, and a timer per task at once (one per account, by design).
 
 ## Target directory structure
 

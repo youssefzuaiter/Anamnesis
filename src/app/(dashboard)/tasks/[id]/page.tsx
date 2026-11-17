@@ -14,7 +14,8 @@ import type { TaskPriority } from "@/lib/domain";
 import { listProjectOptions } from "@/repositories/project-repository";
 import { listCourseOptions } from "@/repositories/course-repository";
 import { listGoalOptions } from "@/repositories/goal-repository";
-import { StudyTimer } from "@/components/study-timer";
+import { FocusTimerCard } from "@/components/focus-timer-card";
+import { isPhoneAvailable } from "@/services/focus-timer-service";
 import { TaskChecklist } from "@/components/task-checklist";
 import { getChecklist } from "@/services/task-checklist-service";
 import { getSettings } from "@/services/focus-service";
@@ -97,10 +98,11 @@ export default async function TaskPage({ params }: PageProps<"/tasks/[id]">) {
       )}
 
       <div className="mb-4">
-        <StudyTimer
+        <FocusTimerCard
           taskId={task.id}
           taskTitle={task.title}
           remember={{ enabled: focusSwitches.timer, courseCode }}
+          phoneAvailable={await isPhoneAvailable(userId)}
         />
       </div>
 
