@@ -149,5 +149,5 @@ test("a schedule keeps an end only when it follows a start", () => {
 });
 
 test("every kind has a schema and a label for the report", () => {
-  assert.equal(RESTORE_KINDS.length, 10);
+  assert.equal(RESTORE_KINDS.length, 11);
 });
