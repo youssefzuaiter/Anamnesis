@@ -20,6 +20,17 @@ export default function manifest(): MetadataRoute.Manifest {
       method: "GET",
       params: { url: "url", text: "text", title: "title" },
     },
+    // Long-pressing the installed icon on Android, or right-clicking it on desktop Chrome, offers this. iPhone has no manifest shortcuts: there
+    // a home-screen icon made from /capture, or an iOS Shortcut that opens it, does the same.
+    shortcuts: [
+      {
+        name: "Quick capture",
+        short_name: "Capture",
+        description: "Add a task, event or note without opening the app first.",
+        url: "/capture",
+        icons: [{ src: "/brand/anamnesis-icon-512.png", sizes: "512x512", type: "image/png" }],
+      },
+    ],
     background_color: "#f5f6f8",
     theme_color: "#f5f6f8",
     icons: [

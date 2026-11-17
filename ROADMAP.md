@@ -161,4 +161,4 @@ Eight more, chosen with the owner after the numbered list ended. One at a time, 
 - [ ] **42. Weak-spots deck** (S to M, model?). Cards you keep failing and quiz questions you missed, collected into one deck to review. No new scheduling: it only selects from what SM-2 and the quiz already record.
 - [ ] **43. Paper reading tracker** (M, demo). To read, reading, done, with a one-line takeaway, linked to the note and the reference. A thin layer over references.
 - [ ] **44. Weekly goals** (S, demo). A small target such as "three study sessions this week", checked automatically against what the app counts. Needs one additive table.
-- [ ] **45. Home-screen quick capture** (S). A one-tap "add to inbox" shortcut for the phone's home screen, over the capture that already exists.
+- [x] **45. Home-screen quick capture** (S). A one-tap "add to inbox" shortcut for the phone's home screen, over the capture that already exists.
