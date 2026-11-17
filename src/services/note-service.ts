@@ -32,7 +32,7 @@ export type NoteSearchResult = {
  */
 async function syncNoteIndex(userId: string, note: Note): Promise<void> {
   try {
-    await indexEntity(userId, "note", note.id, embeddableTextFor.note(note));
+    await indexEntity(userId, "note", note.id, embeddableTextFor.note(note), { pages: true });
   } catch (error) {
     console.error(`[WARN] Failed to index note ${note.id}:`, error);
     await deleteEntityEmbeddings(userId, "note", note.id).catch(() => {});

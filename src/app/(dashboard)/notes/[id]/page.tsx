@@ -37,6 +37,7 @@ import { normalizeTitle } from "@/lib/wiki-links";
 import { Icon } from "@/components/icons";
 import { PrintButton } from "@/components/print-button";
 import { citedKeys } from "@/lib/citations";
+import { splitPdfPages } from "@/lib/pdf-pages";
 import { referencesByKeys } from "@/services/reference-service";
 import { citationContext } from "@/components/note-citations";
 
@@ -121,7 +122,7 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
               href={scopeHref({ kind: "note", id: note.id })}
               className="font-medium transition-colors hover:text-text"
             >
-              Ask about this note
+              {splitPdfPages(note.content) ? "Ask about this paper" : "Ask about this note"}
             </Link>
             <Link
               href={quizHref({ kind: "note", id: note.id })}

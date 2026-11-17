@@ -1,5 +1,5 @@
 const MAX_CHUNK_CHARS = 1200;
-const MIN_CHUNK_CHARS = 40;
+export const MIN_CHUNK_CHARS = 40;
 
 function splitOversizedBlock(block: string): string[] {
   const sentences = block.match(/[^.!?]+[.!?]*\s*/g) ?? [block];
