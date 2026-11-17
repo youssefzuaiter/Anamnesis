@@ -356,6 +356,7 @@ test("a restored reference with no reading state, an odd one or a takeaway that 
   assert.equal(report.kinds.references.created, 4);
   const byKey = Object.fromEntries((await prisma.reference.findMany({ where: { userId: b } })).map((r) => [r.key, [r.readStatus, r.takeaway]]));
   assert.deepEqual(byKey, { old: ["to_read", null], odd: ["to_read", null], long: ["reading", null], spaced: ["done", "one line"] });
+});
 
 test("weekly goals are restored one per measure: a measure already held is left alone, an unreadable one is counted, not fatal", async () => {
   const b = await newUser();
