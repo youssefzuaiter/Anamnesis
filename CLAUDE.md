@@ -3995,6 +3995,42 @@ both ways, `g` then `m`, the phone's More sheet, the phone in both themes). The 
 **Not done:** a longer range or a chosen one; a per-course breakdown; the streak's "freeze" days; card history before the log (only each
 card's last review); the focus (writing) minutes, which are a separate opt-in; notes written per week.
 
+### Focus timer on a task
+
+ROADMAP item 40 (*M, demo*; shown as a clickable design, redone once at the owner's request, then approved). The task page already had a
+client-side timer (item 18); this replaces it with one that lives on the server. Migration `20261116120000_active_timer`, additive.
+
+- **One `ActiveTimer` row per account, authoritative on the server.** A timer is exactly one of running (`endsAt`), paused
+  (`pausedRemaining`) or finished (`finishedAt`); a DB `CHECK` refuses any other state. The browser sends only a task id, a length from
+  25 / 50 / 15 and a boolean (`timerStartSchema`); it never sends seconds, a course or an owner. The old `recordTimerSession` action and
+  its client-supplied seconds are gone. Rules are pure in `lib/focus-timer.ts` (state machine, 11 unit tests).
+- **Writes are compare-and-set on `updatedAt`**, in one transaction with the study time they earn, so two tabs, the minute tick and the
+  in-process `setTimeout` finish a phase once, save once, and ring the phone once (only the winner of the finalizing CAS pushes).
+- **Study time:** only focus phases, only if "Remember timer sessions" is on, only 30 s or more (`MIN_SESSION_SECONDS`), under the task's
+  course (a trashed course keeps the link; a purged task gives none). Breaks are never study time. Pausing in the very first second reads
+  as "ready", not "paused" (remaining is rounded up), which only a test can do.
+- **Rounds:** session 1 of 4 dots; the break after the fourth is 15 minutes; starting again on the same task keeps the round, another task
+  starts a new one. Nothing starts by itself: a finished phase waits for Start break / Skip break / Stop the round.
+- **Everywhere in the app:** `TimerProvider` in the dashboard layout holds the snapshot, counts down locally from the server's end time,
+  asks the server to finish at zero, re-reads every 30 s and when the tab returns; `TimerChip` in the header pauses and resumes. The
+  browser notification is asked for on Start, never on load.
+- **Phone:** the existing ntfy push (`ntfyPublisher`, `getPushProfile`); a failing publisher never breaks the timer.
+- **Looking is a GET, not a server action** (`GET /api/focus-timer`). The first version read the timer with a server action, which is a POST on every page load, every poll and every tab return; CI's board and time-grid specs, which fail on any POST ("sends nothing"), failed 11 tests while the same specs passed here. **Lesson: a provider mounted in the layout must not send a POST by itself.**
+- **Not exported:** `ActiveTimer` is in `NOT_EXPORTED` (moment-to-moment state); the study time it saves is exported with study sessions.
+
+**Verified.** 28 unit and integration tests for the timer (plus the focus-input and study-time ones); 13 mutants on the rules, the
+repository's `userId` and `updatedAt` scoping, the service and the schema: 5 survived at first and exposed missing tests (a long break
+rule at zero sessions, a delete that ignored a newer state, the same-task round, the no-timer message, a schema bound), all now caught. The
+real actions were replayed with a stubbed session: no session gives `AUTH_REQUIRED` everywhere; another account's task is the same
+"no longer exists"; forged minutes, ids, strings, null and arrays are validation errors; extra `userId` / `seconds` / `courseId` keys are
+dropped and nothing of the other account is touched or saved. 3 browser tests (`focus-timer.spec.ts`: the chip follows to another page and
+pauses the task page, the break flow, a phone) and the three old timer tests in `study-time.spec.ts` rewritten for a server timer ("time
+passing" is `endsAt` moved with SQL plus a `visibilitychange` so the page looks again). Looked at in the browser at 1280 and 375 px, light
+and dark: no horizontal overflow, chip and buttons touch sized. **Not run locally:** `pnpm build`, the whole e2e suite (shortcuts and
+workspace specs, the ones touching the header, pass), the evals and the container rehearsal; CI runs them.
+
+**Not done:** a long break length setting, the timer on a note, sound, and a timer per task at once (one per account, by design).
+
 ## Target directory structure
 
 ```
