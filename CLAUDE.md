@@ -4069,6 +4069,11 @@ own, no-goal and odd stored measures, the recorder flag, the CHECK and the uniqu
 a goal, 6 browser (`weekly-goals.spec.ts`). 24 mutants: 22 caught, 2 equivalent (a lower bound the index guard already enforces, and an early
 return that only skips reads). Looked at in the browser at 1280 and 375 px, light and dark.
 
+**Found by CI, not here:** two of my browser tests assumed "0 tasks finished this week" and failed in the full run, because other specs have
+already finished tasks in the shared account and a task finished and deleted afterwards still counts. They passed locally only because I ran
+the spec alone against a fresh account. The tests now use cards reviewed, a log they clear first. **Lesson for the loop: a test that asserts a
+count over the shared e2e account must clear or control what it counts, and a local single-spec run does not show it.**
+
 **Not done:** a goal per week that is set for one week only; a goal on other measures (events attended, notes edited); showing a past week's
 exact count; a reminder; the weekly review page naming the goals. **Not run locally:** `pnpm build`, the whole e2e suite, the evals and the
 container rehearsal; CI runs them.

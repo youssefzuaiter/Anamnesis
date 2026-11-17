@@ -15,6 +15,12 @@ async function sql<T = Record<string, string>>(statement: string, params: unknow
   }
 }
 
+// The account is shared by every spec in a run, and a task finished (even one deleted since) counts for the week, so a count cannot be assumed to start
+// at zero. Cards reviewed come from a log these tests can clear, so they are the measure whose count is known.
+test.beforeEach(async () => {
+  await sql(`DELETE FROM "CardReview" WHERE "userId" IN ${ME}`);
+});
+
 test.afterEach(async () => {
   await sql(`DELETE FROM "WeeklyGoal" WHERE "userId" IN ${ME}`);
   await sql(`DELETE FROM "Task" WHERE "userId" IN ${ME} AND title LIKE 'WG %'`);
@@ -22,36 +28,36 @@ test.afterEach(async () => {
 });
 
 const section = (page: Page) => main(page).getByRole("region", { name: "Weekly goals" });
-const seedDoneTasks = async (n: number) => {
-  for (let i = 0; i < n; i++) await sql(`INSERT INTO "Task" (id, "userId", title, status, priority, tags, "estimatedMinutes", "completedAt", "updatedAt") VALUES (gen_random_uuid()::text, ${ME}, $1, 'done', 'low', '{}', 30, now(), now())`, [`WG ${i}`]);
+const seedReviews = async (n: number) => {
+  for (let i = 0; i < n; i++) await sql(`INSERT INTO "CardReview" (id, "userId", grade, "reviewedAt") VALUES (gen_random_uuid()::text, ${ME}, 'good', now())`);
 };
 
 test("with no goals the section says so, and a goal is added from the form with its sentence", async ({ page }) => {
   await page.goto("/stats");
   await expect(section(page)).toContainText("No weekly goals yet");
   await section(page).getByRole("button", { name: "Add a goal" }).click();
-  await section(page).getByLabel("What to count").selectOption("tasks_finished");
-  await expect(section(page).getByLabel("Each week")).toHaveValue("5");
+  await section(page).getByLabel("What to count").selectOption("cards_reviewed");
+  await expect(section(page).getByLabel("Each week")).toHaveValue("50");
   await section(page).getByLabel("Each week").fill("2");
-  await expect(section(page)).toContainText("2 tasks finished every week, Monday to Sunday.");
+  await expect(section(page)).toContainText("2 cards reviewed every week, Monday to Sunday.");
   await section(page).getByRole("button", { name: "Add goal" }).click();
 
   const bar = section(page).getByRole("img", { name: "0 of 2, 2 to go" });
   await expect(bar).toBeVisible();
-  await expect(section(page)).toContainText("2 tasks finished");
+  await expect(section(page)).toContainText("2 cards reviewed");
   await expect(section(page).getByLabel("What to count")).toHaveCount(0);
-  expect((await sql(`SELECT measure, target FROM "WeeklyGoal" WHERE "userId" IN ${ME}`))).toEqual([{ measure: "tasks_finished", target: 2 }]);
+  expect((await sql(`SELECT measure, target FROM "WeeklyGoal" WHERE "userId" IN ${ME}`))).toEqual([{ measure: "cards_reviewed", target: 2 }]);
 
   await section(page).getByRole("button", { name: "Add a goal" }).click();
-  await expect(section(page).getByLabel("What to count").locator("option")).toHaveText(["Study sessions", "Minutes studied", "Cards reviewed", "Notes written"]);
+  await expect(section(page).getByLabel("What to count").locator("option")).toHaveText(["Study sessions", "Minutes studied", "Tasks finished", "Notes written"]);
 });
 
 test("this week's count follows what the app records, and reaching the target says so in words", async ({ page }) => {
-  await sql(`INSERT INTO "WeeklyGoal" (id, "userId", measure, target, "updatedAt") VALUES (gen_random_uuid()::text, ${ME}, 'tasks_finished', 2, now())`);
-  await seedDoneTasks(1);
+  await sql(`INSERT INTO "WeeklyGoal" (id, "userId", measure, target, "updatedAt") VALUES (gen_random_uuid()::text, ${ME}, 'cards_reviewed', 2, now())`);
+  await seedReviews(1);
   await page.goto("/stats");
   await expect(section(page).getByRole("img", { name: "1 of 2, 1 to go" })).toBeVisible();
-  await seedDoneTasks(2);
+  await seedReviews(2);
   await page.reload();
   await expect(section(page).getByRole("img", { name: "3 of 2, reached" })).toBeVisible();
   await expect(section(page)).toContainText("Reached");
