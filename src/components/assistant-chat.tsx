@@ -7,6 +7,7 @@ import type { Citation } from "@/services/assistant-service";
 import type { ActionProposal } from "@/lib/ai-tools";
 import { ProposalCard } from "@/components/proposal-card";
 import { ScopePicker, scopeLabel, type ScopeChoices } from "@/components/scope-picker";
+import { pagesUsed, pagesSentence } from "@/lib/pages-used";
 import { historyForScope, scopeKey, type AssistantScope } from "@/lib/assistant-scope";
 
 type Turn = {
@@ -27,9 +28,20 @@ const SUGGESTIONS = [
 
 function CitationList({ citations }: { citations: Citation[] }) {
   if (citations.length === 0) return null;
+  const used = pagesUsed(citations);
 
   return (
-    <ol className="mt-3 flex flex-col gap-1.5 border-t border-border-subtle pt-3">
+    <div className="mt-3 border-t border-border-subtle pt-3">
+    {used.length > 0 && (
+      <div className="mb-2 flex flex-col gap-0.5">
+        {used.map((entry) => (
+          <p key={entry.sourceId} className="text-xs font-medium text-text">
+            {pagesSentence(entry)}
+          </p>
+        ))}
+      </div>
+    )}
+    <ol className="flex flex-col gap-1.5">
       {citations.map((citation) => (
         <li key={citation.index} className="flex gap-2 text-xs">
           <span className="shrink-0 font-mono font-semibold text-ai">
@@ -46,6 +58,7 @@ function CitationList({ citations }: { citations: Citation[] }) {
             ) : (
               <span className="font-medium text-text">{citation.title}</span>
             )}
+            {citation.page !== null && <span className="ml-1.5 font-mono text-text-muted">p. {citation.page}</span>}
             <p className="mt-0.5 line-clamp-2 text-text-muted">
               {citation.excerpt}
             </p>
@@ -56,6 +69,7 @@ function CitationList({ citations }: { citations: Citation[] }) {
         </li>
       ))}
     </ol>
+    </div>
   );
 }
 

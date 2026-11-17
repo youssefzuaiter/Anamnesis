@@ -118,9 +118,9 @@ const RETRIEVAL_CASES: { query: string; expect: string }[] = [
 async function main() {
   // One section on its own, so a model-backed measurement need not run the whole suite:
   // `EVAL_ONLY=quiz pnpm eval`.
-  if (process.env.EVAL_ONLY === "quiz" || process.env.EVAL_ONLY === "edits" || process.env.EVAL_ONLY === "summary") {
+  if (process.env.EVAL_ONLY === "quiz" || process.env.EVAL_ONLY === "edits" || process.env.EVAL_ONLY === "summary" || process.env.EVAL_ONLY === "pages") {
     try {
-      await (process.env.EVAL_ONLY === "quiz" ? quizSection() : process.env.EVAL_ONLY === "edits" ? editsSection() : summarySection());
+      await (process.env.EVAL_ONLY === "quiz" ? quizSection() : process.env.EVAL_ONLY === "edits" ? editsSection() : process.env.EVAL_ONLY === "pages" ? pagesSection() : summarySection());
     } finally {
       await prisma.$disconnect();
     }
@@ -3672,6 +3672,43 @@ async function editsSection() {
     );
   } finally {
     await prisma.user.delete({ where: { id: editUser.id } });
+  }
+}
+
+async function pagesSection() {
+  section("PDF page references (real embedder; the model is not involved)");
+  // ROADMAP 41: a note from a PDF stores the page of each chunk, and a question's citations name the page they came from. Five pages on five
+  // unrelated topics, one question each: the top citation should be the page that holds the answer.
+  const owner = await prisma.user.create({ data: { email: `pages-${randomUUID()}@test.local`, passwordHash: "eval" } });
+  const other = await prisma.user.create({ data: { email: `pages-other-${randomUUID()}@test.local`, passwordHash: "eval" } });
+  try {
+    const PAGES = [
+      "Gradient descent updates the weights in the direction opposite to the gradient of the loss. The learning rate sets how large each step is, and a rate that is too high makes the loss diverge.",
+      "Photosynthesis takes place in the chloroplasts. The light-dependent reactions split water, release oxygen and produce ATP and NADPH, which the Calvin cycle then uses to fix carbon dioxide.",
+      "Constantinople fell to Mehmed II in 1453 after a siege of fifty-three days, and became the capital of the Ottoman Empire, later called Istanbul.",
+      "A sourdough starter is a fermented mix of flour and water kept alive by feeding it regularly. It raises bread without commercial yeast and gives it a sour taste.",
+      "The Great Barrier Reef suffers coral bleaching when ocean temperatures stay above normal for weeks, so the corals expel the algae that live in their tissue.",
+    ];
+    const QUESTIONS = ["What happens if the learning rate is too high?", "What do the light-dependent reactions produce?", "When did Constantinople fall and to whom?", "How do you keep a sourdough starter alive?", "What causes coral bleaching?"];
+    const content = PAGES.map((text, i) => `${text}\n-- ${i + 1} of ${PAGES.length} --`).join("\n");
+    const paper = await noteService.createNote(owner.id, { title: "Five unrelated pages", content, tags: ["imported"], isFavorite: false, projectId: null, courseId: null });
+    await noteService.createNote(other.id, { title: "Other", content: `OTHER-ACCOUNT ${PAGES[4]}\n-- 1 of 1 --`, tags: [], isFavorite: false, projectId: null, courseId: null });
+    let right = 0;
+    let everyHasPage = true;
+    for (const [i, question] of QUESTIONS.entries()) {
+      const { citations } = await assistantService.retrieveContext(owner.id, question, [], { kind: "note", id: paper.id });
+      const top = citations[0];
+      if (top?.page === i + 1) right++;
+      if (citations.some((c) => c.page === null)) everyHasPage = false;
+      console.log(`  PAGE  "${question}" -> top citation page ${top?.page ?? "none"} (expected ${i + 1}), ${citations.length} citations`);
+    }
+    console.log(`  PAGE  top citation on the right page: ${right}/${QUESTIONS.length}`);
+    check("every citation from a paper names a page", everyHasPage);
+    check("the top citation is on the page that holds the answer for at least 4 of 5 questions", right >= 4, `${right}/5`);
+    const unscoped = await assistantService.retrieveContext(owner.id, QUESTIONS[4], []);
+    check("an unscoped question cites only the caller's own pages", unscoped.citations.every((c) => c.sourceId === paper.id));
+  } finally {
+    await prisma.user.deleteMany({ where: { id: { in: [owner.id, other.id] } } });
   }
 }
 
