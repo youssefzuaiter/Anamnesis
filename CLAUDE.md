@@ -4117,6 +4117,45 @@ count over the shared e2e account must clear or control what it counts, and a lo
 exact count; a reminder; the weekly review page naming the goals. **Not run locally:** `pnpm build`, the whole e2e suite, the evals and the
 container rehearsal; CI runs them.
 
+### Quick capture
+
+ROADMAP item 45 (*S*; built from the roadmap sentence and looked at in the browser, not shown as a mock). A **one-tap way into the capture that
+already exists**: `/capture` is the capture box from Today on a page of its own, ready to type, for a home-screen icon or a Shortcut to open.
+No migration, no new action, no new route that writes.
+
+- **Nothing is new in what capture does.** The box is the existing `QuickCapture`: Capture parses through `/api/ai/parse` (dates by code, the
+  model only classifies; with the model off it falls back to code and still proposes), the person sees what it would become, and **nothing is
+  saved until Create** (`confirmCaptureAction`, which checks everything again). The roadmap's "add to inbox" is that: there is no inbox entity, and
+  adding one was not asked for.
+- **The page is outside the dashboard layout** (`src/app/capture/page.tsx`), for two reasons: a home-screen launch should show the box and nothing
+  else (no sidebar), and the dashboard layout redirects a signed-out visit to `/login` without knowing which page was asked for. The page checks the
+  session itself and sends a signed-out visit to `/login?next=/capture?text=…`; sign-in then returns to it (`safeNext`, tested end to end).
+- **`?text=` only prefills the box** (`lib/capture-link.ts`, pure): one plain string (a repeated parameter is empty), line breaks and control
+  characters become spaces, trimmed, cut at 1,000 characters (what the parser accepts) and only the first 8,000 characters are read, so a value
+  that begins with more white space than that comes out empty (a bound on the work, 5.7 ms on 500,000 hostile characters in the tests). It is
+  never submitted by itself, so a link anyone sends can fill the box with their words but cannot create anything: the same accepted risk as
+  `/share`. The box is focused on arrival with the cursor after the text.
+- **The shortcut.** The manifest gained `shortcuts: [{ name: "Quick capture", url: "/capture" }]`: Android and desktop Chrome offer it on a
+  long-press (or right-click) of the installed icon. **iPhone has no manifest shortcuts** (the same WebKit gap as the share target, item 21), so
+  there the way is a home-screen icon made from `/capture` in Safari, or a Shortcut with Open URL (and, to ask for text first, `?text=`). The
+  page says so in a "Put this on your home screen" section. **Not tried on an iPhone or an Android phone:** the manifest entry is checked in the
+  served manifest and the page in a desktop browser only; verify on the phone, as with item 21. Whether iOS keeps `/capture` or opens the
+  manifest's `start_url` when a page is added to the home screen is the thing to check there.
+- **Found by looking, not by a test:** the capture buttons were 32 to 40 px tall (they share `QuickCapture` with Today); Create, Discard, Capture
+  and the microphone are 44 px now. And a focus ring appeared **twice** (the bar's, and an inner one on the input): focusing the box from script
+  counts as keyboard focus, and the global `*:focus-visible` rule is **unlayered, so it beats any Tailwind utility class** (`focus-visible:outline-none`
+  did nothing); an inline `style={{ outline: "none" }}` removes it and the bar keeps the ring.
+
+**Tests.** 6 unit (`capture-link`: the text rules, line breaks and control characters, the cut and the 8,000-character read, the address, speed
+on hostile text), 8 browser (`quick-capture.spec.ts`: the box is focused and nothing else is in the way, `?text=` fills it and creates nothing,
+a repeat is empty and a long text is cut, capture then Create makes the thing and opens it, signed out goes through sign-in and back with the
+text, a hostile text stays in the query, the manifest lists the shortcut, a phone). 13 mutants on the helper, the page, the focus and the manifest,
+all caught after one (the 8,000-character read) was pinned with a test; one more is equivalent (`\s` already covers U+2028 and U+2029).
+
+**Not done:** an inbox that holds raw captures to sort later; saving without the confirm step; sharing text from other apps into the box (the
+share target still opens the clip card for links); a sidebar item or a `g` key for it; a service worker for offline capture. **Not run locally:**
+`pnpm build`, the whole e2e suite, the evals and the container rehearsal; CI runs them.
+
 ## Target directory structure
 
 ```

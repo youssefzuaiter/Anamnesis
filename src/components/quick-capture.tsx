@@ -81,9 +81,10 @@ function describe(proposal: Proposal): string[] {
   return ["Saved as a note"];
 }
 
-export function QuickCapture() {
+export function QuickCapture({ autoFocus = false, initialText = "" }: { autoFocus?: boolean; initialText?: string } = {}) {
   const router = useRouter();
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +98,14 @@ export function QuickCapture() {
   useEffect(() => {
     return () => recognitionRef.current?.stop();
   }, []);
+
+  // On the quick-capture page the box is ready for typing at once (the keyboard comes up on a phone), with the cursor after any text a link put there.
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!autoFocus || !input) return;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }, [autoFocus]);
 
   function toggleListening() {
     if (listening) {
@@ -185,6 +194,10 @@ export function QuickCapture() {
       <div className="flex items-center gap-2 rounded-2xl border border-control bg-surface py-1.5 pl-4 pr-1.5 shadow-card focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent">
         <Icon name="plus" className="size-[18px] text-text-faint" />
         <input
+          ref={inputRef}
+          // The ring is drawn on the bar (focus-within). The global `*:focus-visible` rule is unlayered, so it beats any utility class; only an inline
+          // style removes the second, inner ring it adds when the box is focused by script.
+          style={{ outline: "none" }}
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {
@@ -209,7 +222,7 @@ export function QuickCapture() {
           aria-label={listening ? "Stop voice input" : "Capture by voice"}
           aria-pressed={listening}
           title={listening ? "Stop listening" : "Capture by voice"}
-          className={`inline-flex size-10 items-center justify-center rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+          className={`inline-flex size-11 items-center justify-center rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
             listening
               ? "animate-pulse bg-danger-soft text-danger"
               : "text-text-muted hover:bg-surface-subtle hover:text-text"
@@ -221,7 +234,7 @@ export function QuickCapture() {
           type="button"
           onClick={parse}
           disabled={busy || !text.trim()}
-          className="min-h-10 rounded-xl bg-accent px-4 text-sm font-semibold text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-11 rounded-xl bg-accent px-4 text-sm font-semibold text-on-accent transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy && !proposal ? "Reading…" : "Capture"}
         </button>
@@ -255,12 +268,12 @@ export function QuickCapture() {
             </div>
           </div>
 
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={confirm}
               disabled={busy}
-              className="rounded-lg bg-accent px-3.5 py-1.5 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-60"
+              className="inline-flex min-h-11 items-center rounded-lg bg-accent px-4 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-60"
             >
               {busy ? "Saving…" : `Create ${KIND_LABEL[proposal.kind].toLowerCase()}`}
             </button>
@@ -268,7 +281,7 @@ export function QuickCapture() {
               type="button"
               onClick={() => setProposal(null)}
               disabled={busy}
-              className="rounded-lg px-3 py-1.5 text-sm text-text-muted transition-colors hover:text-text disabled:opacity-60"
+              className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm text-text-muted transition-colors hover:text-text disabled:opacity-60"
             >
               Discard
             </button>
