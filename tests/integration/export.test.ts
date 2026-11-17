@@ -106,6 +106,7 @@ async function populate(userId: string, label: string) {
       details: { container: "Journal", doi: "10.1/x" }, bibtex: `@article{ref-${label}, title={Paper}}`,
     },
   });
+  const weeklyGoal = await prisma.weeklyGoal.create({ data: { userId, measure: "cards_reviewed", target: 50 } });
   const profile = await prisma.userProfile.create({
     data: {
       userId, university: `Uni ${label}`, program: "AI", studentId: "123", targetGpa: 3.25, gpaScale: [{ letter: "AA", points: 4 }],
@@ -114,7 +115,7 @@ async function populate(userId: string, label: string) {
     },
   });
   return {
-    ids: [goal, project, course, assessment, note, version, attachment, card, task, checklistItem, subscription, event, link, telemetry, studySession, audit, conversation, message, reference, profile].map((row) => row.id),
+    ids: [goal, project, course, assessment, note, version, attachment, card, task, checklistItem, subscription, event, link, telemetry, studySession, audit, conversation, message, reference, weeklyGoal, profile].map((row) => row.id),
     note, course, conversation,
   };
 }

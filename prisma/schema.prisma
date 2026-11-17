@@ -50,6 +50,7 @@ model User {
   references         Reference[]
   duplicateDecisions DuplicateDecision[]
   activeTimer        ActiveTimer?
+  weeklyGoals        WeeklyGoal[]
   cardReviews        CardReview[]
 }
 
@@ -451,6 +452,8 @@ model WorkspaceEmbedding {
   sourceType   String
   sourceId     String
   contentChunk String                      @db.Text
+  // The page of an imported PDF this chunk came from (ROADMAP item 41); null for everything else.
+  page         Int?
   embedding    Unsupported("vector(768)")?
   createdAt    DateTime                    @default(now())
 
@@ -529,19 +532,22 @@ model ReminderDelivery {
 /// A work a note can cite with [@key] (ROADMAP 22). Hard deleted: a note citing a deleted key shows it as
 /// unresolved, so nothing in a note is lost. Fields are as lib/bibtex.ts reads them.
 model Reference {
-  id        String   @id @default(uuid())
-  userId    String
-  key       String
-  type      String
-  title     String
-  authors   Json     @default("[]")
-  year      Int?
+  id         String   @id @default(uuid())
+  userId     String
+  key        String
+  type       String
+  title      String
+  authors    Json     @default("[]")
+  year       Int?
   /// container, volume, issue, pages, publisher, edition, editors, institution, number, doi, url, degree
-  details   Json     @default("{}")
+  details    Json     @default("{}")
   /// The entry as imported, so an export gives it back as it came; null for one made in the app.
-  bibtex    String?  @db.Text
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  bibtex     String?  @db.Text
+  /// Reading state (ROADMAP item 43): to_read, reading or done, and a one-line takeaway.
+  readStatus String   @default("to_read")
+  takeaway   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -616,6 +622,21 @@ model ActiveTimer {
   updatedAt       DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// A standing weekly target (ROADMAP item 44), such as "3 study sessions": the measure is one of a fixed list and the target a whole number. One goal
+/// per measure. Nothing about a week is stored: each week is counted from what the app already records.
+model WeeklyGoal {
+  id        String   @id @default(uuid())
+  userId    String
+  measure   String
+  target    Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, measure])
 }
 
 /// One line for every time a card was reviewed (ROADMAP item 39): when, and how it was graded. It exists for the stats page: a card

@@ -1,12 +1,14 @@
 import { requireUserId } from "@/lib/session";
 import { getStats } from "@/services/stats-service";
 import { StatsCharts } from "@/components/stats-charts";
+import { WeeklyGoals } from "@/components/weekly-goals";
+import { getWeeklyGoals } from "@/services/weekly-goal-service";
 
 export const metadata = { title: "Stats · Anamnesis" };
 
 export default async function StatsPage() {
   const userId = await requireUserId();
-  const stats = await getStats(userId);
+  const [stats, weekly] = await Promise.all([getStats(userId), getWeeklyGoals(userId)]);
   const { streak, days } = stats;
 
   const note = streak.current === 0
@@ -44,6 +46,8 @@ export default async function StatsPage() {
           ))}
         </ol>
       </section>
+
+      <WeeklyGoals overview={weekly} />
 
       <StatsCharts stats={stats} />
 

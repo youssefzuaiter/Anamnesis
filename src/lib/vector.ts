@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { embedDocuments, assertValidEmbedding } from "@/lib/ollama";
 import { chunkText } from "@/lib/chunking";
+import { chunkPages } from "@/lib/pdf-pages";
 import { AppError } from "@/lib/api-response";
 
 export const EMBEDDABLE_SOURCE_TYPES = [
@@ -21,6 +22,8 @@ export type VectorSearchResult = {
   sourceType: EmbeddableSourceType;
   sourceId: string;
   contentChunk: string;
+  /** The page of an imported PDF the chunk came from; null for anything else. */
+  page: number | null;
   similarity: number;
 };
 
@@ -57,8 +60,11 @@ export async function indexEntity(
   sourceType: EmbeddableSourceType,
   sourceId: string,
   text: string,
+  options: { pages?: boolean } = {},
 ): Promise<number> {
-  const chunks = chunkText(text);
+  // A note that came from a PDF knows the page of each chunk (`chunkPages`); everything else is chunked as it always was.
+  const pieces = options.pages ? chunkPages(text) : chunkText(text).map((chunk) => ({ text: chunk, page: null }));
+  const chunks = pieces.map((piece) => piece.text);
 
   if (chunks.length === 0) {
     await deleteEntityEmbeddings(userId, sourceType, sourceId);
@@ -75,13 +81,14 @@ export async function indexEntity(
     for (const [index, chunk] of chunks.entries()) {
       await tx.$executeRaw`
         INSERT INTO "WorkspaceEmbedding"
-          ("id", "userId", "sourceType", "sourceId", "contentChunk", "embedding")
+          ("id", "userId", "sourceType", "sourceId", "contentChunk", "page", "embedding")
         VALUES (
           ${randomUUID()},
           ${userId},
           ${sourceType},
           ${sourceId},
           ${chunk},
+          ${pieces[index].page},
           ${toVectorLiteral(embeddings[index])}::vector
         )`;
     }
@@ -124,6 +131,7 @@ export async function searchWorkspaceVectors(
         "sourceType",
         "sourceId",
         "contentChunk",
+        "page",
         1 - ("embedding" <=> ${vector}::vector) AS "similarity"
       FROM "WorkspaceEmbedding"
       WHERE "userId" = ${userId}

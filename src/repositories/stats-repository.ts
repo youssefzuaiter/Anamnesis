@@ -41,3 +41,13 @@ export async function firstCardReview(userId: string): Promise<Date | null> {
   const row = await prisma.cardReview.findFirst({ where: { userId }, orderBy: { reviewedAt: "asc" }, select: { reviewedAt: true } });
   return row?.reviewedAt ?? null;
 }
+
+/** When notes were written (created) in a span, for the weekly goals. Trashed notes are counted: the writing happened. Timestamps only. */
+export function listNoteCreations(userId: string, since: Date, until: Date): Promise<{ createdAt: Date }[]> {
+  return prisma.note.findMany({
+    where: { userId, createdAt: { gte: since, lt: until } },
+    select: { createdAt: true },
+    orderBy: { createdAt: "desc" },
+    take: TAKE,
+  });
+}

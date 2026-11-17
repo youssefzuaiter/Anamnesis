@@ -5,6 +5,8 @@ import { getDashboard, type TodayBlock } from "@/services/dashboard-service";
 import { daysUntilLabel } from "@/lib/grades";
 import { TaskRow } from "@/components/task-row";
 import { ExamReadinessCard } from "@/components/exam-readiness-card";
+import { TodayGoals } from "@/components/today-goals";
+import { getWeeklyGoals } from "@/services/weekly-goal-service";
 import { QuickCapture } from "@/components/quick-capture";
 import { PlanDay } from "@/components/plan-day";
 import { ShutDownDay } from "@/components/shut-down-day";
@@ -178,6 +180,7 @@ export default async function DashboardPage() {
     todayNote,
     revisit,
   } = await getDashboard(userId, now);
+  const weeklyGoals = await getWeeklyGoals(userId, now);
 
   const firstName = session?.user?.name?.split(" ")[0] ?? "there";
   const slots: Slot[] = [
@@ -334,6 +337,8 @@ export default async function DashboardPage() {
               </section>
 
               {examReadiness && <ExamReadinessCard readiness={examReadiness} />}
+
+              <TodayGoals overview={weeklyGoals} />
 
               {nextEvent && (
                 <section aria-labelledby="next-title" className={`${CARD} px-5 py-4`}>

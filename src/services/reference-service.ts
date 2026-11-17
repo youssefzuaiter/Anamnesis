@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AppError } from "@/lib/api-response";
 import { parseBibtex, type Problem, type RefFields } from "@/lib/bibtex";
 import { citedKeys } from "@/lib/citations";
+import { readingSchema, type ReadStatus, READ_STATUSES } from "@/lib/reading";
 import { DETAIL_FIELDS, referenceSchema, sameContent } from "@/lib/reference-input";
 import * as repo from "@/repositories/reference-repository";
 import type { Reference } from "@/generated/prisma/client";
@@ -13,7 +14,15 @@ import type { Reference } from "@/generated/prisma/client";
  * text again rather than trusting a list from the browser, and adds only keys the account does not have.
  */
 
-export type StoredReference = RefFields & { id: string; bibtex: string | null; createdAt: Date; updatedAt: Date };
+export type StoredReference = RefFields & {
+  id: string;
+  bibtex: string | null;
+  /** Reading state (ROADMAP item 43). A value an older release or a hand edit left that is not a status reads as "to read". */
+  readStatus: ReadStatus;
+  takeaway: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 const MAX_IMPORT_CHARS = 1_000_000;
 const MAX_IMPORT_ENTRIES = 2_000;
@@ -36,6 +45,8 @@ function fromRow(row: Reference): StoredReference {
     year: row.year,
     ...(details.success ? details.data : {}),
     bibtex: row.bibtex,
+    readStatus: (READ_STATUSES as readonly string[]).includes(row.readStatus) ? (row.readStatus as ReadStatus) : "to_read",
+    takeaway: row.takeaway,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -94,10 +105,19 @@ export async function updateReference(userId: string, id: string, input: unknown
   return getReference(userId, id);
 }
 
+/** Sets whether a work is to read, being read or done, and its one-line takeaway. Nothing else about the reference changes. */
+export async function setReading(userId: string, id: string, input: unknown): Promise<StoredReference> {
+  const parsed = readingSchema.safeParse(input);
+  if (!parsed.success) throw new AppError("VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Choose a status and try again.");
+  const found = z.uuid().safeParse(id).success && (await repo.updateReading(userId, id, { readStatus: parsed.data.status, takeaway: parsed.data.takeaway }));
+  if (!found) throw new AppError("RESOURCE_NOT_FOUND", NOT_FOUND);
+  return getReference(userId, id);
+}
+
 /** A stored reference passed back in as input: only its fields count. */
 function stripStored(input: unknown): unknown {
   if (!input || typeof input !== "object") return input;
-  const stored = new Set(["id", "bibtex", "createdAt", "updatedAt"]);
+  const stored = new Set(["id", "bibtex", "readStatus", "takeaway", "createdAt", "updatedAt"]);
   return Object.fromEntries(Object.entries(input).filter(([field]) => !stored.has(field)));
 }
 
@@ -159,4 +179,16 @@ export async function notesCiting(userId: string, key: string): Promise<{ id: st
     .filter((note) => citedKeys(note.content).includes(key))
     .slice(0, 50)
     .map(({ id, title }) => ({ id, title }));
+}
+
+/** How many notes cite each key. Reads the 1,000 most recently edited notes that contain an "@"; `capped` says there were more, so the counts are "at least". */
+const COUNT_NOTES = 1_000;
+export async function citationCounts(userId: string, keys: string[]): Promise<{ counts: Map<string, number>; capped: boolean }> {
+  const known = new Set(keys);
+  const counts = new Map<string, number>();
+  const texts = await repo.noteTextsWithAt(userId, COUNT_NOTES);
+  for (const text of texts) {
+    for (const key of new Set(citedKeys(text))) if (known.has(key)) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return { counts, capped: texts.length >= COUNT_NOTES };
 }
