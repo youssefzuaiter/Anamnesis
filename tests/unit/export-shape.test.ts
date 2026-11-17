@@ -68,7 +68,7 @@ test("the file says what it leaves out, with a reason for each", () => {
 test("the table of exported models is one key each and never collides with a top-level key", () => {
   const keys = Object.values(EXPORTED_MODELS);
   assert.equal(new Set(keys).size, keys.length, "payload keys are unique");
-  assert.equal(keys.length, 20);
+  assert.equal(keys.length, 21);
   for (const reserved of ["user", "exportedAt", "formatVersion", "notIncluded"]) {
     assert.ok(!keys.includes(reserved), reserved);
   }

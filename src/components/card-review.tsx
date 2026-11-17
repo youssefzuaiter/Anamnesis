@@ -33,7 +33,7 @@ function Piece({ piece }: { piece: ClozePiece }) {
   return <>{piece.text}</>;
 }
 
-export function CardReview({ queue: cards }: { queue: ReviewCard[] }) {
+export function CardReview({ queue: cards, weak = false }: { queue: ReviewCard[]; /** The weak-spots deck: cards are practised whether or not they are due. */ weak?: boolean }) {
   // A session is the queue it started with. Every grade revalidates the page, and the card
   // just graded is no longer due, so following the prop would shorten the list under the
   // review position: the next card would be skipped and the end would read "Nothing due".
@@ -51,7 +51,9 @@ export function CardReview({ queue: cards }: { queue: ReviewCard[] }) {
       <div className="rounded-xl border border-dashed border-border-strong px-4 py-10 text-center">
         <p className="text-sm text-text-muted">
           {queue.length === 0
-            ? "Nothing due right now."
+            ? weak
+              ? "No weak spots right now."
+              : "Nothing due right now."
             : "That's the queue cleared."}
         </p>
         <p className="mt-1 text-xs text-text-muted">
@@ -85,7 +87,7 @@ export function CardReview({ queue: cards }: { queue: ReviewCard[] }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-text-muted">
-        {index + 1} of {queue.length} due
+        {index + 1} of {queue.length}{weak ? "" : " due"}
       </p>
 
       <div className="rounded-2xl border border-border-subtle bg-surface p-6">

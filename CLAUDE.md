@@ -4070,6 +4070,164 @@ parser already makes unique). Looked at in the browser at 1280 and 375 px, light
 cites it; setting it from the list; the takeaway in the APA reference list. **Not run locally:** `pnpm build`, the whole e2e suite, the evals
 and the container rehearsal; CI runs them.
 
+### Weekly goals
+
+ROADMAP item 44 (*S, demo*; shown as a design: the Stats section, the add form and empty state, the Today card, dark and a phone; approved
+before any code). A standing weekly target such as "3 study sessions", checked automatically against what the app already records. **One
+additive table, `WeeklyGoal`** (migration `20261117160000_weekly_goal`: `measure`, `target`, unique on `(userId, measure)`, a CHECK that the
+target is 1 to 999). Nothing about a week is stored; each week is counted when the page is read.
+
+- **Five measures, one goal each** (`lib/weekly-goals.ts`, pure): study sessions (timer sessions recorded), minutes studied (the week's total
+  seconds, floored, not per session), cards reviewed (`CardReview` lines), tasks finished (`completedAt`) and notes written (`createdAt`). A
+  second goal for a measure is refused with "Change its target instead"; a stored measure that is not one of the five is not shown.
+- **Counted the way the stats page counts.** Weeks are Monday to Sunday by local calendar day (`dayNumber`, so a clock change never moves a
+  day: tested around both changes in Berlin, New York and Sydney); nothing before the first week or after today is counted. A task finished and
+  deleted afterwards still counts as finished, and a note written and trashed still counts as written, since it happened. **Study goals stay at 0
+  while "Remember timer sessions" is off**, and the form and the row both say so with a link to Focus. A daily note counts as a note written.
+- **The last eight finished weeks are marked reached or not against the target as it is now.** This week is left out of that row (it is not
+  over). So raising a target rewrites how the past reads, and the page says so. A week is never stored, so there is nothing to migrate if the
+  rule changes.
+- **Nothing nags:** no notification when a goal is reached or missed, no red; "Reached" is a word beside the bar, a missed week is an empty
+  square, and the numbers are in words (the bar only repeats them).
+- **Where.** The section is on **Stats** (`#weekly-goals`: add, change target, remove) and a read-only **This week** card on Today, shown only
+  when there is a goal and, like the other cards, not on an empty workspace (which keeps its onboarding message).
+- **Ownership.** `addWeeklyGoalAction`, `setWeeklyGoalTargetAction`, `removeWeeklyGoalAction`: `requireUserId`, then the service checks the input
+  with one schema; the writes are `updateMany`/`deleteMany` with the `userId` in the `where`. A foreign, missing or malformed id is the same
+  `RESOURCE_NOT_FOUND`; a smuggled `userId`, `id` or `createdAt` is dropped.
+- **Export and restore.** Goals are in the JSON export (`weeklyGoals`) and a restore adds the ones whose measure the account does not hold, counts
+  an unreadable one instead of failing, and restoring the same file twice adds nothing.
+
+**Measured.** `getWeeklyGoals` with all five goals and 110,000 rows of history (20,000 tasks, 50,000 card reviews, 20,000 sessions, 20,000
+notes): 149 to 224 ms, and it runs on Today as well as Stats while there is a goal (each read is bounded at 50,000 rows). With no goal nothing
+is read. The real actions were replayed with a stubbed session: no session, another account's goal, a malformed or object id, an unknown
+measure, targets of 0, 1000, 1e21, a string, NaN and an object, null, an array and mass assignment all behaved.
+
+**Tests.** 11 unit (`weekly-goals`, incl. the clock changes and a 100,000-row log), 9 integration (`weekly-goals`: one per measure, validation
+writes nothing, ownership, counting from the account's own rows only, past weeks against the current target, the new note read scoped on its
+own, no-goal and odd stored measures, the recorder flag, the CHECK and the unique index), 1 added to `restore`, the export test's fixture gained
+a goal, 6 browser (`weekly-goals.spec.ts`). 24 mutants: 22 caught, 2 equivalent (a lower bound the index guard already enforces, and an early
+return that only skips reads). Looked at in the browser at 1280 and 375 px, light and dark.
+
+**Found by CI, not here:** two of my browser tests assumed "0 tasks finished this week" and failed in the full run, because other specs have
+already finished tasks in the shared account and a task finished and deleted afterwards still counts. They passed locally only because I ran
+the spec alone against a fresh account. The tests now use cards reviewed, a log they clear first. **Lesson for the loop: a test that asserts a
+count over the shared e2e account must clear or control what it counts, and a local single-spec run does not show it.**
+
+**Not done:** a goal per week that is set for one week only; a goal on other measures (events attended, notes edited); showing a past week's
+exact count; a reminder; the weekly review page naming the goals. **Not run locally:** `pnpm build`, the whole e2e suite, the evals and the
+container rehearsal; CI runs them.
+
+### Quick capture
+
+ROADMAP item 45 (*S*; built from the roadmap sentence and looked at in the browser, not shown as a mock). A **one-tap way into the capture that
+already exists**: `/capture` is the capture box from Today on a page of its own, ready to type, for a home-screen icon or a Shortcut to open.
+No migration, no new action, no new route that writes.
+
+- **Nothing is new in what capture does.** The box is the existing `QuickCapture`: Capture parses through `/api/ai/parse` (dates by code, the
+  model only classifies; with the model off it falls back to code and still proposes), the person sees what it would become, and **nothing is
+  saved until Create** (`confirmCaptureAction`, which checks everything again). The roadmap's "add to inbox" is that: there is no inbox entity, and
+  adding one was not asked for.
+- **The page is outside the dashboard layout** (`src/app/capture/page.tsx`), for two reasons: a home-screen launch should show the box and nothing
+  else (no sidebar), and the dashboard layout redirects a signed-out visit to `/login` without knowing which page was asked for. The page checks the
+  session itself and sends a signed-out visit to `/login?next=/capture?text=…`; sign-in then returns to it (`safeNext`, tested end to end).
+- **`?text=` only prefills the box** (`lib/capture-link.ts`, pure): one plain string (a repeated parameter is empty), line breaks and control
+  characters become spaces, trimmed, cut at 1,000 characters (what the parser accepts) and only the first 8,000 characters are read, so a value
+  that begins with more white space than that comes out empty (a bound on the work, 5.7 ms on 500,000 hostile characters in the tests). It is
+  never submitted by itself, so a link anyone sends can fill the box with their words but cannot create anything: the same accepted risk as
+  `/share`. The box is focused on arrival with the cursor after the text.
+- **The shortcut.** The manifest gained `shortcuts: [{ name: "Quick capture", url: "/capture" }]`: Android and desktop Chrome offer it on a
+  long-press (or right-click) of the installed icon. **iPhone has no manifest shortcuts** (the same WebKit gap as the share target, item 21), so
+  there the way is a home-screen icon made from `/capture` in Safari, or a Shortcut with Open URL (and, to ask for text first, `?text=`). The
+  page says so in a "Put this on your home screen" section. **Not tried on an iPhone or an Android phone:** the manifest entry is checked in the
+  served manifest and the page in a desktop browser only; verify on the phone, as with item 21. Whether iOS keeps `/capture` or opens the
+  manifest's `start_url` when a page is added to the home screen is the thing to check there.
+- **Found by looking, not by a test:** the capture buttons were 32 to 40 px tall (they share `QuickCapture` with Today); Create, Discard, Capture
+  and the microphone are 44 px now. And a focus ring appeared **twice** (the bar's, and an inner one on the input): focusing the box from script
+  counts as keyboard focus, and the global `*:focus-visible` rule is **unlayered, so it beats any Tailwind utility class** (`focus-visible:outline-none`
+  did nothing); an inline `style={{ outline: "none" }}` removes it and the bar keeps the ring.
+
+**Tests.** 6 unit (`capture-link`: the text rules, line breaks and control characters, the cut and the 8,000-character read, the address, speed
+on hostile text), 8 browser (`quick-capture.spec.ts`: the box is focused and nothing else is in the way, `?text=` fills it and creates nothing,
+a repeat is empty and a long text is cut, capture then Create makes the thing and opens it, signed out goes through sign-in and back with the
+text, a hostile text stays in the query, the manifest lists the shortcut, a phone). 13 mutants on the helper, the page, the focus and the manifest,
+all caught after one (the 8,000-character read) was pinned with a test; one more is equivalent (`\s` already covers U+2028 and U+2029).
+
+**Not done:** an inbox that holds raw captures to sort later; saving without the confirm step; sharing text from other apps into the box (the
+share target still opens the clip card for links); a sidebar item or a `g` key for it; a service worker for offline capture. **Not run locally:**
+`pnpm build`, the whole e2e suite, the evals and the container rehearsal; CI runs them.
+
+### PDF page references
+
+ROADMAP item 41 (*M, model*; built from the roadmap sentence and looked at in the browser, not shown as a mock). An imported paper keeps the
+page each passage came from, and an answer that drew on it names the pages. One additive column, `WorkspaceEmbedding.page` (migration
+`20261117100000_embedding_page`); the previous release does not write it and keeps working.
+
+- **The pages were already in the text.** `pdf-parse` appends `-- N of T --` on its own line after each page, so every imported PDF note
+  already carries its page boundaries. Nothing about the import changed, and notes imported before this item get pages on their next save or
+  "Rebuild the search index". `lib/pdf-pages.ts` (pure) reads them back: `splitPdfPages` returns the pages only when the markers make a
+  believable sequence (one total, numbers that increase, none past the total, each on its own line), else null, and the note is chunked as
+  before. A marker deleted by hand leaves the others usable; text after the last marker is the next page (a document cut at 100,000
+  characters). **Cost accepted:** a note that happens to hold such a sequence of lines is read as a paper.
+- **A chunk never crosses a page, so its page is exact** (`chunkPages`). A paragraph that runs over a page break becomes two chunks. Short
+  fragments (a page number, a figure label) add no chunk, as `chunkText` already dropped them. Only notes are read this way
+  (`indexEntity(..., { pages: true })` from `note-service` and the reindex), so a task whose text looks like markers gets no pages.
+- **The page comes from the stored chunk, never from the model.** `Citation.page` is read from the retrieved row; the prompt and the relevance
+  floor are untouched (the injection evals measured them), so the model is not shown page numbers and cannot invent one. The assistant shows
+  `p. 3` beside each citation and one sentence per paper above the list ("Used pages 3 and 7 of <title>", `lib/pages-used.ts`). A paper's note
+  page offers "Ask about this paper" (the existing scoped question) instead of "Ask about this note".
+
+**Measured.** Real embedder, five unrelated pages, one question each, scoped to the paper: the top citation was on the right page 5 of 5 (the
+`EVAL_ONLY=pages` slice, which also checks every citation names a page and that nothing of another account appears). 100,000-character
+hostile inputs (7,000 markers, near-markers, newlines, a 99,000-digit marker, 50,000 spaces before one) took at most 5.7 ms through the
+page split and the chunking. 15 mutants on the split rules, the stored and read column, the flag and the citation: 3 survived at first (text
+after the final page, the line anchor masked by the length guard, and the length guard itself, which only skips work), two were closed with
+tests and the guard is an optimisation.
+
+**Tests.** 10 unit (`pdf-pages`) and 3 (`pages-used`); 5 integration (`pdf-pages`: a stubbed embedder, pages stored for a PDF note and none for
+a plain one or a task, search and the citation return the page, an edit re-indexes and removing the markers removes the pages, another
+account's pages never appear); 1 browser test (`pdf-pages.spec.ts`: a hand-made two-page PDF is imported, shows its markers and offers "Ask about this
+paper"; a plain note does not); the eval slice above. Looked at in the browser (the stream mocked) at 1280 and 375 px, light and dark.
+
+**Not done:** a link from a citation to its page in the note (the note's reading view does not anchor the markers); pages on the `/search`
+results and on Related; the PDF's own page labels (a paper numbered from its cover); scanned PDFs (no text, as before); pages for a PDF
+attached rather than imported; a page range for a chunk (a chunk is one page by construction). **Not run locally:** `pnpm build`, the whole
+e2e suite and the container rehearsal; CI runs them.
+
+### Weak-spots deck
+
+ROADMAP item 42 (*S to M, model?*; built from the roadmap sentence and looked at in the browser). A **Weak spots** deck on the Cards page
+(`/cards?weak=1`): the cards you keep failing. **No migration and no model**: it only selects from the review log item 39 added
+(`CardReview`, one line per grade), so SM-2 is untouched.
+
+- **The rule, exactly** (`lib/weak-spots.ts`, pure): a card is weak when it was graded "again" **at least twice in the last 30 days** and has
+  **not been mended since**, meaning its latest two graded answers are not both "good" or "easy" (one lucky answer does not clear it, and "hard"
+  does not either). A card that fails again after being mended is weak again. Lines with no card, no grade (cards that existed before the log
+  kept grades) or outside the window count for nothing. Worst first: most failures, then most recent failure, then id. The numbers (2, 30 and
+  the two-answer run) are judgements, not measurements; they are constants in one file.
+- **Quiz questions you missed:** a quiz card's grade goes through the same review as any card, so a card missed in a quiz is already in the log
+  and in this deck. A quiz question the model *generated* has no row and no log line (item 10 stores nothing about a session), so it cannot be
+  in the deck. Storing missed generated questions would be a new table and a new feature, and was not built.
+- **It practises cards that are not due.** Grading one is an ordinary review: SM-2 moves it from its current state, so a "good" on a card that
+  is not due yet is a full step taken early (the same cost noted for the quiz). The page says nothing is rescheduled just for being there.
+- **Reads:** three queries, all scoped by `userId` (candidate ids by `groupBy` with `having`, capped at 500; those cards' log lines; the live
+  cards among the ids by the same `liveCards` rule as the queue, so a trashed note's cards are not offered and return with the note). A
+  deleted card's log lines match nothing. The deck chip appears only while there is a weak card (or it is open). Measured on a throwaway
+  account, 5,000 cards and 100,000 log lines (every card weak, so the 500 cap was hit): 76 to 149 ms.
+- **Found by looking, not by a test:** the review counter read "1 of 3 due" for cards that were not due, and the empty state said "Nothing
+  due right now"; `CardReview` takes a `weak` flag for both.
+
+**Tests.** 8 unit (`weak-spots`: the threshold, mending by two good answers and not by one or by "hard", failing again after mending, the
+window edge, ungraded lines, ordering, a 100,000-line log in under 1.5 s), 8 integration (`weak-spots`: the real review path moving a card in
+and out, the trash, a deleted card, courses, another account's log lines naming my card, and the two log reads on their own, because the
+service's second filter masks a missing `userId` on either), 3 browser (`weak-spots.spec.ts`: no deck while nothing is weak, a not-due weak
+card shown and graded, a phone). 13 mutants: all caught after four exposed missing tests (ungraded lines, and `userId` on each log read, which
+the service masked); three more are equivalent (the `having` and the window on the candidate query only narrow what `rankWeak` re-checks, and
+the run-length guard cannot fail because a weak card has at least two lines).
+
+**Not done:** weak generated quiz questions; a per-course weak deck in the page (the service takes a deck, the page does not); a count on Today
+or the sidebar; leech handling (suspending a card that stays weak); the cap of 500 candidates is a judgement. **Not run locally:** `pnpm build`,
+the whole e2e suite and the container rehearsal; CI runs them.
+
 ## Target directory structure
 
 ```

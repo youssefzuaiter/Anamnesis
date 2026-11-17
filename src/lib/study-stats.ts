@@ -24,12 +24,12 @@ export function dayKey(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-function startOfDay(date: Date): Date {
+export function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
 /** `days` calendar days from `date`, by calendar day (not 24 hours), so a clock change does not move it. */
-function addDays(date: Date, days: number): Date {
+export function addDays(date: Date, days: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 }
 
@@ -83,7 +83,7 @@ export function streaks(active: ReadonlySet<string>, now: Date): Streaks {
 }
 
 /** Whole days since 1970 for the local calendar date, so two dates compare by calendar day whatever the clock did between them. */
-function dayNumber(date: Date): number {
+export function dayNumber(date: Date): number {
   return Math.round(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000);
 }
 
