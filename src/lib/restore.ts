@@ -8,6 +8,7 @@ import { EXPORT_FORMAT_VERSION } from "@/lib/export-shape";
 import { PROJECT_CATEGORIES, TASK_PRIORITIES, TASK_STATUSES, MAX_CARD_ANSWER, MAX_CARD_QUESTION } from "@/lib/domain";
 import { noteContent } from "@/lib/note-text";
 import { normalizeTitle } from "@/lib/wiki-links";
+import { READ_STATUSES } from "@/lib/reading";
 
 /** The most a restore reads (one upload) and does in one run. Every number is a judgement, not a measured limit. */
 export const RESTORE_LIMITS = {
@@ -150,6 +151,9 @@ export const rowSchemas = {
     authors: z.unknown().catch([]),
     year: z.number().int().nullish().catch(null),
     details: z.record(z.string(), z.unknown()).catch({}),
+    // Reading state (item 43); a file from before it has neither, and an odd value is dropped rather than refusing the work.
+    readStatus: z.enum(READ_STATUSES).catch("to_read"),
+    takeaway: z.string().nullish().catch(null),
   }),
   flashcards: z.object({
     id,

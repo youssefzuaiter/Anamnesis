@@ -129,7 +129,7 @@ export async function reindexEverything(
 
   for (const [type, id, text] of work) {
     try {
-      await indexEntity(userId, type, id, text);
+      await indexEntity(userId, type, id, text, { pages: type === "note" });
       report.indexed++;
       report.byType[type]++;
     } catch {

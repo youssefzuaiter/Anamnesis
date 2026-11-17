@@ -4031,52 +4031,44 @@ workspace specs, the ones touching the header, pass), the evals and the containe
 
 **Not done:** a long break length setting, the timer on a note, sound, and a timer per task at once (one per account, by design).
 
-### Weekly goals
+### Paper reading tracker
 
-ROADMAP item 44 (*S, demo*; shown as a design: the Stats section, the add form and empty state, the Today card, dark and a phone; approved
-before any code). A standing weekly target such as "3 study sessions", checked automatically against what the app already records. **One
-additive table, `WeeklyGoal`** (migration `20261117160000_weekly_goal`: `measure`, `target`, unique on `(userId, measure)`, a CHECK that the
-target is 1 to 999). Nothing about a week is stored; each week is counted when the page is read.
+ROADMAP item 43 (*M, demo*; shown as a clickable design, light, dark, phone and a work's page, and approved before any code). A thin layer
+over references: each work is **To read**, **Reading** or **Done**, with an optional one-line takeaway, filtered by status on `/references`.
 
-- **Five measures, one goal each** (`lib/weekly-goals.ts`, pure): study sessions (timer sessions recorded), minutes studied (the week's total
-  seconds, floored, not per session), cards reviewed (`CardReview` lines), tasks finished (`completedAt`) and notes written (`createdAt`). A
-  second goal for a measure is refused with "Change its target instead"; a stored measure that is not one of the five is not shown.
-- **Counted the way the stats page counts.** Weeks are Monday to Sunday by local calendar day (`dayNumber`, so a clock change never moves a
-  day: tested around both changes in Berlin, New York and Sydney); nothing before the first week or after today is counted. A task finished and
-  deleted afterwards still counts as finished, and a note written and trashed still counts as written, since it happened. **Study goals stay at 0
-  while "Remember timer sessions" is off**, and the form and the row both say so with a link to Focus. A daily note counts as a note written.
-- **The last eight finished weeks are marked reached or not against the target as it is now.** This week is left out of that row (it is not
-  over). So raising a target rewrites how the past reads, and the page says so. A week is never stored, so there is nothing to migrate if the
-  rule changes.
-- **Nothing nags:** no notification when a goal is reached or missed, no red; "Reached" is a word beside the bar, a missed week is an empty
-  square, and the numbers are in words (the bar only repeats them).
-- **Where.** The section is on **Stats** (`#weekly-goals`: add, change target, remove) and a read-only **This week** card on Today, shown only
-  when there is a goal and, like the other cards, not on an empty workspace (which keeps its onboarding message).
-- **Ownership.** `addWeeklyGoalAction`, `setWeeklyGoalTargetAction`, `removeWeeklyGoalAction`: `requireUserId`, then the service checks the input
-  with one schema; the writes are `updateMany`/`deleteMany` with the `userId` in the `where`. A foreign, missing or malformed id is the same
-  `RESOURCE_NOT_FOUND`; a smuggled `userId`, `id` or `createdAt` is dropped.
-- **Export and restore.** Goals are in the JSON export (`weeklyGoals`) and a restore adds the ones whose measure the account does not hold, counts
-  an unreadable one instead of failing, and restoring the same file twice adds nothing.
+- **Two additive columns on `Reference`** (migration `20261117140000_reference_reading`): `readStatus TEXT NOT NULL DEFAULT 'to_read'` and
+  `takeaway TEXT`. The previous release does not know them and keeps working; every work that existed reads as To read. Rules are pure in
+  `lib/reading.ts`: a takeaway becomes one line (every run of white space, breaks included, one space; ends trimmed; nothing left is none) and
+  is at most **200 characters after tidying**; the address names a filter only as one plain string that is exactly a status (anything else,
+  a repeated parameter included, is every work). A stored value that is not one of the three reads as To read.
+- **"Linked to the note" is the notes that already write `[@key]`**, counted and listed by the existing `citedKeys` rules; nothing new is
+  stored for it, so it cannot drift. The list's "Cited in N notes" reads the 1,000 most recently edited live notes that contain an `@` in one
+  query and counts per known key (code, trash, another account's notes and keys you do not have are not counted); past 1,000 it says "at
+  least". **Measured:** 30 ms at 1,000 ordinary notes; the worst case the cap allows (1,000 notes of 100,000 characters full of `@`) is 2.2 to
+  3.4 s per page view, on the person's own data, accepted.
+- **Setting it** goes through `setReadingAction(id, { status, takeaway })`: `requireUserId`, the id as a uuid, the schema, then one
+  `updateMany` scoped by `id` and `userId`. A foreign, missing or malformed id is the same `RESOURCE_NOT_FOUND`; only status and takeaway can
+  change (a smuggled `title`, `key`, `userId` or `bibtex` is dropped); the takeaway is stored as text and shown as text. Saving moves the
+  work to the top of "recently updated", since `updatedAt` follows every write.
+- **Edits, imports and restores leave it alone.** Editing a work does not reset it (`updateReference` never writes the two columns). **Found
+  by the e2e suite, not by reading:** importing the same BibTeX twice started saying "2 with a key you already use" instead of "2 you already
+  have", because the stored work now carried reading state in the comparison; `stripStored` now drops it. A JSON restore carries both fields
+  (`restore.ts`; a file from before this has neither, an odd status is To read, a takeaway that does not fit is dropped and the work is still
+  restored). The export carries them, since it reads whole rows.
+- **The tabs are a `role="group"` of links, not a list**, because `references.spec.ts` takes the first list on the page and a list of tabs
+  became the first one (the "new element makes an old selector ambiguous" trap, seen again).
 
-**Measured.** `getWeeklyGoals` with all five goals and 110,000 rows of history (20,000 tasks, 50,000 card reviews, 20,000 sessions, 20,000
-notes): 149 to 224 ms, and it runs on Today as well as Stats while there is a goal (each read is bounded at 50,000 rows). With no goal nothing
-is read. The real actions were replayed with a stubbed session: no session, another account's goal, a malformed or object id, an unknown
-measure, targets of 0, 1000, 1e21, a string, NaN and an object, null, an array and mass assignment all behaved.
+**Tests.** 7 unit (`reading`), 11 integration (`reading`: only status and takeaway change, an edit keeps them, foreign and malformed ids are one
+refusal, invalid input writes nothing, an odd stored status, citation counting incl. keys not mine and the 1,000 cap, the two reads on
+their own, the export, the same BibTeX still "unchanged"), 2 added to `restore`, 5 browser (`reading-tracker.spec.ts`). The real action was
+replayed with a stubbed session: no session, a foreign or malformed id, bad status, 201 characters, 1 MB, an object, null, mass assignment
+and an HTML takeaway all behaved (the last is stored and shown as text). **Mutations: 18, all caught** after two were closed with tests (a
+key I do not have being counted, and the cap); two are equivalent (a pre-length check that only bounds work, and `new Set` over keys the
+parser already makes unique). Looked at in the browser at 1280 and 375 px, light and dark.
 
-**Tests.** 11 unit (`weekly-goals`, incl. the clock changes and a 100,000-row log), 9 integration (`weekly-goals`: one per measure, validation
-writes nothing, ownership, counting from the account's own rows only, past weeks against the current target, the new note read scoped on its
-own, no-goal and odd stored measures, the recorder flag, the CHECK and the unique index), 1 added to `restore`, the export test's fixture gained
-a goal, 6 browser (`weekly-goals.spec.ts`). 24 mutants: 22 caught, 2 equivalent (a lower bound the index guard already enforces, and an early
-return that only skips reads). Looked at in the browser at 1280 and 375 px, light and dark.
-
-**Found by CI, not here:** two of my browser tests assumed "0 tasks finished this week" and failed in the full run, because other specs have
-already finished tasks in the shared account and a task finished and deleted afterwards still counts. They passed locally only because I ran
-the spec alone against a fresh account. The tests now use cards reviewed, a log they clear first. **Lesson for the loop: a test that asserts a
-count over the shared e2e account must clear or control what it counts, and a local single-spec run does not show it.**
-
-**Not done:** a goal per week that is set for one week only; a goal on other measures (events attended, notes edited); showing a past week's
-exact count; a reminder; the weekly review page naming the goals. **Not run locally:** `pnpm build`, the whole e2e suite, the evals and the
-container rehearsal; CI runs them.
+**Not done:** a "start a note on this paper" button; when a work was finished; ordering the list by status; the status on the note that
+cites it; setting it from the list; the takeaway in the APA reference list. **Not run locally:** `pnpm build`, the whole e2e suite, the evals
+and the container rehearsal; CI runs them.
 
 ## Target directory structure
 

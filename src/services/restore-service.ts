@@ -14,8 +14,7 @@ import {
 } from "@/lib/restore";
 import { contentHash, family, planImport, type ParsedNote } from "@/lib/vault-import";
 import { referenceSchema } from "@/lib/reference-input";
-import { goalSchema } from "@/lib/weekly-goals";
-import * as weeklyGoalService from "@/services/weekly-goal-service";
+import { readingSchema } from "@/lib/reading";
 import * as repo from "@/repositories/restore-repository";
 import * as noteService from "@/services/note-service";
 import * as goalService from "@/services/goal-service";
@@ -420,7 +419,10 @@ export async function runJsonRestore(userId: string, bytes: Uint8Array, options:
     }
     if (apply) {
       try {
-        await referenceService.createReference(userId, input);
+        const made = await referenceService.createReference(userId, input);
+        // The reading state travels with the work; a takeaway that does not fit is dropped, the work is still restored.
+        const reading = readingSchema.safeParse({ status: row.readStatus, takeaway: row.takeaway ?? null });
+        await referenceService.setReading(userId, made.id, reading.success ? reading.data : { status: row.readStatus, takeaway: null });
         kinds.references.created += 1;
       } catch (error) {
         if (error instanceof AppError) {
