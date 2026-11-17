@@ -4015,6 +4015,7 @@ client-side timer (item 18); this replaces it with one that lives on the server.
   asks the server to finish at zero, re-reads every 30 s and when the tab returns; `TimerChip` in the header pauses and resumes. The
   browser notification is asked for on Start, never on load.
 - **Phone:** the existing ntfy push (`ntfyPublisher`, `getPushProfile`); a failing publisher never breaks the timer.
+- **Looking is a GET, not a server action** (`GET /api/focus-timer`). The first version read the timer with a server action, which is a POST on every page load, every poll and every tab return; CI's board and time-grid specs, which fail on any POST ("sends nothing"), failed 11 tests while the same specs passed here. **Lesson: a provider mounted in the layout must not send a POST by itself.**
 - **Not exported:** `ActiveTimer` is in `NOT_EXPORTED` (moment-to-moment state); the study time it saves is exported with study sessions.
 
 **Verified.** 28 unit and integration tests for the timer (plus the focus-input and study-time ones); 13 mutants on the rules, the

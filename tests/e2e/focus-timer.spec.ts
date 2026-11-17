@@ -94,3 +94,19 @@ test("on a phone the chip fits and its button is touch sized", async ({ page }) 
   expect(box.height).toBeGreaterThanOrEqual(36);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
+
+test("looking at the timer is a GET: a page with no timer sends no POST, and the route refuses a signed-out caller", async ({ page, browser, baseURL }) => {
+  const posts: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST") posts.push(request.url());
+  });
+  await page.goto("/notes");
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await page.waitForTimeout(1000);
+  expect(posts).toEqual([]);
+
+  const stranger = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const response = await stranger.request.get(`${baseURL}/api/focus-timer`);
+  expect(response.status()).toBe(401);
+  await stranger.close();
+});

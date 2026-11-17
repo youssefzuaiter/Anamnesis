@@ -4,7 +4,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ApiResponse } from "@/lib/api-response";
 import type { TimerSnapshot } from "@/services/focus-timer-service";
 import {
-  getTimerAction,
   pauseTimerAction,
   resetTimerAction,
   resumeTimerAction,
@@ -56,6 +55,12 @@ export function useTimer(): TimerApi {
 export const clock = (totalSeconds: number): string => `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
 
 /** Seconds left at `now` (this browser's clock) given how far it is from the server's. Pure, so it can be read while rendering. */
+/** Looks at the timer with a GET (not a server action, which would be a POST on every page load and every poll). */
+async function fetchTimer(): Promise<Result> {
+  const response = await fetch("/api/focus-timer", { cache: "no-store", credentials: "same-origin" });
+  return (await response.json()) as Result;
+}
+
 function secondsLeft(snapshot: TimerSnapshot | null, skew: number, now: number): number {
   if (!snapshot) return 0;
   if (snapshot.view.status === "running" && snapshot.endsAt) {
@@ -100,7 +105,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      receive(await getTimerAction());
+      receive(await fetchTimer());
     } catch {
       /* offline: the next poll tries again */
     }
@@ -125,7 +130,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    void getTimerAction().then(
+    void fetchTimer().then(
       (result) => {
         if (!cancelled) receive(result);
       },

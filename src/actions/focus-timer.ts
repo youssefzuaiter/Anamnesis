@@ -21,11 +21,6 @@ async function run(work: (userId: string) => Promise<TimerSnapshot | null>, save
   }
 }
 
-/** The timer as it is now, finished first if it ran out. Read only. */
-export async function getTimerAction(): Promise<Result> {
-  return run((userId) => timer.getTimer(userId), false);
-}
-
 export async function startTimerAction(raw: unknown): Promise<Result> {
   const parsed = timerStartSchema.safeParse(raw);
   if (!parsed.success) return fail("VALIDATION_ERROR", "Choose how long to focus.");
