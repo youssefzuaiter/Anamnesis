@@ -125,6 +125,9 @@ export const tables = {
   references: table(LIGHT_PAGE, (userId, page) =>
     prisma.reference.findMany({ where: { AND: [{ userId }, afterCreated(page.after)] }, ...oldestFirst(page) }),
   ),
+  weeklyGoals: table(LIGHT_PAGE, (userId, page) =>
+    prisma.weeklyGoal.findMany({ where: { AND: [{ userId }, afterCreated(page.after)] }, ...oldestFirst(page) }),
+  ),
   // The address is a secret: it is read to take its host and dropped here, for both forms of the file.
   calendarSubscriptions: table(LIGHT_PAGE, async (userId, page) => {
     const feeds = await prisma.calendarSubscription.findMany({ where: { AND: [{ userId }, afterCreated(page.after)] }, ...oldestFirst(page) });
@@ -199,6 +202,7 @@ export async function buildFullExport(userId: string) {
     messages,
     attachments,
     references,
+    weeklyGoals,
     calendarSubscriptions,
   ] = await Promise.all([
     readUser(userId),
@@ -221,6 +225,7 @@ export async function buildFullExport(userId: string) {
     readAll(tables.messages, userId),
     readAll(tables.attachments, userId),
     readAll(tables.references, userId),
+    readAll(tables.weeklyGoals, userId),
     readAll(tables.calendarSubscriptions, userId),
   ]);
 
@@ -248,6 +253,7 @@ export async function buildFullExport(userId: string) {
     messages,
     attachments,
     references,
+    weeklyGoals,
     calendarSubscriptions,
   };
 }

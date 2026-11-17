@@ -17,6 +17,7 @@ const LABEL: Record<RestoreKind, [string, string]> = {
   checklistItems: ["checklist step", "checklist steps"],
   events: ["event", "events"],
   references: ["reference", "references"],
+  weeklyGoals: ["weekly goal", "weekly goals"],
   flashcards: ["flashcard", "flashcards"],
 };
 

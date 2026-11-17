@@ -46,6 +46,8 @@ export const existing = {
       select: { id: true, noteId: true, question: true, clozeIndex: true },
       take: 100_001,
     }),
+  weeklyGoalMeasures: async (userId: string) =>
+    (await prisma.weeklyGoal.findMany({ where: { userId }, select: { measure: true }, take: 1_000 })).map((row) => row.measure),
   referenceKeys: async (userId: string) =>
     (await prisma.reference.findMany({ where: { userId }, select: { key: true }, take: 20_001 })).map((row) => row.key),
 };

@@ -14,6 +14,8 @@ import {
 } from "@/lib/restore";
 import { contentHash, family, planImport, type ParsedNote } from "@/lib/vault-import";
 import { referenceSchema } from "@/lib/reference-input";
+import { goalSchema } from "@/lib/weekly-goals";
+import * as weeklyGoalService from "@/services/weekly-goal-service";
 import * as repo from "@/repositories/restore-repository";
 import * as noteService from "@/services/note-service";
 import * as goalService from "@/services/goal-service";
@@ -430,6 +432,33 @@ export async function runJsonRestore(userId: string, bytes: Uint8Array, options:
     }
     haveKeys.add(key);
     kinds.references.create += 1;
+  }
+
+  // --- weekly goals (through the service: one schema checks the measure and the target; one goal per measure) ---------------------------
+  const haveMeasures = new Set(await repo.existing.weeklyGoalMeasures(userId));
+  for (const row of rows.weeklyGoals) {
+    if (haveMeasures.has(row.measure)) {
+      kinds.weeklyGoals.present += 1;
+      continue;
+    }
+    if (!goalSchema.safeParse({ measure: row.measure, target: row.target }).success) {
+      kinds.weeklyGoals.invalid += 1;
+      continue;
+    }
+    if (apply) {
+      try {
+        await weeklyGoalService.createGoal(userId, { measure: row.measure, target: row.target });
+        kinds.weeklyGoals.created += 1;
+      } catch (error) {
+        if (error instanceof AppError) {
+          kinds.weeklyGoals.invalid += 1;
+          continue;
+        }
+        throw error;
+      }
+    }
+    haveMeasures.add(row.measure);
+    kinds.weeklyGoals.create += 1;
   }
 
   // --- cards of the notes that came back -----------------------------------------------------------

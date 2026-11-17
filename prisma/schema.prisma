@@ -50,6 +50,7 @@ model User {
   references         Reference[]
   duplicateDecisions DuplicateDecision[]
   activeTimer        ActiveTimer?
+  weeklyGoals        WeeklyGoal[]
   cardReviews        CardReview[]
 }
 
@@ -616,6 +617,21 @@ model ActiveTimer {
   updatedAt       DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// A standing weekly target (ROADMAP item 44), such as "3 study sessions": the measure is one of a fixed list and the target a whole number. One goal
+/// per measure. Nothing about a week is stored: each week is counted from what the app already records.
+model WeeklyGoal {
+  id        String   @id @default(uuid())
+  userId    String
+  measure   String
+  target    Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, measure])
 }
 
 /// One line for every time a card was reviewed (ROADMAP item 39): when, and how it was graded. It exists for the stats page: a card

@@ -334,3 +334,27 @@ test("a task that matches only a trashed one is added, and a note-less card of a
   assert.equal(report.kinds.tasks.created, 1);
   assert.equal(report.kinds.flashcards.created, 1);
 });
+
+test("weekly goals are restored one per measure: a measure already held is left alone, an unreadable one is counted, not fatal", async () => {
+  const b = await newUser();
+  await prisma.weeklyGoal.create({ data: { userId: b, measure: "tasks_finished", target: 4 } });
+  const file = {
+    weeklyGoals: [
+      { measure: "tasks_finished", target: 9 },
+      { measure: "cards_reviewed", target: 50 },
+      { measure: "pushups", target: 10 },
+      { measure: "notes_written", target: 0 },
+      { measure: "study_sessions", target: 1000 },
+      { measure: "study_minutes", target: 2.5 },
+    ],
+  };
+  const preview = await restore(b, file, false);
+  assert.deepEqual([preview.kinds.weeklyGoals.create, preview.kinds.weeklyGoals.present, preview.kinds.weeklyGoals.invalid], [1, 1, 4], "a preview already counts what it would refuse");
+  assert.equal(await prisma.weeklyGoal.count({ where: { userId: b } }), 1, "a preview writes nothing");
+  const report = await restore(b, file, true);
+  assert.equal(report.kinds.weeklyGoals.created, 1);
+  const rows = Object.fromEntries((await prisma.weeklyGoal.findMany({ where: { userId: b } })).map((r) => [r.measure, r.target]));
+  assert.deepEqual(rows, { tasks_finished: 4, cards_reviewed: 50 }, "the goal I already had keeps its target");
+  const again = await restore(b, file, true);
+  assert.equal(again.kinds.weeklyGoals.created, 0, "restoring the same file adds nothing");
+});

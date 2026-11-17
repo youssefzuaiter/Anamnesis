@@ -163,6 +163,11 @@ export const rowSchemas = {
     dueAt: date.catch(new Date(0)),
     lastReviewed: optionalDate,
   }),
+  // A weekly goal (item 44): the measure and target are checked again by the same schema the app uses, so an odd one is counted as unreadable.
+  weeklyGoals: z.object({
+    measure: z.string().max(40),
+    target: z.number().max(1_000_000),
+  }),
 } as const;
 
 export type RestoreKind = keyof typeof rowSchemas;
