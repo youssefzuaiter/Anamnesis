@@ -3995,6 +3995,45 @@ both ways, `g` then `m`, the phone's More sheet, the phone in both themes). The 
 **Not done:** a longer range or a chosen one; a per-course breakdown; the streak's "freeze" days; card history before the log (only each
 card's last review); the focus (writing) minutes, which are a separate opt-in; notes written per week.
 
+### Paper reading tracker
+
+ROADMAP item 43 (*M, demo*; shown as a clickable design, light, dark, phone and a work's page, and approved before any code). A thin layer
+over references: each work is **To read**, **Reading** or **Done**, with an optional one-line takeaway, filtered by status on `/references`.
+
+- **Two additive columns on `Reference`** (migration `20261117140000_reference_reading`): `readStatus TEXT NOT NULL DEFAULT 'to_read'` and
+  `takeaway TEXT`. The previous release does not know them and keeps working; every work that existed reads as To read. Rules are pure in
+  `lib/reading.ts`: a takeaway becomes one line (every run of white space, breaks included, one space; ends trimmed; nothing left is none) and
+  is at most **200 characters after tidying**; the address names a filter only as one plain string that is exactly a status (anything else,
+  a repeated parameter included, is every work). A stored value that is not one of the three reads as To read.
+- **"Linked to the note" is the notes that already write `[@key]`**, counted and listed by the existing `citedKeys` rules; nothing new is
+  stored for it, so it cannot drift. The list's "Cited in N notes" reads the 1,000 most recently edited live notes that contain an `@` in one
+  query and counts per known key (code, trash, another account's notes and keys you do not have are not counted); past 1,000 it says "at
+  least". **Measured:** 30 ms at 1,000 ordinary notes; the worst case the cap allows (1,000 notes of 100,000 characters full of `@`) is 2.2 to
+  3.4 s per page view, on the person's own data, accepted.
+- **Setting it** goes through `setReadingAction(id, { status, takeaway })`: `requireUserId`, the id as a uuid, the schema, then one
+  `updateMany` scoped by `id` and `userId`. A foreign, missing or malformed id is the same `RESOURCE_NOT_FOUND`; only status and takeaway can
+  change (a smuggled `title`, `key`, `userId` or `bibtex` is dropped); the takeaway is stored as text and shown as text. Saving moves the
+  work to the top of "recently updated", since `updatedAt` follows every write.
+- **Edits, imports and restores leave it alone.** Editing a work does not reset it (`updateReference` never writes the two columns). **Found
+  by the e2e suite, not by reading:** importing the same BibTeX twice started saying "2 with a key you already use" instead of "2 you already
+  have", because the stored work now carried reading state in the comparison; `stripStored` now drops it. A JSON restore carries both fields
+  (`restore.ts`; a file from before this has neither, an odd status is To read, a takeaway that does not fit is dropped and the work is still
+  restored). The export carries them, since it reads whole rows.
+- **The tabs are a `role="group"` of links, not a list**, because `references.spec.ts` takes the first list on the page and a list of tabs
+  became the first one (the "new element makes an old selector ambiguous" trap, seen again).
+
+**Tests.** 7 unit (`reading`), 11 integration (`reading`: only status and takeaway change, an edit keeps them, foreign and malformed ids are one
+refusal, invalid input writes nothing, an odd stored status, citation counting incl. keys not mine and the 1,000 cap, the two reads on
+their own, the export, the same BibTeX still "unchanged"), 2 added to `restore`, 5 browser (`reading-tracker.spec.ts`). The real action was
+replayed with a stubbed session: no session, a foreign or malformed id, bad status, 201 characters, 1 MB, an object, null, mass assignment
+and an HTML takeaway all behaved (the last is stored and shown as text). **Mutations: 18, all caught** after two were closed with tests (a
+key I do not have being counted, and the cap); two are equivalent (a pre-length check that only bounds work, and `new Set` over keys the
+parser already makes unique). Looked at in the browser at 1280 and 375 px, light and dark.
+
+**Not done:** a "start a note on this paper" button; when a work was finished; ordering the list by status; the status on the note that
+cites it; setting it from the list; the takeaway in the APA reference list. **Not run locally:** `pnpm build`, the whole e2e suite, the evals
+and the container rehearsal; CI runs them.
+
 ## Target directory structure
 
 ```

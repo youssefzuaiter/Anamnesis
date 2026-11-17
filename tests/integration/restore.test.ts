@@ -63,7 +63,7 @@ async function fill(userId: string) {
   await prisma.task.create({ data: { userId, projectId: project.id, goalId: goal.id, title: "Revise limits again", recurrenceId, dueDate: new Date("2026-11-25T20:59:59Z"), status: "todo", priority: "medium", tags: [] } });
   await prisma.taskChecklistItem.createMany({ data: [{ userId, taskId: task.id, title: "Read", done: true, position: 0 }, { userId, taskId: task.id, title: "Practise", done: false, position: 1 }] });
   await prisma.event.create({ data: { userId, courseId: course.id, projectId: project.id, title: "Midterm", startTime: new Date("2026-11-20T09:00:00Z"), endTime: new Date("2026-11-20T11:00:00Z"), location: "Hall C" } });
-  await prisma.reference.create({ data: { userId, key: "knuth1997", type: "book", title: "The Art of Computer Programming", authors: [{ family: "Knuth", given: "Donald" }], year: 1997, details: { publisher: "Addison-Wesley" } } });
+  await prisma.reference.create({ data: { userId, key: "knuth1997", type: "book", title: "The Art of Computer Programming", authors: [{ family: "Knuth", given: "Donald" }], year: 1997, details: { publisher: "Addison-Wesley" }, readStatus: "done", takeaway: "Analysis of algorithms starts here." } });
   await prisma.flashcard.create({ data: { userId, noteId: note.id, question: "A limit is?", answer: "A value approached.", easeFactor: 2.1, intervalDays: 6, repetitions: 2, dueAt: new Date("2026-12-01T00:00:00Z") } });
   return { course, assessment, goal, project, note, task };
 }
@@ -83,6 +83,9 @@ test("a round trip into another account restores everything, linked to the new a
   const report = await restore(b, file, true);
   assert.equal(created(report), wouldCreate(preview), "apply does what the preview said");
   assert.deepEqual(await counts(b), { courses: 1, assessments: 1, goals: 1, projects: 1, notes: 2, tasks: 2, steps: 2, events: 1, references: 1, cards: 1 });
+
+  const restoredRef = await prisma.reference.findFirstOrThrow({ where: { userId: b } });
+  assert.deepEqual([restoredRef.readStatus, restoredRef.takeaway], ["done", "Analysis of algorithms starts here."], "the reading state travels with the work");
 
   const course = await prisma.course.findFirstOrThrow({ where: { userId: b } });
   const project = await prisma.project.findFirstOrThrow({ where: { userId: b } });
@@ -333,4 +336,24 @@ test("a task that matches only a trashed one is added, and a note-less card of a
   const report = await restore(me, { tasks: [{ title: "Same", dueDate: "2026-11-18T20:59:59.000Z" }], flashcards: [{ question: "Q", answer: "A" }] }, true);
   assert.equal(report.kinds.tasks.created, 1);
   assert.equal(report.kinds.flashcards.created, 1);
+});
+
+test("a restored reference with no reading state, an odd one or a takeaway that does not fit is still restored", async () => {
+  const b = await newUser();
+  const base = { type: "book", authors: [], year: 2000 };
+  const report = await restore(
+    b,
+    {
+      references: [
+        { ...base, key: "old", title: "From before item 43" },
+        { ...base, key: "odd", title: "Odd status", readStatus: "finished", takeaway: 5 },
+        { ...base, key: "long", title: "Long takeaway", readStatus: "reading", takeaway: "x".repeat(500) },
+        { ...base, key: "spaced", title: "Spaced takeaway", readStatus: "done", takeaway: "  one\nline  " },
+      ],
+    },
+    true,
+  );
+  assert.equal(report.kinds.references.created, 4);
+  const byKey = Object.fromEntries((await prisma.reference.findMany({ where: { userId: b } })).map((r) => [r.key, [r.readStatus, r.takeaway]]));
+  assert.deepEqual(byKey, { old: ["to_read", null], odd: ["to_read", null], long: ["reading", null], spaced: ["done", "one line"] });
 });

@@ -41,6 +41,25 @@ export async function updateReference(userId: string, id: string, data: Referenc
   return count === 1;
 }
 
+/** Sets the caller's reference's reading state only; false when there is none with that id. */
+export async function updateReading(userId: string, id: string, data: { readStatus: string; takeaway: string | null }): Promise<boolean> {
+  const { count } = await prisma.reference.updateMany({ where: { id, userId }, data });
+  return count === 1;
+}
+
+/** The text of the caller's live notes that contain an "@" at all (the only ones that can cite a reference), newest edited first. */
+export async function noteTextsWithAt(userId: string, take: number): Promise<string[]> {
+  const rows = await prisma.$queryRaw<{ content: string }[]>`
+    SELECT "content"
+    FROM "Note"
+    WHERE "userId" = ${userId}
+      AND "deletedAt" IS NULL
+      AND strpos("content", '@') > 0
+    ORDER BY "updatedAt" DESC
+    LIMIT ${take}`;
+  return rows.map((row) => row.content);
+}
+
 export async function deleteReference(userId: string, id: string): Promise<boolean> {
   const { count } = await prisma.reference.deleteMany({ where: { id, userId } });
   return count === 1;
