@@ -8,6 +8,7 @@ import { toBibtex } from "@/lib/bibtex";
 import { getReference, listReferences, notesCiting } from "@/services/reference-service";
 import { deleteReferenceAction } from "@/actions/references";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
+import { ReadingCard } from "@/components/reading-card";
 
 export const metadata = { title: "Reference · Anamnesis" };
 
@@ -53,6 +54,8 @@ export default async function ReferencePage({ params }: PageProps<"/references/[
           </dd>
         </dl>
       </section>
+
+      <ReadingCard key={`${reference.readStatus}|${reference.takeaway ?? ""}`} id={reference.id} status={reference.readStatus} takeaway={reference.takeaway} />
 
       <div className="mt-3 flex flex-wrap items-center gap-1">
         <Link href={`/references/${reference.id}/edit`} className="rounded-lg px-3 py-2 text-sm text-text-muted transition-colors hover:bg-surface-subtle hover:text-text">
