@@ -28,6 +28,8 @@ export type Citation = {
   sourceId: string;
   title: string;
   excerpt: string;
+  /** The page of an imported PDF the excerpt is from, when it is one. Read from the stored chunk, never written by the model. */
+  page: number | null;
   similarity: number;
 };
 
@@ -380,6 +382,7 @@ async function buildContext(
       titleMaps.get(hit.sourceType)?.get(hit.sourceId) ??
       excerptOf(hit.contentChunk).slice(0, 60),
     excerpt: excerptOf(hit.contentChunk),
+    page: hit.page,
     similarity: hit.similarity,
   }));
 

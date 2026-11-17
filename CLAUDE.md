@@ -3995,6 +3995,43 @@ both ways, `g` then `m`, the phone's More sheet, the phone in both themes). The 
 **Not done:** a longer range or a chosen one; a per-course breakdown; the streak's "freeze" days; card history before the log (only each
 card's last review); the focus (writing) minutes, which are a separate opt-in; notes written per week.
 
+### PDF page references
+
+ROADMAP item 41 (*M, model*; built from the roadmap sentence and looked at in the browser, not shown as a mock). An imported paper keeps the
+page each passage came from, and an answer that drew on it names the pages. One additive column, `WorkspaceEmbedding.page` (migration
+`20261117100000_embedding_page`); the previous release does not write it and keeps working.
+
+- **The pages were already in the text.** `pdf-parse` appends `-- N of T --` on its own line after each page, so every imported PDF note
+  already carries its page boundaries. Nothing about the import changed, and notes imported before this item get pages on their next save or
+  "Rebuild the search index". `lib/pdf-pages.ts` (pure) reads them back: `splitPdfPages` returns the pages only when the markers make a
+  believable sequence (one total, numbers that increase, none past the total, each on its own line), else null, and the note is chunked as
+  before. A marker deleted by hand leaves the others usable; text after the last marker is the next page (a document cut at 100,000
+  characters). **Cost accepted:** a note that happens to hold such a sequence of lines is read as a paper.
+- **A chunk never crosses a page, so its page is exact** (`chunkPages`). A paragraph that runs over a page break becomes two chunks. Short
+  fragments (a page number, a figure label) add no chunk, as `chunkText` already dropped them. Only notes are read this way
+  (`indexEntity(..., { pages: true })` from `note-service` and the reindex), so a task whose text looks like markers gets no pages.
+- **The page comes from the stored chunk, never from the model.** `Citation.page` is read from the retrieved row; the prompt and the relevance
+  floor are untouched (the injection evals measured them), so the model is not shown page numbers and cannot invent one. The assistant shows
+  `p. 3` beside each citation and one sentence per paper above the list ("Used pages 3 and 7 of <title>", `lib/pages-used.ts`). A paper's note
+  page offers "Ask about this paper" (the existing scoped question) instead of "Ask about this note".
+
+**Measured.** Real embedder, five unrelated pages, one question each, scoped to the paper: the top citation was on the right page 5 of 5 (the
+`EVAL_ONLY=pages` slice, which also checks every citation names a page and that nothing of another account appears). 100,000-character
+hostile inputs (7,000 markers, near-markers, newlines, a 99,000-digit marker, 50,000 spaces before one) took at most 5.7 ms through the
+page split and the chunking. 15 mutants on the split rules, the stored and read column, the flag and the citation: 3 survived at first (text
+after the final page, the line anchor masked by the length guard, and the length guard itself, which only skips work), two were closed with
+tests and the guard is an optimisation.
+
+**Tests.** 10 unit (`pdf-pages`) and 3 (`pages-used`); 5 integration (`pdf-pages`: a stubbed embedder, pages stored for a PDF note and none for
+a plain one or a task, search and the citation return the page, an edit re-indexes and removing the markers removes the pages, another
+account's pages never appear); 1 browser test (`pdf-pages.spec.ts`: a hand-made two-page PDF is imported, shows its markers and offers "Ask about this
+paper"; a plain note does not); the eval slice above. Looked at in the browser (the stream mocked) at 1280 and 375 px, light and dark.
+
+**Not done:** a link from a citation to its page in the note (the note's reading view does not anchor the markers); pages on the `/search`
+results and on Related; the PDF's own page labels (a paper numbered from its cover); scanned PDFs (no text, as before); pages for a PDF
+attached rather than imported; a page range for a chunk (a chunk is one page by construction). **Not run locally:** `pnpm build`, the whole
+e2e suite and the container rehearsal; CI runs them.
+
 ## Target directory structure
 
 ```

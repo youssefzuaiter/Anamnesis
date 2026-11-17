@@ -450,6 +450,8 @@ model WorkspaceEmbedding {
   sourceType   String
   sourceId     String
   contentChunk String                      @db.Text
+  // The page of an imported PDF this chunk came from (ROADMAP item 41); null for everything else.
+  page         Int?
   embedding    Unsupported("vector(768)")?
   createdAt    DateTime                    @default(now())
 
