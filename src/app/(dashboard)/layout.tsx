@@ -6,6 +6,8 @@ import { CommandPalette } from "@/components/command-palette";
 import { AppSidebar } from "@/components/app-sidebar";
 import { BrandLockup } from "@/components/brand";
 import { MobileNav } from "@/components/mobile-nav";
+import { TimerProvider } from "@/components/timer-provider";
+import { TimerChip } from "@/components/timer-chip";
 import { ShortcutsProvider } from "@/components/shortcuts-provider";
 import {
   AssistantDockProvider,
@@ -33,6 +35,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
   return (
     <AssistantDockProvider>
       <ShortcutsProvider>
+        <TimerProvider>
         <a
           href="#main"
           className="sr-only z-50 rounded-lg bg-surface px-3 py-2 text-sm font-semibold text-text focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
@@ -47,8 +50,11 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
               <Link href="/" aria-label="Anamnesis, go to Today" className="sm:hidden">
                 <BrandLockup height={40} />
               </Link>
-              <div className="hidden sm:block">
-                <AssistantToggle variant="bar" />
+              <div className="flex min-w-0 items-center gap-3">
+                <TimerChip />
+                <div className="hidden sm:block">
+                  <AssistantToggle variant="bar" />
+                </div>
               </div>
             </header>
             {/* min-w-0 lets this flex item shrink below its content width; without it
@@ -67,6 +73,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
         <AssistantToggle variant="fab" />
         <MobileNav badges={badges} />
         <CommandPalette />
+        </TimerProvider>
       </ShortcutsProvider>
     </AssistantDockProvider>
   );
