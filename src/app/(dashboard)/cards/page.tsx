@@ -56,7 +56,7 @@ export default async function CardsPage({ searchParams }: PageProps<"/cards">) {
           {cram
             ? `Cramming ${cramDeck?.label ?? "this course"}: ${cram.items.length} ${cram.items.length === 1 ? "card" : "cards"}, weakest first, whether or not they are due. Grading works as it always does; nothing is rescheduled just for being here.${cram.items.length > CRAM_SESSION ? ` A session is the first ${CRAM_SESSION}; open Cram again to rebuild it from your latest answers.` : ""}`
             : weakOpen
-            ? `${weakCards.length} ${weakCards.length === 1 ? "card" : "cards"} you got wrong at least twice in the last 30 days and have not got right twice since, worst first. Grading them works as it always does; nothing is rescheduled just for being here.${cram.items.length > CRAM_SESSION ? ` A session is the first ${CRAM_SESSION}; open Cram again to rebuild it from your latest answers.` : ""}`
+            ? `${weakCards.length} ${weakCards.length === 1 ? "card" : "cards"} you got wrong at least twice in the last 30 days and have not got right twice since, worst first. Grading them works as it always does; nothing is rescheduled just for being here.`
             : `${counts.due} due of ${counts.total} ${counts.total === 1 ? "card" : "cards"}. Make cards from any note: open it and use “Make cards”, or write your own with “New card”.`}
         </p>
       </header>
