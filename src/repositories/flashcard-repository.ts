@@ -216,3 +216,77 @@ export async function listLiveByIds(userId: string, ids: string[], deck?: string
     where: { AND: [liveCards(userId), deckWhere(deck), { id: { in: ids } }] },
   });
 }
+
+/** The most card ids one search can return; a search that matches more is narrowed by its other filters or by typing more. */
+export const SEARCH_ID_CAP = 5000;
+
+/**
+ * The caller's card ids whose question or answer contains `q` exactly, ignoring case. Prisma's `contains` is ILIKE and would treat `%` and `_`
+ * in what was typed as wildcards, so this is `strpos` with bound parameters: what you type is what is looked for.
+ */
+export async function searchIdsByText(userId: string, q: string): Promise<string[]> {
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT f."id" FROM "Flashcard" f
+    WHERE f."userId" = ${userId}
+      AND (strpos(lower(f."question"), lower(${q})) > 0 OR strpos(lower(f."answer"), lower(${q})) > 0)
+    LIMIT ${SEARCH_ID_CAP}
+  `;
+  return rows.map((row) => row.id);
+}
+
+export type BrowseFilter = {
+  deck?: string;
+  kind: "basic" | "cloze" | null;
+  show: "due" | "later" | "new" | null;
+  /** Restrict to these ids (a text search or the weak cards); null for no restriction. */
+  ids: string[] | null;
+  now: Date;
+};
+
+export type BrowseRow = Flashcard & { note: { courseId: string | null; course: { code: string; deletedAt: Date | null } | null } | null };
+
+function browseWhere(userId: string, filter: BrowseFilter): FlashcardWhereInput {
+  const and: FlashcardWhereInput[] = [liveCards(userId), deckWhere(filter.deck)];
+  if (filter.kind === "basic") and.push({ clozeIndex: null });
+  if (filter.kind === "cloze") and.push({ clozeIndex: { not: null } });
+  if (filter.show === "due") and.push({ dueAt: { lte: filter.now } });
+  if (filter.show === "later") and.push({ dueAt: { gt: filter.now } });
+  if (filter.show === "new") and.push({ lastReviewed: null });
+  if (filter.ids !== null) and.push({ id: { in: filter.ids } });
+  return { AND: and };
+}
+
+/** One page of the caller's live cards under the filter, soonest due first, with the total that match. */
+export async function browse(userId: string, filter: BrowseFilter, skip: number, take: number): Promise<{ rows: BrowseRow[]; total: number }> {
+  const where = browseWhere(userId, filter);
+  const [rows, total] = await Promise.all([
+    prisma.flashcard.findMany({
+      where,
+      orderBy: [{ dueAt: "asc" }, { id: "asc" }],
+      skip,
+      take,
+      include: { note: { select: { courseId: true, course: { select: { code: true, deletedAt: true } } } } },
+    }),
+    prisma.flashcard.count({ where }),
+  ]);
+  return { rows, total };
+}
+
+/** The sibling cards (same note, same text) of these fill-in-the-blank cards, for "n of m" and for editing them together. */
+export async function listClozeSiblings(userId: string, noteIds: string[]): Promise<{ id: string; noteId: string | null; question: string; clozeIndex: number | null }[]> {
+  if (noteIds.length === 0) return [];
+  return prisma.flashcard.findMany({
+    where: { AND: [liveCards(userId), { noteId: { in: noteIds }, clozeIndex: { not: null } }] },
+    select: { id: true, noteId: true, question: true, clozeIndex: true },
+    orderBy: [{ clozeIndex: "asc" }, { id: "asc" }],
+    take: 20_000,
+  });
+}
+
+/** Rewrites only the words of these cards, all or none, and only the caller's. The schedule, note and deck are not touched. */
+export async function updateTexts(userId: string, updates: { id: string; question: string; answer: string }[]): Promise<number> {
+  const results = await prisma.$transaction(
+    updates.map((u) => prisma.flashcard.updateMany({ where: { id: u.id, userId }, data: { question: u.question, answer: u.answer } })),
+  );
+  return results.reduce((sum, r) => sum + r.count, 0);
+}

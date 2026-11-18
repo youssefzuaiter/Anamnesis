@@ -104,3 +104,27 @@ export async function deleteCardAction(
     return toApiResponse(error);
   }
 }
+
+// Only the words travel: the browser names the card (bound in the page), never its schedule, note, deck or user.
+const editCardSchema = z.object({
+  cardId: z.uuid(),
+  input: z.union([
+    z.object({ question: z.string().max(MAX_CARD_QUESTION + 100), answer: z.string().max(MAX_CARD_ANSWER + 100) }),
+    z.object({ text: z.string().max(MAX_CLOZE_TEXT + 100) }),
+  ]),
+});
+
+export async function editCardAction(cardId: string, input: unknown): Promise<ApiResponse<{ changed: number }>> {
+  const parsed = editCardSchema.safeParse({ cardId, input });
+  if (!parsed.success) return fail("VALIDATION_ERROR", "That card is not valid. Check its lengths.");
+
+  try {
+    const userId = await requireUserId();
+    const result = await flashcardService.editCard(userId, parsed.data.cardId, parsed.data.input);
+    revalidatePath("/cards");
+    revalidatePath("/cards/all");
+    return ok(result);
+  } catch (error) {
+    return toApiResponse(error);
+  }
+}

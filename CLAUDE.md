@@ -4624,3 +4624,36 @@ ops/rehearse.sh <image>   # rehearse deploy, backup, restore and rollback agains
 
 The eval suite runs with `--conditions=react-server` so that `server-only` resolves
 to its no-op build; without that flag any script importing `lib/` throws.
+
+### Card browser and editor
+
+ROADMAP item 47 (*S to M, demo*; designed on the Design canvas and approved, then built and looked at in the browser). **All cards** at
+`/cards/all`, linked from the Cards page. **No migration**: it reads and rewrites `Flashcard.question` / `answer` only.
+
+- **Filters are a GET form**, so a view is a bookmarkable link and works without scripts. `lib/card-browser.ts` (pure) reads the address as plain
+  values only: `q` (one line, at most 200 characters), `deck` (a course id or `none`), `kind` (`basic`|`cloze`), `show` (`due`|`later`|`weak`|`new`),
+  `page` (digits, at most six). A repeated parameter, a malformed id or anything else is the default, never an error and never a list of cards.
+- **Search is literal.** Prisma `contains` is ILIKE and treats `%` and `_` as wildcards, so the id search is raw `strpos(lower(..), lower($q))`
+  with bound parameters, capped at 5,000 ids (`SEARCH_ID_CAP`), then combined with the Prisma filters. Same rule as every other query: `liveCards`
+  (the caller's, not a trashed note's) and `deckWhere` (a course, or `none`).
+- **Weak** reuses `listWeakSpots` (item 42) so a card is weak here exactly when it is in the deck, and the row says how often it failed.
+- **Editing changes words only.** `planCardEdit` (pure) returns the rows to write; `editCard` loads the card with `getLiveCard`, finds its siblings
+  (same note, same text, `clozeIndex` not null) and writes question/answer in one `$transaction` of `updateMany({ id, userId })`. Ease, interval,
+  repetitions, due date, note and user are never in the data. A basic card needs a question (<= 1000) and an answer (<= 2000); a fill-in-the-blank
+  card is edited as its whole text, and **the set of blank numbers must stay the same**: adding or removing one is refused with the reason, because a
+  new blank would be a card with no review history and a removed one a card to delete, both of which the person can do deliberately.
+- **`editCardAction(cardId, input)`** validates with Zod (`union` of `{question, answer}` and `{text}`, extra keys stripped), so a forged
+  `userId`, `dueAt`, `repetitions` or `noteId` is dropped before the service. Replayed with a forged body, another account's card id, no session,
+  oversized and mistyped input: nothing outside the words changed.
+- **Delete** reuses `deleteCardAction` behind a confirm. A page past the end is the last page.
+
+**Tests.** 10 unit (`card-browser`: the parameters incl. repeated and malformed ones, the 200 limit, links that round-trip, due labels, kind labels,
+edit planning for both kinds, the same-blanks rule), 9 integration (`card-browser`: literal `%` and `_`, injection text, another account's and a
+trashed note's cards, kind/state/deck filters, weak with counts, pages and past-the-end, a basic edit leaving the schedule untouched, a cloze edit
+across siblings and not another text of the note, refused edits writing nothing, foreign/trashed/unknown ids), 1 browser (`card-browser.spec.ts`:
+search, edit both kinds, the refusal, delete). Mutation checks, each caught: ILIKE instead of `strpos`, siblings of the whole note instead of the
+same text, allowing a removed blank, showing a trashed note's cards.
+
+**Not done:** search across a note's title; sorting other than soonest due; moving a card to another note; bulk edit or bulk delete. **Not run
+locally:** `pnpm build`, the whole e2e suite and the container rehearsal; CI runs them.
+

@@ -6,6 +6,7 @@ import { MAX_CARD_ANSWER, MAX_CARD_QUESTION } from "@/lib/domain";
 import { answerFor, validateCloze } from "@/lib/cloze";
 import { scheduleReview, type ReviewGrade } from "@/lib/spaced-repetition";
 import { rankWeak, windowStart, WEAK_MIN_FAILS } from "@/lib/weak-spots";
+import { BROWSE_PAGE_SIZE, planCardEdit, type BrowseParams, type EditInput } from "@/lib/card-browser";
 import * as courseRepository from "@/repositories/course-repository";
 import * as flashcardRepository from "@/repositories/flashcard-repository";
 import * as noteRepository from "@/repositories/note-repository";
@@ -260,4 +261,69 @@ export async function listWeakSpots(userId: string, now: Date, deck?: string): P
     const card = cards.get(weak.cardId);
     return card ? [{ card, fails: weak.fails }] : [];
   });
+}
+
+export type BrowsedCard = { card: Flashcard; courseId: string | null; courseCode: string | null; siblingCount: number; fails: number | null };
+
+/**
+ * The card browser (ROADMAP item 47): the caller's live cards, filtered by exact text, deck, kind and state, 50 a page. A page past the end
+ * is the last page. Weak cards are ranked by the same rule as the weak-spots deck, and carry how often they failed.
+ */
+export async function browseCards(userId: string, params: BrowseParams, now: Date): Promise<{ cards: BrowsedCard[]; total: number; page: number; pages: number }> {
+  let ids: string[] | null = null;
+  if (params.q !== "") ids = await flashcardRepository.searchIdsByText(userId, params.q);
+
+  let failsById = new Map<string, number>();
+  if (params.show === "weak") {
+    const weak = await listWeakSpots(userId, now, params.deck ?? undefined);
+    failsById = new Map(weak.map((w) => [w.card.id, w.fails]));
+    const weakIds = [...failsById.keys()];
+    ids = ids === null ? weakIds : weakIds.filter((id) => (ids as string[]).includes(id));
+  }
+
+  const filter = { deck: params.deck ?? undefined, kind: params.kind, show: params.show === "weak" ? null : params.show, ids, now };
+  const first = await flashcardRepository.browse(userId, filter, (params.page - 1) * BROWSE_PAGE_SIZE, BROWSE_PAGE_SIZE);
+  const pages = Math.max(1, Math.ceil(first.total / BROWSE_PAGE_SIZE));
+  const page = Math.min(params.page, pages);
+  const { rows, total } = page === params.page ? first : await flashcardRepository.browse(userId, filter, (page - 1) * BROWSE_PAGE_SIZE, BROWSE_PAGE_SIZE);
+
+  const noteIds = [...new Set(rows.filter((r) => r.clozeIndex !== null && r.noteId !== null).map((r) => r.noteId as string))];
+  const siblings = await flashcardRepository.listClozeSiblings(userId, noteIds);
+  const counts = new Map<string, number>();
+  for (const s of siblings) counts.set(`${s.noteId}\u0000${s.question}`, (counts.get(`${s.noteId}\u0000${s.question}`) ?? 0) + 1);
+
+  return {
+    cards: rows.map((row) => {
+      const { note, ...card } = row;
+      const live = note?.course && note.course.deletedAt === null ? note.course : null;
+      return {
+        card,
+        courseId: live ? note?.courseId ?? null : null,
+        courseCode: live?.code ?? null,
+        siblingCount: row.clozeIndex === null ? 1 : counts.get(`${row.noteId}\u0000${row.question}`) ?? 1,
+        fails: failsById.get(row.id) ?? null,
+      };
+    }),
+    total,
+    page,
+    pages,
+  };
+}
+
+/** Rewrites the words of one card, or of all the blanks of its text together. Never the schedule, the note or the deck. */
+export async function editCard(userId: string, cardId: string, input: EditInput): Promise<{ changed: number }> {
+  const card = await flashcardRepository.getLiveCard(userId, cardId);
+  if (!card) throw new AppError("RESOURCE_NOT_FOUND", "That card no longer exists.");
+
+  let group = [{ id: card.id, clozeIndex: card.clozeIndex }];
+  if (card.clozeIndex !== null && card.noteId !== null) {
+    const siblings = await flashcardRepository.listClozeSiblings(userId, [card.noteId]);
+    group = siblings.filter((s) => s.question === card.question);
+  }
+  const plan = planCardEdit({ id: card.id, clozeIndex: card.clozeIndex }, group, input);
+  if (!plan.ok) throw new AppError("VALIDATION_ERROR", plan.message);
+
+  const changed = await flashcardRepository.updateTexts(userId, plan.updates);
+  if (changed !== plan.updates.length) throw new AppError("RESOURCE_NOT_FOUND", "That card no longer exists.");
+  return { changed };
 }
