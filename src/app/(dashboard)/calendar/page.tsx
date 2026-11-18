@@ -270,7 +270,7 @@ export default async function CalendarPage({
         </div>
       )}
 
-      <section className={`mt-6 grid gap-4 ${hourly ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
+      <section className={`mt-6 grid grid-cols-1 gap-4 ${hourly ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
         <div>
           <h2 className="mb-2 text-xs font-semibold text-text-faint">
             Add event
