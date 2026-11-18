@@ -165,7 +165,14 @@ test("a second run copies nothing and rewrites nothing; a new backup is added", 
 
 test("two runs at once leave one whole, decryptable copy per backup and no temporary files; stale temporary files are removed", { skip }, async () => {
   const { backups, dest, identityFile, env } = setup();
-  for (let i = 1; i <= 6; i++) backup(backups, `2026111${i}T031500Z`);
+  // Dated from today, not written out: the retention policy keeps every copy from the last 7 days, and this test needs all six to survive it.
+  // With fixed dates (11 to 16 November 2026) it passed until the 18th and then failed, because the oldest fell out of that window.
+  const stampAgo = (n: number) => {
+    const d = new Date(Date.now() - n * 86_400_000);
+    const p = (x: number) => String(x).padStart(2, "0");
+    return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}T031500Z`;
+  };
+  for (let i = 1; i <= 6; i++) backup(backups, stampAgo(i));
   const stale = path.join(dest, ".incomplete-anamnesis-20200101T000000Z.99999.tar.age");
   const young = path.join(dest, ".incomplete-anamnesis-20200102T000000Z.99998.tar.age");
   const other = path.join(dest, ".incomplete-my-own-file");
