@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { z } from "zod";
 import { requireUserId } from "@/lib/session";
 import { spreadSiblings } from "@/lib/cloze";
@@ -51,6 +52,10 @@ export default async function CardsPage({ searchParams }: PageProps<"/cards">) {
             : `${counts.due} due of ${counts.total} ${counts.total === 1 ? "card" : "cards"}. Make cards from any note: open it and use “Make cards”, or write your own with “New card”.`}
         </p>
       </header>
+
+      <p className="mb-3 text-sm">
+        <Link href="/cards/all" className="font-semibold text-accent-ink underline-offset-2 hover:underline">Browse and edit all cards</Link>
+      </p>
 
       <DeckNav decks={decks} active={deck} all={all} weak={{ count: weakCards.length, open: weakOpen }} />
 
