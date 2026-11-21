@@ -290,3 +290,15 @@ export async function updateTexts(userId: string, updates: { id: string; questio
   );
   return results.reduce((sum, r) => sum + r.count, 0);
 }
+
+/** The most cards one cram deck reads; a course has a few hundred, so this is a guard, not a limit anyone meets. */
+export const CRAM_CARD_CAP = 2000;
+
+/** The caller's live cards of one course (the deck rule), in no particular order, for the cram ordering. */
+export async function listCourseCards(userId: string, courseId: string): Promise<Flashcard[]> {
+  return prisma.flashcard.findMany({
+    where: { AND: [liveCards(userId), deckWhere(courseId)] },
+    orderBy: { id: "asc" },
+    take: CRAM_CARD_CAP,
+  });
+}
