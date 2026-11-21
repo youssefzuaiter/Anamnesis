@@ -135,6 +135,7 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
   const root = useRef<HTMLElement>(null);
   const busy = useRef(false);
   const refocus = useRef<string | null>(null);
+  const settling = useRef<string | null>(null);
 
   const columns = columnsOf(optimistic);
   const dragged = dragging ? optimistic.find((card) => card.id === dragging) : undefined;
@@ -143,19 +144,37 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
   // back on the card's title once the list has changed (and again if the move is taken back). Below lg the card may
   // have gone to a column that is not showing, which cannot take focus: then it stays with the buttons that say which
   // column is.
-  useEffect(() => {
-    const id = refocus.current;
-    if (!id || !root.current) return;
-    refocus.current = null;
+  function focusCard(id: string) {
+    if (!root.current) return;
     const title = root.current.querySelector<HTMLElement>(`[data-focus-key="card:${id}"]`);
     const showing = title && title.getClientRects().length > 0 ? title : root.current.querySelector<HTMLElement>('[aria-pressed="true"]');
     showing?.focus();
+  }
+
+  useEffect(() => {
+    const id = refocus.current;
+    if (!id) return;
+    refocus.current = null;
+    focusCard(id);
   }, [optimistic]);
+
+  // The first focus happens when the card moves on screen. The save then ends and the page is rebuilt from the
+  // server's answer, which can replace the card's element again and drop focus to the page (it did, now and then, on a
+  // slow machine). When the move has settled, a person left with nothing focused is put back on their card; one who
+  // has moved on to something else is left alone.
+  useEffect(() => {
+    const id = settling.current;
+    if (!id || pending) return;
+    settling.current = null;
+    const active = document.activeElement;
+    if (!active || active === document.body) focusCard(id);
+  }, [pending, optimistic]);
 
   function move(card: BoardCard, to: TaskStatus) {
     if (busy.current || pending || card.status === to) return;
     busy.current = true;
     refocus.current = card.id;
+    settling.current = card.id;
     setError(null);
     setNotice("");
     const label = BOARD_COLUMNS.find((column) => column.status === to)?.label ?? to;

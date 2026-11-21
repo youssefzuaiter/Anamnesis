@@ -86,11 +86,14 @@ test("two-factor: set up, sign in needs the code, a recovery code works once, th
   await expect(message(second.page)).toHaveText("Incorrect email, password or code.");
   await signIn(second.page, email, "000000");
   await expect(message(second.page)).toHaveText("Incorrect email, password or code.");
-  await signIn(second.page, email, ahead(key));
+  // One code, computed once: the replay below must send the very same digits. Asking `ahead` again would give the next step's code if the 30-second
+  // step turned over in between (a slow CI run does), and that is a different, unspent, valid code, so the replay would sign in.
+  const spent = ahead(key);
+  await signIn(second.page, email, spent);
   await second.page.waitForURL("http://localhost:3100/");
   // The same code is spent.
   const replay = await fresh(browser);
-  await signIn(replay.page, email, ahead(key));
+  await signIn(replay.page, email, spent);
   await expect(message(replay.page)).toHaveText("Incorrect email, password or code.");
 
   // A recovery code: once.
