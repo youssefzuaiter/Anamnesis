@@ -12,5 +12,11 @@ allowBuilds:
 # versions, and 0.16 has an open advisory (patched in 0.18.2). Forcing one
 # version fixes both. Remove this once rehype-katex allows katex 0.19 itself;
 # tests/render/markdown.test.ts fails if the versions ever drift apart again.
+# Two advisories reached us only through other packages' ranges (Dependabot alerts 17 and 15). `effect` comes in through prisma's
+# config package (a ReDoS in Schema.TemplateLiteral, patched in 3.22.1) and minimatch 10 through typescript-eslint's file matching
+# (a DoS through globparts amplification, development only, patched in 11.0.1). Forced to the patched releases; remove each once the
+# package that asks for it allows a patched range itself.
 overrides:
   katex: 0.19.1
+  effect: 3.22.1
+  "minimatch@10": 11.0.1
