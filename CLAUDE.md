@@ -4657,3 +4657,22 @@ same text, allowing a removed blank, showing a trashed note's cards.
 **Not done:** search across a note's title; sorting other than soonest due; moving a card to another note; bulk edit or bulk delete. **Not run
 locally:** `pnpm build`, the whole e2e suite and the container rehearsal; CI runs them.
 
+### Board focus flake
+
+ROADMAP item 53. The test "by keyboard, a Move button works and focus follows the card" failed once in CI (a 10 s `toBeFocused` timeout, "Received:
+inactive", so the card's link was in the page and had focus nowhere) and passed on re-run. **The root cause was not reproduced**: the test passed 6 of 6
+with the CPU throttled six times (`Emulation.setCPUThrottlingRate`) and in the full spec at normal speed.
+
+- **What the code did.** `TaskBoard` put focus back on the moved card once, in an effect on the optimistic list. When the save ends the page is rebuilt from
+  the server's answer, and if that replaces the card's element focus drops to the page with nothing to restore it. That is a reading of the code plus the CI
+  symptom, not an observation.
+- **The fix is a guard, tested against the failure class rather than the one occurrence.** When a move has settled (`pending` is false), a person left with
+  nothing focused (`document.activeElement` is the body) is put back on their card; one who has moved on to something else is left alone. `focusCard`
+  is shared by both effects.
+- **Two browser tests hold the server's answer back** (`page.route` on the Next action POST) so the save is in flight on demand: one blurs the card
+  while it is held and expects focus back after the answer (it failed before the fix with the CI's own symptom); one moves focus to another button and
+  expects it to stay (a mutant that always refocuses fails it, once it waits for the move to settle: the first version asserted too early and let the mutant through).
+
+**Not done:** the original intermittent failure was not seen again, so "fixed" means the failure class is covered and the guard is in; if
+`board.spec.ts:261` fails again in CI, the guard did not cover the cause. **Not run locally:** `pnpm build`, the whole e2e suite, the container rehearsal.
+

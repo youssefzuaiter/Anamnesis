@@ -275,6 +275,60 @@ test("by keyboard, a Move button works and focus follows the card", async ({ pag
   await expect(card(page, "Done", title).getByRole("link", { name: title })).toBeFocused();
 });
 
+test("focus returns to the card when the move settles, even if it was lost while the move was being saved", async ({ page }) => {
+  const title = `Settle ${Date.now()}`;
+  await projectWith(page, "Settle", [title]);
+  // Hold the server's answer back, so the card has moved on screen and the save is still in flight.
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    if (request.method() === "POST" && request.headers()["next-action"]) await held;
+    await route.continue();
+  });
+
+  await moveButton(page, "To do", title, "In progress").focus();
+  await page.keyboard.press("Enter");
+  const link = card(page, "In progress", title).getByRole("link", { name: title });
+  await expect(link).toBeFocused();
+
+  // Whatever takes focus away while the answer is awaited (a re-render that replaces the card, the page being
+  // revalidated), the person is left on the page with nothing focused.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await expect(link).not.toBeFocused();
+
+  release();
+  await expect(board(page).getByRole("status")).toHaveText(`Moved “${title}” to In progress.`);
+  await expect(link).toBeFocused();
+});
+
+test("focus the person moved on to while a move was being saved is left where it is", async ({ page }) => {
+  const title = `Stay ${Date.now()}`;
+  await projectWith(page, "Stay", [title]);
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    if (request.method() === "POST" && request.headers()["next-action"]) await held;
+    await route.continue();
+  });
+
+  await moveButton(page, "To do", title, "In progress").focus();
+  await page.keyboard.press("Enter");
+  await expect(card(page, "In progress", title).getByRole("link", { name: title })).toBeFocused();
+  const elsewhere = moveButton(page, "In progress", title, "Done");
+  await elsewhere.focus();
+  await expect(elsewhere).toBeFocused();
+
+  release();
+  await expect(board(page).getByRole("status")).toHaveText(`Moved “${title}” to In progress.`);
+  // The move has settled once its buttons are available again; a "nothing happens" check has to give a wrong move
+  // time to happen.
+  await expect(moveButton(page, "In progress", title, "Done")).not.toHaveAttribute("aria-disabled", /.*/);
+  await page.waitForTimeout(700);
+  await expect(elsewhere).toBeFocused();
+});
+
 test("a drop that carries an id that is not on this board does nothing and sends nothing", async ({ page }) => {
   const stamp = Date.now();
   const mine = `Mine ${stamp}`;
