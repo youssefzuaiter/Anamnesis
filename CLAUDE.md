@@ -4696,3 +4696,39 @@ suite runs without Ollama, so the results list was looked at through a temporary
 the question before keeping (All cards edits it afterwards); a cloze version. **Not run locally:** `pnpm build`, the whole e2e suite, the evals and
 the container rehearsal; CI runs them.
 
+### Plan my week
+
+ROADMAP item 51 (*M, demo*; two designs shown, A day rows and B blocks on the week grid; the owner chose to build both, on a page of their own, A as the main view and B as a
+second view of the same proposal). **`/plan`** (Plan group, shortcut `g` then `w`), `?week=yyyy-mm-dd` names the week (any day in it; anything else is this week), previous / next
+week links. **No migration, no model.**
+
+- **The rule** (`lib/week-planner.ts`, pure, over the day planner's own pieces: `freeIntervals`, `byUrgency`, `GAP_MINUTES`, `MIN_USABLE_MINUTES`, now exported; `planDay` is
+  unchanged and its tests pass). Tasks in order: overdue (due before today) first, then priority, then soonest due, then shortest, then id (so the same data always gives the same
+  plan). A task goes on **the lightest day that fits** (booked plus planned minutes inside 09:00 to 21:00; the earlier day on a tie), among the days it may take: up to its due
+  day when that is in this week, every day when overdue or due later. **Weekdays first**: the weekend is used only when no weekday in range has room. **At most 6 hours of
+  planned tasks a day** (`MAX_DAY_MINUTES`, a judgement), 10 minutes between blocks, never in the past, never shortened or split; a proposal holds at most 40 blocks from at most
+  60 tasks. An overdue task takes the first day with room, not the lightest. What does not fit comes back with a reason: `before-due` (a due day this week and no room before it) or
+  `no-room`. A week that has begun is planned from now.
+- **Propose, confirm, re-derive** (`services/week-plan-service.ts`). `proposeWeek` reads the caller's events and planned blocks in the week (busy time) and up to 60 open, untimed, live tasks
+  (`listUnscheduled`) and writes nothing. `applyWeek` works the plan out again and schedules (through `scheduleTask`, which carries every other field) **only the blocks whose task
+  and start still match** what the person was shown; the browser's times are only compared. It returns `{ scheduled, requested }`, so the page can say "Scheduled 5 of the 7 tasks
+  you ticked: the other 2 no longer fit"; none matching is a refusal. A second confirm finds nothing that still matches.
+- **Client input.** `proposeWeekAction(weekStart)` takes a `yyyy-mm-dd`; `applyWeekAction(weekStart, picks)` a **strict** list of `{ taskId: uuid, start: ISO datetime }`, 1 to 40
+  (an extra key such as `userId` or `scheduledEnd` is a refusal). Replayed with no session, another account's task id, an unknown id, a bad week, a non-date start, extra keys, 41
+  picks, empty and `null`, and a start the plan did not propose: refused each time, nothing scheduled.
+- **One proposal, two views.** `components/plan-week.tsx`: ticking is by task, so a block left out in the grid is left out in the rows. Rows (A) show each day's booked and planned
+  time and each task with its time, priority and due day. Grid (B) draws existing events and blocks in grey and the proposed ones as dashed blocks you press to leave out
+  (`aria-pressed`, a label with the time); on a phone a strip of seven 48px day tabs shows one day at a time. The status line, the did-not-fit box and Schedule / Cancel are shared.
+- **Not on the calendar page**: the design first put the panel there; the owner asked for a page of its own, with a link to the calendar's week.
+
+**Tests.** 14 unit (`week-planner`: the week, spreading, a booked day being heavier, gaps and the 10-minute rule, due days, weekend, overdue, urgency, the 6-hour cap, a week
+that has begun, the 40-block cap and determinism, empty and walled weeks, 60 tasks under a second, the week address), 7 integration (`week-plan`: only the caller's open untimed tasks, nothing
+written by a proposal, a bad week, apply keeping every other field, a mismatched start or another account's task counted and not applied, applying twice, a calendar that filled up,
+the reasons), 3 browser (`plan-week.spec.ts`: propose, leave one out in the grid, schedule, see it on the calendar; the week address; a phone with 44px tabs and no overflow), `/plan`
+added to the navigation test and `w` to the shortcut tests. Seven mutants, each caught: no weekend preference, ignoring the due day, not the lightest day, no daily cap, overdue not
+first, apply ignoring the start, booked time not counted. Looked at in the browser with sample data: rows and grid at desktop, the grid at 375px in dark (no overflow).
+
+**Not done:** dragging a proposed block to another time before confirming (untick and plan it by hand); working hours other than 09:00 to 21:00 or a different daily cap per person; a
+week that includes tasks with a planned block already (they are treated as busy time, not moved); splitting a long task across days; planning from Today. **Not run locally:**
+`pnpm build`, the whole e2e suite and the container rehearsal; CI runs them.
+
