@@ -120,6 +120,9 @@ function CardItem({
  * touch), at once on screen and then for real: the move is the same `setTaskStatus` the checkbox uses. Below `lg`
  * one column shows at a time, chosen with the buttons above them; the three are always in the page.
  */
+/** How long after a move ends a late rebuild of the list may still put focus back on the moved card. */
+const FOCUS_GRACE_MS = 4000;
+
 export function TaskBoard({ cards }: { cards: BoardCard[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -135,7 +138,7 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
   const root = useRef<HTMLElement>(null);
   const busy = useRef(false);
   const refocus = useRef<string | null>(null);
-  const settling = useRef<string | null>(null);
+  const owning = useRef<{ id: string; until: number } | null>(null);
 
   const columns = columnsOf(optimistic);
   const dragged = dragging ? optimistic.find((card) => card.id === dragging) : undefined;
@@ -158,23 +161,28 @@ export function TaskBoard({ cards }: { cards: BoardCard[] }) {
     focusCard(id);
   }, [optimistic]);
 
-  // The first focus happens when the card moves on screen. The save then ends and the page is rebuilt from the
-  // server's answer, which can replace the card's element again and drop focus to the page (it did, now and then, on a
-  // slow machine). When the move has settled, a person left with nothing focused is put back on their card; one who
-  // has moved on to something else is left alone.
+  // A moved card keeps the person's focus for as long as the move is being saved and for a short grace after it ends. The page is rebuilt
+  // from the server's answer, which can arrive in a later commit than the one that ends the save and replace the card's element again, so
+  // one restore at the end is not enough (CI lost focus that way twice, on a slow machine). While the card owns focus, any commit that
+  // leaves nothing focused puts it back on the card; a person who has moved on to something else is left alone.
   useEffect(() => {
-    const id = settling.current;
-    if (!id || pending) return;
-    settling.current = null;
+    const owner = owning.current;
+    if (!owner) return;
+    if (pending) owner.until = Infinity;
+    else if (owner.until === Infinity) owner.until = Date.now() + FOCUS_GRACE_MS;
+    if (Date.now() > owner.until) {
+      owning.current = null;
+      return;
+    }
     const active = document.activeElement;
-    if (!active || active === document.body) focusCard(id);
-  }, [pending, optimistic]);
+    if (!active || active === document.body) focusCard(owner.id);
+  }, [pending, optimistic, cards]);
 
   function move(card: BoardCard, to: TaskStatus) {
     if (busy.current || pending || card.status === to) return;
     busy.current = true;
     refocus.current = card.id;
-    settling.current = card.id;
+    owning.current = { id: card.id, until: Infinity };
     setError(null);
     setNotice("");
     const label = BOARD_COLUMNS.find((column) => column.status === to)?.label ?? to;

@@ -62,6 +62,8 @@ test("the course switch waits for tracking, each switch sticks, and turning trac
   await expect(includeCourse(page)).toBeEnabled();
   await includeCourse(page).check();
   await expect(includeCourse(page)).toBeChecked();
+  // The box shows its new state at once and the save follows; reloading before it lands would read the old value (it did, once, on a slow CI run).
+  await expect.poll(async () => (await sql<{ on: boolean }>(`SELECT "focusIncludeCourse" AS on FROM "UserProfile" WHERE "userId" IN ${ME}`))[0]?.on).toBe(true);
   await page.reload();
   await expect(tracking(page)).toBeChecked();
   await expect(includeCourse(page)).toBeChecked();
