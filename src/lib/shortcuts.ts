@@ -20,6 +20,7 @@ export const GO_TO_SHORTCUTS: readonly GoToShortcut[] = [
   { key: "s", href: "/search", label: "Search" },
   { key: "t", href: "/tasks", label: "Tasks" },
   { key: "c", href: "/calendar", label: "Calendar" },
+  { key: "w", href: "/plan", label: "Plan my week" },
   { key: "p", href: "/projects", label: "Projects" },
   { key: "g", href: "/goals", label: "Goals" },
   { key: "u", href: "/courses", label: "Courses" },

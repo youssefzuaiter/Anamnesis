@@ -353,6 +353,7 @@ test("navigation reaches every section", async ({ page }) => {
     ["/settings", /settings/i],
     ["/trash", /trash/i],
     ["/calendar/subscriptions", /imported calendars/i],
+    ["/plan", /plan my week/i],
   ] as const) {
     await page.goto(path);
     await expect(
