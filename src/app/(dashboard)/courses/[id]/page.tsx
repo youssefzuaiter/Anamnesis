@@ -3,11 +3,14 @@ import { notFound } from "next/navigation";
 import { requireUserId } from "@/lib/session";
 import {
   listCourseContents,
+  listCourseNoteTitles,
   listCourses,
 } from "@/repositories/course-repository";
 import { listDecks } from "@/services/flashcard-service";
 import { summarise, nextUngraded, daysUntilLabel } from "@/lib/grades";
 import { GradePanel } from "@/components/grade-panel";
+import { SyllabusImport } from "@/components/syllabus-import";
+import { listUncoursedNoteTitles } from "@/repositories/note-repository";
 import { ExamPrep } from "@/components/exam-prep";
 import { CourseGrade } from "@/components/course-grade";
 import { summariseGpa } from "@/lib/gpa";
@@ -47,11 +50,13 @@ export default async function CoursePage({
   if (!course) notFound();
 
   const now = new Date();
-  const [contents, decks, overview, studyTime] = await Promise.all([
+  const [contents, decks, overview, studyTime, courseNotes, looseNotes] = await Promise.all([
     listCourseContents(userId, course.id),
     listDecks(userId, now),
     getGpaOverview(userId, courses),
     getCourseStudyTime(userId, course.id, now),
+    listCourseNoteTitles(userId, course.id, 50),
+    listUncoursedNoteTitles(userId, 50),
   ]);
   const deck = decks.find((candidate) => candidate.id === course.id);
   // Every other counted course, so the card can say what this one does to the CGPA.
@@ -142,6 +147,14 @@ export default async function CoursePage({
       <ExamPrep
         assessments={prepTargets.map(({ id, label }) => ({ id, label }))}
         defaultId={prepTargets[0]?.id ?? null}
+      />
+
+      <SyllabusImport
+        courseId={course.id}
+        courseCode={course.code}
+        inCourse={courseNotes.notes}
+        elsewhere={looseNotes}
+        defaultNoteId={(courseNotes.notes.find((n) => /syllabus|müfredat|ders planı/i.test(n.title)) ?? looseNotes.find((n) => /syllabus|müfredat|ders planı/i.test(n.title)) ?? courseNotes.notes[0] ?? looseNotes[0])?.id ?? null}
       />
 
       <GradePanel

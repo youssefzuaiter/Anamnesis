@@ -290,3 +290,8 @@ export async function updateTexts(userId: string, updates: { id: string; questio
   );
   return results.reduce((sum, r) => sum + r.count, 0);
 }
+
+/** A basic card of this note with exactly this question, if the caller has one, so keeping the same question twice makes one card. */
+export async function findBasicByQuestion(userId: string, noteId: string, question: string): Promise<Flashcard | null> {
+  return prisma.flashcard.findFirst({ where: { userId, noteId, clozeIndex: null, question } });
+}
