@@ -4696,3 +4696,27 @@ suite runs without Ollama, so the results list was looked at through a temporary
 the question before keeping (All cards edits it afterwards); a cloze version. **Not run locally:** `pnpm build`, the whole e2e suite, the evals and
 the container rehearsal; CI runs them.
 
+### Cram mode
+
+ROADMAP item 48 (*S, demo*; designed on the Design canvas and approved, then built and looked at in the browser). A **Cram this course**
+section on the course page (shown when the course has cards) opens `/cards?course=<id>&cram=1`. **No migration, no model**: it only orders,
+as the weak-spots deck does, so SM-2 is untouched and grading a cram card is an ordinary review.
+
+- **The order, exactly** (`lib/cram.ts`, pure, `rankCram`): (1) weak cards, by the weak-spots rule and rank (item 42); (2) cards with at least one
+  "again" in the last 30 days that are not weak (including a card mended by two good answers), most failures first, then lowest ease; (3) cards never
+  reviewed, longest waiting first; (4) the rest, lowest ease (hardest) first, then soonest due. Ties end on the id, so the same data always gives
+  the same order. Each card carries a reason (`cramReason`): "Weak: failed 3 times this month", "Failed once this month", "Never reviewed".
+- **Scope.** `listCram` reads the caller's live cards of one course (`liveCards` + `deckWhere(course)`, capped at 2,000) and their review lines
+  for the window (`reviewLinesFor`). Another account's course id, an unknown id and an empty course are an empty deck; a trashed note's cards are
+  not in it. The page opens cram only for `cram=1` with a course id (not `none`, not with `weak=1`); anything else is the ordinary queue.
+- **Session.** The first 50 after the usual one-card-per-cloze-text spreading; a cram deck is rebuilt from the latest answers each time it is
+  opened, so cards just got right sink. The page says how many wait. The course page shows the counts per tier.
+
+**Tests.** 7 unit (`cram`: the tiers and their order, a mended card, the window, determinism and completeness, the reasons, more failures before
+hardness, 20,000 cards under a second), 3 integration (`cram`: the course's cards due or not in order with other courses, accounts and trashed notes
+excluded; foreign/unknown/empty courses; grading in a cram deck is an ordinary review), 1 browser (`cram.spec.ts`: from the course page to the
+deck, the reason, grading, a non-course cram address). Mutation checks, each caught: failed tier ahead of weak, failed tier ignoring the failure
+count (survived at first and exposed a missing test, now added), cards of trashed notes included, failures older than 30 days counted.
+
+**Not done:** a cram deck for a project or a tag; a limit other than 50; cramming only the weak tier; an exam-date-aware size. **Not run
+locally:** `pnpm build`, the whole e2e suite and the container rehearsal; CI runs them.
