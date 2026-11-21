@@ -1152,6 +1152,11 @@ page a little heavier; with the CPU throttled six times (`Emulation.setCPUThrott
 2 of 2 without `hydrated(page)` and passed 2 of 2 with it. Throttling is how to reproduce a CI-only
 race locally.
 
+**A time-based code is computed once per use.** The two-factor spec asked for "the next step's code" again to replay it, so when the 30-second step turned
+over between the two sign-ins (a slow CI run does) the second ask was a different, unspent, valid code and the replay signed in: the test failed with
+no alert on `main`'s and #84's CI, once. Proved by waiting 31 s between the two with the old code (it fails with CI's message) and with the one value (it
+passes). The test now keeps the code in a variable.
+
 ## Layout gotcha
 
 `main` in the dashboard shell carries `min-w-0`. It is a flex item, and a flex
