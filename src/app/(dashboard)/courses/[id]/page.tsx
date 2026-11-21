@@ -6,7 +6,7 @@ import {
   listCourseNoteTitles,
   listCourses,
 } from "@/repositories/course-repository";
-import { listDecks } from "@/services/flashcard-service";
+import { listCram, listDecks } from "@/services/flashcard-service";
 import { summarise, nextUngraded, daysUntilLabel } from "@/lib/grades";
 import { GradePanel } from "@/components/grade-panel";
 import { SyllabusImport } from "@/components/syllabus-import";
@@ -59,6 +59,8 @@ export default async function CoursePage({
     listUncoursedNoteTitles(userId, 50),
   ]);
   const deck = decks.find((candidate) => candidate.id === course.id);
+  // Cram (item 48) only needs the counts here; the order is made when the deck is opened.
+  const cram = deck && deck.total > 0 ? (await listCram(userId, course.id, now)).counts : null;
   // Every other counted course, so the card can say what this one does to the CGPA.
   const others = summariseGpa(
     overview.courses.filter((other) => other.id !== course.id),
@@ -133,6 +135,24 @@ export default async function CoursePage({
           </>
         )}
       </section>
+
+      {cram && (
+        <section aria-labelledby="cram-heading" className="mb-6 rounded-xl border border-border-subtle bg-surface p-4">
+          <h2 id="cram-heading" className="text-sm font-semibold text-text">Cram this course</h2>
+          <p className="mt-1.5 text-sm text-text-muted">
+            Every card of the course, weakest first, whether or not it is due. Grading works as always: nothing is rescheduled just for being here.
+          </p>
+          <Link
+            href={`/cards?course=${course.id}&cram=1`}
+            className="mt-3 inline-flex min-h-11 items-center justify-center rounded-lg bg-accent px-4 text-sm font-semibold text-on-accent transition-colors hover:bg-accent-hover sm:min-h-9"
+          >
+            Cram this course
+          </Link>
+          <p className="mt-3 text-xs text-text-muted">
+            {cram.weak} weak, {cram.failed} failed lately, {cram.fresh} never reviewed, {cram.rest} others. Order: weak first, then failed lately, then never reviewed, then hardest to easiest.
+          </p>
+        </section>
+      )}
 
       <CourseStudyCard view={studyTime} />
 

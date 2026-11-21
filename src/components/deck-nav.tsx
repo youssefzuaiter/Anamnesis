@@ -13,18 +13,22 @@ export function DeckNav({
   active,
   all,
   weak,
+  cram = null,
 }: {
   decks: DeckSummary[];
   active: string | null;
   all: { total: number; due: number };
   /** The weak-spots deck: how many cards are in it, and whether it is the one open. Hidden while it is empty and not open. */
   weak: { count: number; open: boolean };
+  /** An open cram deck (ROADMAP item 48): the course's code and how many cards it holds. It has no deck of its own in the list, so it shows only while open. */
+  cram?: { label: string; count: number; href: string } | null;
 }) {
   const items = [
     { key: null, label: "All decks", title: null, href: "/cards", ...all },
     ...(weak.count > 0 || weak.open
       ? [{ key: "weak", label: "Weak spots", title: "Cards you got wrong at least twice in the last 30 days and have not got right twice since", href: "/cards?weak=1", total: weak.count, due: -1 }]
       : []),
+    ...(cram ? [{ key: "cram", label: `Cram ${cram.label}`, title: "One course's cards, weakest first, whether or not they are due", href: cram.href, total: cram.count, due: -1 }] : []),
     ...decks.map((deck) => ({
       key: deck.id ?? "none",
       label: deck.label,
@@ -39,7 +43,7 @@ export function DeckNav({
     <nav aria-label="Decks" className="mb-5">
       <ul className="flex flex-wrap gap-2">
         {items.map((item) => {
-          const current = item.key === "weak" ? weak.open : !weak.open && item.key === active;
+          const current = item.key === "cram" ? true : item.key === "weak" ? weak.open : !weak.open && !cram && item.key === active;
           return (
             <li key={item.key ?? "all"} className="max-w-full">
               <Link
