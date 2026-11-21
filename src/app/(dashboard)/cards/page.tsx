@@ -65,7 +65,7 @@ export default async function CardsPage({ searchParams }: PageProps<"/cards">) {
         <Link href="/cards/all" className="font-semibold text-accent-ink underline-offset-2 hover:underline">Browse and edit all cards</Link>
       </p>
 
-      <DeckNav decks={decks} active={deck} all={all} weak={{ count: weakCards.length, open: weakOpen }} />
+      <DeckNav decks={decks} active={deck} all={all} weak={{ count: weakCards.length, open: weakOpen }} cram={cram ? { label: cramDeck?.label ?? "course", count: cram.items.length, href: `/cards?course=${deck}&cram=1` } : null} />
 
       {held > 0 && (
         <p className="mb-3 text-xs text-text-muted">
