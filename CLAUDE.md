@@ -4206,7 +4206,7 @@ ROADMAP item 42 (*S to M, model?*; built from the roadmap sentence and looked at
   the two-answer run) are judgements, not measurements; they are constants in one file.
 - **Quiz questions you missed:** a quiz card's grade goes through the same review as any card, so a card missed in a quiz is already in the log
   and in this deck. A quiz question the model *generated* has no row and no log line (item 10 stores nothing about a session), so it cannot be
-  in the deck. Storing missed generated questions would be a new table and a new feature, and was not built.
+  in the deck. Storing missed generated questions would be a new table and a new feature, and was not built; **item 49 instead lets the person keep one as an ordinary card** (see "Keep a missed quiz question").
 - **It practises cards that are not due.** Grading one is an ordinary review: SM-2 moves it from its current state, so a "good" on a card that
   is not due yet is a full step taken early (the same cost noted for the quiz). The page says nothing is rescheduled just for being there.
 - **Reads:** three queries, all scoped by `userId` (candidate ids by `groupBy` with `having`, capped at 500; those cards' log lines; the live
@@ -4656,4 +4656,38 @@ same text, allowing a removed blank, showing a trashed note's cards.
 
 **Not done:** search across a note's title; sorting other than soonest due; moving a card to another note; bulk edit or bulk delete. **Not run
 locally:** `pnpm build`, the whole e2e suite and the container rehearsal; CI runs them.
+
+### Keep a missed quiz question
+
+ROADMAP item 49 (*S to M, model, migration?*; not tagged demo, so built from the roadmap sentence and looked at in the browser). After a quiz, a
+**generated** question that was missed or partly right has **Keep as a card** in the results list. **No migration and no new table**: it makes an
+ordinary basic `Flashcard`, which is the whole answer to "so the weak-spots deck can hold it": a card is weak by the review log like any other.
+
+- **Where it goes.** On the note the question was generated from (`QuizQuestion.noteId`, already carried), so it sits in that note's deck and course.
+  Due now, a basic card, question and reference answer trimmed. It goes through `createCardsForNote`, so the length limits (1,000 / 2,000) and the
+  note check (the caller's, not in the trash) are the ones every card has.
+- **Who may be kept.** `canKeep` (pure): kind `generated` and a verdict that is not `correct`. A card is already a card; a question answered right
+  is not offered. The verdict is the one the person settled on (their "I knew it / Partly / Missed it", or the grade they chose), not the model's
+  suggestion.
+- **Client input.** A generated question is stored nowhere, so `keepQuestionAction` receives `{ noteId, question, reference }` from the browser:
+  strict Zod (`keepQuestionInputSchema`, extra keys refused, not stripped, so a forged `userId`, `dueAt` or `repetitions` is a refusal), then
+  `keepQuizQuestion` checks the note as the caller's. Replayed with no session, another account's note, an unknown note, forged keys, oversize and
+  mistyped input: refused each time, nothing written. A person can only put their own words on their own notes, as with a card typed by hand.
+- **Once.** The same question on the same note is not made twice (`findBasicByQuestion`, exact text after trimming): the second press says "Already a
+  card". The lookup also filters by `userId`; removing that filter survives every test, because the note is already the caller's and a note's cards
+  are its owner's, so it is defence in depth, not a measured guard.
+- **UI.** `components/quiz-result-list.tsx` (the list moved out of `quiz-session.tsx`). The button is a 44px target on a phone, a `useRef` guard and
+  `disabled={pending}` stop a double submit, and the answer is a `role="status"` line with a link to All cards (or a `role="alert"` on failure).
+  A kept card refreshes the Cards badge and Today.
+
+**Tests.** 2 unit (`canKeep`, the strict schema with exact limits), 5 integration (`quiz`: a basic card on its note, due now, in the note's
+deck; once, with trimming, other notes and accounts independent; another account's, trashed and unknown notes refused with nothing written; over-long
+text refused; a kept question becomes a weak spot after two "again"). Mutation checks: no dedupe, keeping correct answers too and no trimming were
+each caught; the unscoped dedupe lookup survives (above). **No browser test and no eval**: a generated question needs the model, and the browser
+suite runs without Ollama, so the results list was looked at through a temporary page with sample data (since removed): desktop dark, 375px light
+(no overflow, 44px buttons), a real click keeping a card.
+
+**Not done:** keeping a question while the quiz is still running; keeping a missed *card* (it is already one); choosing the note or the deck; editing
+the question before keeping (All cards edits it afterwards); a cloze version. **Not run locally:** `pnpm build`, the whole e2e suite, the evals and
+the container rehearsal; CI runs them.
 
