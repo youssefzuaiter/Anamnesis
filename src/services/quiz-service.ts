@@ -20,12 +20,14 @@ import {
   type CheckAnswerInput,
   type CheckResult,
   type Excerpt,
+  type KeepQuestionInput,
   type QuizQuestion,
   type QuizScope,
   type Verdict,
 } from "@/lib/quiz";
 import * as flashcardRepository from "@/repositories/flashcard-repository";
 import * as noteRepository from "@/repositories/note-repository";
+import * as flashcardService from "@/services/flashcard-service";
 import { resolveScope } from "@/services/scope-service";
 
 /** Cards read to choose a quiz from, and notes read to write questions from. */
@@ -295,4 +297,20 @@ export async function checkAnswer(
     suggestedGrade: verdictToGrade(verdict.data.verdict),
     problem: null,
   };
+}
+
+
+/**
+ * Keeps a missed generated question as an ordinary basic card on the note it came from (ROADMAP item 49), due now, in the note's deck, so the
+ * weak-spots deck can hold it once it is failed twice. The question and its answer come from the browser (a generated question is not stored),
+ * so they are checked like a card typed by hand, and the note must be the caller's and not in the trash. Keeping the same question again on the
+ * same note makes no second card.
+ */
+export async function keepQuizQuestion(userId: string, input: KeepQuestionInput): Promise<{ created: number; existing: boolean }> {
+  const question = input.question.trim();
+  const note = await noteRepository.getNote(userId, input.noteId);
+  if (!note) throw new AppError("RESOURCE_NOT_FOUND", "That note no longer exists.");
+  if (await flashcardRepository.findBasicByQuestion(userId, note.id, question)) return { created: 0, existing: true };
+  const { created } = await flashcardService.createCardsForNote(userId, note.id, { kind: "basic", question, answer: input.reference });
+  return { created, existing: false };
 }

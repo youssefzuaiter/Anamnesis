@@ -322,3 +322,23 @@ export function groundedness(answer: string, excerpt: string): number {
 export function isGrounded(answer: string, excerpt: string, min: number = GROUNDED_MIN): boolean {
   return groundedness(answer, excerpt) >= min;
 }
+
+// --- Keeping a missed question (ROADMAP item 49) -------------------------------------------------------------
+
+/** Only a generated question can be kept: a card is already one. Anything not answered right is worth keeping. */
+export function canKeep(kind: "card" | "generated", verdict: Verdict): boolean {
+  return kind === "generated" && verdict !== "correct";
+}
+
+/**
+ * What the browser sends to keep a generated question: the note it came from, the question and its answer. A generated question is not stored on
+ * the server, so these are client input like any card typed by hand: bounded here, the note checked as the caller's by the service.
+ */
+export const keepQuestionInputSchema = z
+  .object({
+    noteId: z.uuid(),
+    question: z.string().min(1).max(MAX_QUESTION_CHARS),
+    reference: z.string().min(1).max(MAX_REFERENCE_CHARS),
+  })
+  .strict();
+export type KeepQuestionInput = z.infer<typeof keepQuestionInputSchema>;
