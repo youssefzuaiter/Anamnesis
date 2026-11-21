@@ -168,5 +168,5 @@ Eight more, chosen with the owner after the numbered list ended. One at a time, 
 - [x] **49. Missed quiz questions become cards** (S to M, model, migration?). After a quiz, "Keep as a card" on a question that was missed, so a generated question joins the deck and the weak-spots deck can hold it.
 - [ ] **50. Syllabus to assessments** (M, model, demo). From an imported syllabus note, propose the course's assessments with names, weights and dates, for the person to edit and confirm. Nothing is saved before confirming.
 - [ ] **51. Plan my week** (M, demo). Spread open tasks across the free time of the whole week with the day planner's gap rule, as a proposal to confirm, never moved silently.
-- [ ] **52. Week grid opens at working hours** (S). The hourly week and day grid opens at 00:00, so a day's 09:00 events are below the visible area until you scroll. Open near the first event, or at the current time.
+- [x] **52. Week grid opens at working hours** (S). The hourly week and day grid opens at 00:00, so a day's 09:00 events are below the visible area until you scroll. Open near the first event, or at the current time.
 - [x] **53. Board focus flake** (S, tests). `board.spec.ts` "by keyboard, a Move button works and focus follows the card" fails intermittently on CI (a different run each time). Find the cause, and fix the board or the test.

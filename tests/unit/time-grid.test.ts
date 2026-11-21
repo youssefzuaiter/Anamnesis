@@ -395,3 +395,41 @@ test("an item is found by its key in whichever column holds it", () => {
   assert.equal(findItem(days, "nope"), undefined);
   assert.equal(findItem([], "a"), undefined);
 });
+
+// --- Where the grid opens (ROADMAP item 52) ---------------------------------------------------------------------
+
+import { VIEW_MINUTES, openAtMinutes } from "@/lib/time-grid";
+
+const onDay = (h: number, m = 0, offset = 0) => new Date(2026, 10, 25 + offset, h, m).getTime();
+const gridDay = (items: [number, number][], isToday = false, offset = 0) => ({
+  date: new Date(2026, 10, 25 + offset).getTime(),
+  isToday,
+  items: items.map(([s, e], i) => ({ key: `k${i}`, kind: "event" as const, id: `${i}`, title: "x", start: onDay(s, 0, offset), end: onDay(e, 0, offset), done: false, recurring: false, locked: false, location: null })),
+});
+
+test("the grid opens at 07:00 when what is in view is inside the frame, or when there is nothing to anchor to", () => {
+  assert.equal(openAtMinutes([gridDay([])], null), 7 * 60);
+  assert.equal(openAtMinutes([gridDay([[9, 10]])], null), 7 * 60);
+  assert.equal(openAtMinutes([gridDay([[7, 8]])], null), 7 * 60);
+  assert.equal(openAtMinutes([gridDay([[15, 16]])], null), 7 * 60, "15:00 is the last full hour of a 07:00 frame");
+  assert.equal(openAtMinutes([gridDay([], false)], 21 * 60 + 30), 7 * 60, "the current time only counts when today is shown");
+});
+
+test("the grid opens an hour before the first thing when 07:00 would hide it", () => {
+  assert.equal(openAtMinutes([gridDay([[6, 7]])], null), 5 * 60, "an early lecture");
+  assert.equal(openAtMinutes([gridDay([[5, 6]])], null), 4 * 60);
+  assert.equal(openAtMinutes([gridDay([[0, 1]])], null), 0, "midnight: the top of the day");
+  assert.equal(openAtMinutes([gridDay([[16, 17]])], null), 14 * 60, "kept inside the day: 14:00 to midnight");
+  assert.equal(openAtMinutes([gridDay([[19, 21]])], null), 24 * 60 - VIEW_MINUTES);
+});
+
+test("the earliest item of any day in view decides, and a late item never moves an earlier one off screen", () => {
+  assert.equal(openAtMinutes([gridDay([[18, 20]]), gridDay([[6, 8]], false, 1)], null), 5 * 60, "the second day's 06:00 decides");
+  assert.equal(openAtMinutes([gridDay([[9, 10]]), gridDay([[18, 20]])], null), 7 * 60);
+});
+
+test("with nothing to anchor to, today shown opens near the current time when 07:00 would hide it", () => {
+  assert.equal(openAtMinutes([gridDay([], true)], 12 * 60), 7 * 60);
+  assert.equal(openAtMinutes([gridDay([], true)], 21 * 60 + 30), 14 * 60);
+  assert.equal(openAtMinutes([gridDay([], true)], 5 * 60 + 30), 4 * 60);
+});

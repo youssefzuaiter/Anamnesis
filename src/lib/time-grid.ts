@@ -13,8 +13,10 @@ export const SLOT_MINUTES = 15;
 export const MIN_BLOCK_MINUTES = 15;
 export const MINUTES_PER_DAY = 1440;
 export const HOUR_PX = 56;
-/** The grid opens scrolled to here, 07:00. */
+/** The grid opens scrolled to here, 07:00, unless that would hide the first thing in view (see `openAtMinutes`). */
 export const OPEN_AT_MINUTES = 7 * 60;
+/** How much of the day the grid's frame shows at once, rounded down (the frame is 36rem, a little over ten hours). */
+export const VIEW_MINUTES = 10 * 60;
 
 export type Range = { start: number; end: number };
 
@@ -305,4 +307,23 @@ const clock = (ms: number) => {
 /** "15:30–17:00": the 24-hour local times the grid shows. */
 export function formatRange(range: Range): string {
   return `${clock(range.start)}–${clock(range.end)}`;
+}
+
+/**
+ * Where the grid opens (ROADMAP item 52), in minutes. Normally 07:00. If the first thing in view (the first item of the shown days, or, with
+ * no items, the current time when today is shown) would be above 07:00 or too near the bottom of the frame to see, the grid opens an hour before
+ * it instead, on the hour, kept so the frame stays inside the day. A grid with nothing to anchor to opens at 07:00.
+ */
+export function openAtMinutes(days: GridDay[], nowMinutes: number | null): number {
+  let anchor: number | null = null;
+  for (const day of days) {
+    for (const item of day.items) {
+      const start = minutesIn(day.date, item.start);
+      if (anchor === null || start < anchor) anchor = start;
+    }
+  }
+  if (anchor === null && nowMinutes !== null && days.some((day) => day.isToday)) anchor = nowMinutes;
+  if (anchor === null) return OPEN_AT_MINUTES;
+  if (anchor >= OPEN_AT_MINUTES && anchor < OPEN_AT_MINUTES + VIEW_MINUTES - 60) return OPEN_AT_MINUTES;
+  return clamp(Math.floor((anchor - 60) / 60) * 60, 0, MINUTES_PER_DAY - VIEW_MINUTES);
 }

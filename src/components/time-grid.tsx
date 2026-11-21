@@ -12,7 +12,6 @@ import { TASK_DRAG_MIME } from "@/lib/domain";
 import { dateLabel } from "@/lib/note-templates";
 import {
   HOUR_PX,
-  OPEN_AT_MINUTES,
   applyRange,
   dropRange,
   estimateFromDragTypes,
@@ -23,6 +22,7 @@ import {
   minutesIn,
   moveRange,
   nudge,
+  openAtMinutes,
   resizeRange,
   topPx,
   type GridDay,
@@ -172,9 +172,13 @@ export function TimeGrid({
     return () => clearInterval(timer);
   }, []);
 
-  // The grid opens at 07:00; the hours before it are above, one scroll away.
+  // The grid opens at 07:00, or an hour before the first thing in view when that would be out of the frame; the rest is one scroll away.
+  // The parent remounts the grid for each week or day, so this runs once per range and never while an item is being moved.
   useEffect(() => {
-    if (scroller.current) scroller.current.scrollTop = topPx(OPEN_AT_MINUTES);
+    if (!scroller.current) return;
+    const at = new Date(nowMs);
+    scroller.current.scrollTop = topPx(openAtMinutes(days, at.getHours() * 60 + at.getMinutes()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // A drag that ends anywhere (dropped, cancelled with Escape, released outside) takes its preview with it, and
