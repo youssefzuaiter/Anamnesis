@@ -288,3 +288,21 @@ export async function listMarks(
     select: { weight: true, score: true, maxScore: true },
   });
 }
+
+/** The titles of a course's assessments, for telling a proposed one from one it already has. */
+export async function listAssessmentTitles(userId: string, courseId: string): Promise<string[]> {
+  const rows = await prisma.assessment.findMany({ where: { userId, courseId }, select: { title: true }, take: 200 });
+  return rows.map((row) => row.title);
+}
+
+/** Adds all of these assessments to a course, or none. Scores start empty and out of 100, as when added by hand. */
+export async function createAssessments(
+  userId: string,
+  courseId: string,
+  rows: { title: string; weight: number; dueDate: Date | null }[],
+): Promise<number> {
+  const { count } = await prisma.assessment.createMany({
+    data: rows.map((row) => ({ ...row, userId, courseId, score: null, maxScore: 100 })),
+  });
+  return count;
+}
