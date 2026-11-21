@@ -445,3 +445,13 @@ export async function listCourseNotesForPrint(userId: string, courseId: string, 
     take,
   });
 }
+
+/** The caller's most recently edited live notes that belong to no course (an imported syllabus often does not yet), for choosing one to read. */
+export async function listUncoursedNoteTitles(userId: string, take: number): Promise<{ id: string; title: string }[]> {
+  return prisma.note.findMany({
+    where: { userId, deletedAt: null, courseId: null },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, title: true },
+    take,
+  });
+}

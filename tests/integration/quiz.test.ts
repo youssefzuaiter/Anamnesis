@@ -528,3 +528,64 @@ test("a quiz started later is not offered the passages in the same order, and th
   assert.notEqual(first[0], first[1], "a second start does not begin with the same passage");
   assert.equal(first[0], first[2], "the same moment gives the same passages");
 });
+
+// --- Keeping a missed generated question as a card (ROADMAP item 49) -----------------------------------------
+
+import { keepQuizQuestion } from "@/services/quiz-service";
+import { listWeakSpots, reviewCard } from "@/services/flashcard-service";
+
+test("keeping a missed question makes an ordinary basic card on its note, due now, in the note's deck", async () => {
+  const me = await newUser();
+  const c = await course(me.id, "KEEP1");
+  const n = await note(me.id, { courseId: c.id });
+  assert.deepEqual(await keepQuizQuestion(me.id, { noteId: n.id, question: " What is ATP? ", reference: " The cell's energy currency. " }), { created: 1, existing: false });
+  const [card] = await prisma.flashcard.findMany({ where: { userId: me.id } });
+  assert.deepEqual([card.noteId, card.question, card.answer, card.clozeIndex, card.repetitions], [n.id, "What is ATP?", "The cell's energy currency.", null, 0]);
+  assert.ok(card.dueAt.getTime() <= Date.now() + 1000, "a new card is due now");
+});
+
+test("keeping the same question twice makes one card", async () => {
+  const me = await newUser();
+  const n = await note(me.id);
+  const input = { noteId: n.id, question: "Same question?", reference: "Same answer." };
+  assert.deepEqual(await keepQuizQuestion(me.id, input), { created: 1, existing: false });
+  assert.deepEqual(await keepQuizQuestion(me.id, input), { created: 0, existing: true });
+  assert.deepEqual(await keepQuizQuestion(me.id, { ...input, question: "  Same question?  " }), { created: 0, existing: true });
+  assert.equal(await prisma.flashcard.count({ where: { userId: me.id } }), 1);
+  // The same words on another note are another card; another account's identical card is not mine.
+  const other = await note(me.id);
+  assert.equal((await keepQuizQuestion(me.id, { ...input, noteId: other.id })).created, 1);
+  const them = await newUser();
+  const theirNote = await note(them.id);
+  assert.equal((await keepQuizQuestion(them.id, { ...input, noteId: theirNote.id })).created, 1);
+});
+
+test("another account's note, a trashed note and an unknown one are refused and nothing is written", async () => {
+  const me = await newUser();
+  const them = await newUser();
+  const theirs = await note(them.id);
+  const trashed = await note(me.id, { deleted: true });
+  for (const noteId of [theirs.id, trashed.id, randomUUID()]) {
+    await assert.rejects(keepQuizQuestion(me.id, { noteId, question: "Q?", reference: "A" }), (e: { code?: string }) => e.code === "RESOURCE_NOT_FOUND");
+  }
+  assert.equal(await prisma.flashcard.count({ where: { userId: { in: [me.id, them.id] } } }), 0);
+});
+
+test("an over-long question or answer is refused and writes nothing", async () => {
+  const me = await newUser();
+  const n = await note(me.id);
+  await assert.rejects(keepQuizQuestion(me.id, { noteId: n.id, question: "x".repeat(1001), reference: "A" }), (e: { code?: string }) => e.code === "VALIDATION_ERROR");
+  await assert.rejects(keepQuizQuestion(me.id, { noteId: n.id, question: "Q", reference: "y".repeat(2001) }), (e: { code?: string }) => e.code === "VALIDATION_ERROR");
+  assert.equal(await prisma.flashcard.count({ where: { userId: me.id } }), 0);
+});
+
+test("a kept question joins the weak-spots deck once it is failed twice, like any card", async () => {
+  const me = await newUser();
+  const n = await note(me.id);
+  await keepQuizQuestion(me.id, { noteId: n.id, question: "Hard one?", reference: "Yes." });
+  const card = await prisma.flashcard.findFirstOrThrow({ where: { userId: me.id } });
+  assert.deepEqual(await listWeakSpots(me.id, new Date()), []);
+  await reviewCard(me.id, card.id, "again");
+  await reviewCard(me.id, card.id, "again");
+  assert.deepEqual((await listWeakSpots(me.id, new Date())).map((w) => [w.card.id, w.fails]), [[card.id, 2]]);
+});

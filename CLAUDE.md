@@ -1152,6 +1152,11 @@ page a little heavier; with the CPU throttled six times (`Emulation.setCPUThrott
 2 of 2 without `hydrated(page)` and passed 2 of 2 with it. Throttling is how to reproduce a CI-only
 race locally.
 
+**A time-based code is computed once per use.** The two-factor spec asked for "the next step's code" again to replay it, so when the 30-second step turned
+over between the two sign-ins (a slow CI run does) the second ask was a different, unspent, valid code and the replay signed in: the test failed with
+no alert on `main`'s and #84's CI, once. Proved by waiting 31 s between the two with the old code (it fails with CI's message) and with the one value (it
+passes). The test now keeps the code in a variable.
+
 ## Layout gotcha
 
 `main` in the dashboard shell carries `min-w-0`. It is a flex item, and a flex
@@ -4206,7 +4211,7 @@ ROADMAP item 42 (*S to M, model?*; built from the roadmap sentence and looked at
   the two-answer run) are judgements, not measurements; they are constants in one file.
 - **Quiz questions you missed:** a quiz card's grade goes through the same review as any card, so a card missed in a quiz is already in the log
   and in this deck. A quiz question the model *generated* has no row and no log line (item 10 stores nothing about a session), so it cannot be
-  in the deck. Storing missed generated questions would be a new table and a new feature, and was not built.
+  in the deck. Storing missed generated questions would be a new table and a new feature, and was not built; **item 49 instead lets the person keep one as an ordinary card** (see "Keep a missed quiz question").
 - **It practises cards that are not due.** Grading one is an ordinary review: SM-2 moves it from its current state, so a "good" on a card that
   is not due yet is a full step taken early (the same cost noted for the quiz). The page says nothing is rescheduled just for being there.
 - **Reads:** three queries, all scoped by `userId` (candidate ids by `groupBy` with `having`, capped at 500; those cards' log lines; the live
@@ -4657,28 +4662,37 @@ same text, allowing a removed blank, showing a trashed note's cards.
 **Not done:** search across a note's title; sorting other than soonest due; moving a card to another note; bulk edit or bulk delete. **Not run
 locally:** `pnpm build`, the whole e2e suite and the container rehearsal; CI runs them.
 
-### Cram mode
+### Keep a missed quiz question
 
-ROADMAP item 48 (*S, demo*; designed on the Design canvas and approved, then built and looked at in the browser). A **Cram this course**
-section on the course page (shown when the course has cards) opens `/cards?course=<id>&cram=1`. **No migration, no model**: it only orders,
-as the weak-spots deck does, so SM-2 is untouched and grading a cram card is an ordinary review.
+ROADMAP item 49 (*S to M, model, migration?*; not tagged demo, so built from the roadmap sentence and looked at in the browser). After a quiz, a
+**generated** question that was missed or partly right has **Keep as a card** in the results list. **No migration and no new table**: it makes an
+ordinary basic `Flashcard`, which is the whole answer to "so the weak-spots deck can hold it": a card is weak by the review log like any other.
 
-- **The order, exactly** (`lib/cram.ts`, pure, `rankCram`): (1) weak cards, by the weak-spots rule and rank (item 42); (2) cards with at least one
-  "again" in the last 30 days that are not weak (including a card mended by two good answers), most failures first, then lowest ease; (3) cards never
-  reviewed, longest waiting first; (4) the rest, lowest ease (hardest) first, then soonest due. Ties end on the id, so the same data always gives
-  the same order. Each card carries a reason (`cramReason`): "Weak: failed 3 times this month", "Failed once this month", "Never reviewed".
-- **Scope.** `listCram` reads the caller's live cards of one course (`liveCards` + `deckWhere(course)`, capped at 2,000) and their review lines
-  for the window (`reviewLinesFor`). Another account's course id, an unknown id and an empty course are an empty deck; a trashed note's cards are
-  not in it. The page opens cram only for `cram=1` with a course id (not `none`, not with `weak=1`); anything else is the ordinary queue.
-- **Session.** The first 50 after the usual one-card-per-cloze-text spreading; a cram deck is rebuilt from the latest answers each time it is
-  opened, so cards just got right sink. The page says how many wait. The course page shows the counts per tier.
+- **Where it goes.** On the note the question was generated from (`QuizQuestion.noteId`, already carried), so it sits in that note's deck and course.
+  Due now, a basic card, question and reference answer trimmed. It goes through `createCardsForNote`, so the length limits (1,000 / 2,000) and the
+  note check (the caller's, not in the trash) are the ones every card has.
+- **Who may be kept.** `canKeep` (pure): kind `generated` and a verdict that is not `correct`. A card is already a card; a question answered right
+  is not offered. The verdict is the one the person settled on (their "I knew it / Partly / Missed it", or the grade they chose), not the model's
+  suggestion.
+- **Client input.** A generated question is stored nowhere, so `keepQuestionAction` receives `{ noteId, question, reference }` from the browser:
+  strict Zod (`keepQuestionInputSchema`, extra keys refused, not stripped, so a forged `userId`, `dueAt` or `repetitions` is a refusal), then
+  `keepQuizQuestion` checks the note as the caller's. Replayed with no session, another account's note, an unknown note, forged keys, oversize and
+  mistyped input: refused each time, nothing written. A person can only put their own words on their own notes, as with a card typed by hand.
+- **Once.** The same question on the same note is not made twice (`findBasicByQuestion`, exact text after trimming): the second press says "Already a
+  card". The lookup also filters by `userId`; removing that filter survives every test, because the note is already the caller's and a note's cards
+  are its owner's, so it is defence in depth, not a measured guard.
+- **UI.** `components/quiz-result-list.tsx` (the list moved out of `quiz-session.tsx`). The button is a 44px target on a phone, a `useRef` guard and
+  `disabled={pending}` stop a double submit, and the answer is a `role="status"` line with a link to All cards (or a `role="alert"` on failure).
+  A kept card refreshes the Cards badge and Today.
 
-**Tests.** 7 unit (`cram`: the tiers and their order, a mended card, the window, determinism and completeness, the reasons, more failures before
-hardness, 20,000 cards under a second), 3 integration (`cram`: the course's cards due or not in order with other courses, accounts and trashed notes
-excluded; foreign/unknown/empty courses; grading in a cram deck is an ordinary review), 1 browser (`cram.spec.ts`: from the course page to the
-deck, the reason, grading, a non-course cram address). Mutation checks, each caught: failed tier ahead of weak, failed tier ignoring the failure
-count (survived at first and exposed a missing test, now added), cards of trashed notes included, failures older than 30 days counted.
+**Tests.** 2 unit (`canKeep`, the strict schema with exact limits), 5 integration (`quiz`: a basic card on its note, due now, in the note's
+deck; once, with trimming, other notes and accounts independent; another account's, trashed and unknown notes refused with nothing written; over-long
+text refused; a kept question becomes a weak spot after two "again"). Mutation checks: no dedupe, keeping correct answers too and no trimming were
+each caught; the unscoped dedupe lookup survives (above). **No browser test and no eval**: a generated question needs the model, and the browser
+suite runs without Ollama, so the results list was looked at through a temporary page with sample data (since removed): desktop dark, 375px light
+(no overflow, 44px buttons), a real click keeping a card.
 
-**Not done:** a cram deck for a project or a tag; a limit other than 50; cramming only the weak tier; an exam-date-aware size. **Not run
-locally:** `pnpm build`, the whole e2e suite and the container rehearsal; CI runs them.
+**Not done:** keeping a question while the quiz is still running; keeping a missed *card* (it is already one); choosing the note or the deck; editing
+the question before keeping (All cards edits it afterwards); a cloze version. **Not run locally:** `pnpm build`, the whole e2e suite, the evals and
+the container rehearsal; CI runs them.
 

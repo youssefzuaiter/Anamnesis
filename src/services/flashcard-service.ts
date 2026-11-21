@@ -6,7 +6,6 @@ import { MAX_CARD_ANSWER, MAX_CARD_QUESTION } from "@/lib/domain";
 import { answerFor, validateCloze } from "@/lib/cloze";
 import { scheduleReview, type ReviewGrade } from "@/lib/spaced-repetition";
 import { rankWeak, windowStart, WEAK_MIN_FAILS } from "@/lib/weak-spots";
-import { rankCram, cramCounts, type CramEntry } from "@/lib/cram";
 import { BROWSE_PAGE_SIZE, planCardEdit, type BrowseParams, type EditInput } from "@/lib/card-browser";
 import * as courseRepository from "@/repositories/course-repository";
 import * as flashcardRepository from "@/repositories/flashcard-repository";
@@ -327,16 +326,4 @@ export async function editCard(userId: string, cardId: string, input: EditInput)
   const changed = await flashcardRepository.updateTexts(userId, plan.updates);
   if (changed !== plan.updates.length) throw new AppError("RESOURCE_NOT_FOUND", "That card no longer exists.");
   return { changed };
-}
-
-/**
- * Cram mode (ROADMAP item 48): every live card of one course, weakest first, due or not (`rankCram`). It only selects; grading one of them is an
- * ordinary review. A course id that is not the caller's, or has no cards, gives an empty deck, because the query is for the caller's own cards.
- */
-export async function listCram(userId: string, courseId: string, now: Date): Promise<{ items: { card: Flashcard; entry: CramEntry }[]; counts: ReturnType<typeof cramCounts> }> {
-  const cards = await flashcardRepository.listCourseCards(userId, courseId);
-  const lines = await flashcardRepository.reviewLinesFor(userId, cards.map((c) => c.id), windowStart(now));
-  const byId = new Map(cards.map((c) => [c.id, c]));
-  const entries = rankCram(cards, lines, now);
-  return { items: entries.map((entry) => ({ card: byId.get(entry.id) as Flashcard, entry })), counts: cramCounts(entries) };
 }
