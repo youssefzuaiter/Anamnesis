@@ -29,6 +29,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/tasks", label: "Tasks", icon: "tasks", badge: "tasks" },
       { href: "/calendar", label: "Calendar", icon: "calendar" },
+      { href: "/plan", label: "Plan my week", icon: "calendar" },
       { href: "/projects", label: "Projects", icon: "projects" },
       { href: "/goals", label: "Goals", icon: "goals" },
     ],

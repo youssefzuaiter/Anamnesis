@@ -15,7 +15,7 @@ import { MOBILE_MORE, NAV_GROUPS } from "@/components/nav-items";
 test("the go-to keys are the ones in the design", () => {
   assert.deepEqual(
     GO_TO_SHORTCUTS.map((s) => `${s.key} ${s.href}`),
-    ["h /", "n /notes", "s /search", "t /tasks", "c /calendar", "p /projects", "g /goals",
+    ["h /", "n /notes", "s /search", "t /tasks", "c /calendar", "w /plan", "p /projects", "g /goals",
      "u /courses", "d /cards",
     "b /references", "r /review", "m /stats", "f /focus", "a /audit", "x /trash", ", /settings", "i /ai"],
   );
