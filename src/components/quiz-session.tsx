@@ -14,9 +14,10 @@ import {
   type Verdict,
 } from "@/lib/quiz";
 import { REVIEW_GRADES, type ReviewGrade } from "@/lib/spaced-repetition";
+import { QuizResultList, type FinishedQuestion } from "@/components/quiz-result-list";
 
 type Phase = "idle" | "asking" | "checked" | "done";
-type Finished = { question: QuizQuestion; verdict: Verdict };
+type Finished = FinishedQuestion;
 
 const VERDICT_WORDS: Record<Verdict, string> = {
   correct: "Correct",
@@ -210,21 +211,7 @@ export function QuizSession({ scope, label }: { scope: QuizScope; label: string 
             <p className="mt-1 text-sm text-text-muted">
               {summary.correct} correct · {summary.partly} partly right · {summary.incorrect} not quite
             </p>
-            <ol className="mt-4 flex flex-col gap-2.5">
-              {finished.map(({ question: asked, verdict }) => (
-                <li key={asked.id} className="text-sm text-text">
-                  <span className="font-semibold">{VERDICT_WORDS[verdict]}</span> — {asked.question}
-                  {asked.noteId && (
-                    <>
-                      {" "}
-                      <Link href={`/notes/${asked.noteId}`} className="text-accent hover:underline">
-                        Open the note
-                      </Link>
-                    </>
-                  )}
-                </li>
-              ))}
-            </ol>
+            <QuizResultList finished={finished} />
           </>
         )}
         <div className="mt-5 flex flex-wrap items-center gap-3">

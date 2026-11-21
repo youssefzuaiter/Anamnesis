@@ -300,3 +300,25 @@ test("the symbol handling stays linear on hostile input", () => {
   }
   assert.ok(performance.now() - start < 2000, `took ${Math.round(performance.now() - start)} ms`);
 });
+
+// --- Keeping a missed generated question as a card (ROADMAP item 49) -----------------------------------------
+
+import { keepQuestionInputSchema, canKeep } from "@/lib/quiz";
+
+test("only a generated question that was not answered right can be kept as a card", () => {
+  assert.equal(canKeep("generated", "incorrect"), true);
+  assert.equal(canKeep("generated", "partly"), true);
+  assert.equal(canKeep("generated", "correct"), false);
+  assert.equal(canKeep("card", "incorrect"), false, "a card is already a card");
+});
+
+test("a kept question is a note id, a question and its answer, and nothing else", () => {
+  const ok = { noteId: "0b0c3a52-6f0b-4a53-9b1e-6a3a2f1d9c11", question: "What is ATP?", reference: "The cell's energy currency." };
+  assert.equal(keepQuestionInputSchema.safeParse(ok).success, true);
+  for (const bad of [
+    { ...ok, noteId: "not-a-uuid" }, { ...ok, question: "" }, { ...ok, reference: "" },
+    { ...ok, question: "x".repeat(1001) }, { ...ok, reference: "y".repeat(2001) },
+    { ...ok, userId: "someone" }, { ...ok, dueAt: "2030-01-01" }, { question: ok.question, reference: ok.reference },
+  ]) assert.equal(keepQuestionInputSchema.safeParse(bad).success, false, JSON.stringify(bad).slice(0, 50));
+  assert.equal(keepQuestionInputSchema.safeParse({ ...ok, question: "x".repeat(1000), reference: "y".repeat(2000) }).success, true, "the limits are exact");
+});
