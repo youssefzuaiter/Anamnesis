@@ -47,6 +47,11 @@ test("a file that is not a PNG, or is cut short or oversized, is refused with a 
     ["not RGBA", png(10, 10, 2)],
     ["not 8-bit", png(10, 10, 6, 16)],
     ["too many bytes", new Uint8Array(MAX_SIGNATURE_BYTES + 1)],
+    ["a valid PNG that is over the byte limit", (() => {
+      const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(10, 0); ihdr.writeUInt32BE(10, 4); ihdr[8] = 8; ihdr[9] = 6;
+      return new Uint8Array(Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", Buffer.alloc(MAX_SIGNATURE_BYTES)), chunk("IEND", Buffer.alloc(0))]));
+    })()],
+    ["the right shape but the wrong first eight bytes", (() => { const b = Uint8Array.from(good); b[1] = 0x41; return b; })()],
   ];
   for (const [label, bytes] of cases) assert.equal(readPng(bytes).ok, false, label);
 });
