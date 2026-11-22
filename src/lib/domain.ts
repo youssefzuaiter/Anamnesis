@@ -5,7 +5,7 @@
 // Shared by Project and Goal — a goal is University/Career/Personal in exactly
 // the same sense a project is, so this stays one constant rather than two
 // near-identical enums.
-export const PROJECT_CATEGORIES = ["University", "Career", "Personal"] as const;
+export const PROJECT_CATEGORIES = ["University", "Work", "Career", "Personal"] as const;
 export type ProjectCategory = (typeof PROJECT_CATEGORIES)[number];
 
 export const TASK_STATUSES = ["todo", "in_progress", "done"] as const;

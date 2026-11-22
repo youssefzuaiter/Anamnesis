@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireUserId } from "@/lib/session";
 import { auth } from "@/auth";
+import { getAreasSetting } from "@/repositories/profile-repository";
+import { parseAreas, parseAreaFilter } from "@/lib/areas";
 import { getDashboard, type TodayBlock } from "@/services/dashboard-service";
 import { daysUntilLabel } from "@/lib/grades";
 import { TaskRow } from "@/components/task-row";
@@ -55,7 +57,11 @@ type Slot =
   | { kind: "event"; start: Date; end: Date; event: Event }
   | { kind: "block"; start: Date; end: Date; block: TodayBlock };
 
-function Timeline({ slots, now }: { slots: Slot[]; now: Date }) {
+function AreaChip({ label }: { label?: string }) {
+  return label ? <span className="shrink-0 rounded-full border border-border-strong px-2 py-0.5 text-xs font-semibold text-text-muted">{label}</span> : null;
+}
+
+function Timeline({ slots, now, labels }: { slots: Slot[]; now: Date; labels: Record<string, string> }) {
   return (
     <ol className="flex flex-col gap-2">
       {slots.map((slot) => {
@@ -89,6 +95,7 @@ function Timeline({ slots, now }: { slots: Slot[]; now: Date }) {
                     <p className="truncate text-[13px] text-text-muted">{slot.event.location}</p>
                   )}
                 </div>
+                <AreaChip label={labels[slot.event.id]} />
                 <span className="shrink-0 text-xs font-semibold text-accent-ink">
                   {live ? "Now" : "Event"}
                 </span>
@@ -106,6 +113,7 @@ function Timeline({ slots, now }: { slots: Slot[]; now: Date }) {
                 >
                   {slot.block.title}
                 </p>
+                <AreaChip label={labels[slot.block.id]} />
                 <span className="shrink-0 text-xs font-semibold text-text-faint">
                   {live ? "Now" : "Planned"}
                 </span>
@@ -159,8 +167,10 @@ function Progress({ label, value }: { label: string; value: number }) {
   );
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: PageProps<"/">) {
   const userId = await requireUserId();
+  const areas = parseAreas(await getAreasSetting(userId));
+  const filter = parseAreaFilter((await searchParams).area, areas);
   const session = await auth();
   const now = new Date();
 
@@ -179,7 +189,8 @@ export default async function DashboardPage() {
     indexedChunks,
     todayNote,
     revisit,
-  } = await getDashboard(userId, now);
+    areaLabels,
+  } = await getDashboard(userId, now, { areas, filter });
   const weeklyGoals = await getWeeklyGoals(userId, now);
 
   const firstName = session?.user?.name?.split(" ")[0] ?? "there";
@@ -239,6 +250,20 @@ export default async function DashboardPage() {
             </span>
           )}
         </p>
+        {areas === "both" && (
+          <nav aria-label="Show" className="mt-3 inline-flex gap-1 rounded-xl bg-surface-subtle p-1">
+            {([["all", "All", "/"], ["school", "School", "/?area=school"], ["work", "Work", "/?area=work"]] as const).map(([value, label, href]) => (
+              <Link
+                key={value}
+                href={href}
+                aria-current={filter === value ? "true" : undefined}
+                className={`inline-flex min-h-11 items-center rounded-lg px-4 text-[13px] font-semibold transition-colors sm:min-h-9 ${filter === value ? "bg-accent text-on-accent" : "text-text-muted hover:bg-surface-hover"}`}
+              >
+                {label}
+              </Link>
+            ))}
+          </nav>
+        )}
       </header>
 
       <QuickCapture />
@@ -285,7 +310,7 @@ export default async function DashboardPage() {
                 <ShutDownDay />
 
                 {slots.length > 0 ? (
-                  <Timeline slots={slots} now={now} />
+                  <Timeline slots={slots} now={now} labels={areaLabels} />
                 ) : (
                   <p className="text-sm text-text-muted">Nothing scheduled today.</p>
                 )}
@@ -309,10 +334,10 @@ export default async function DashboardPage() {
                   ) : (
                     <ul className="divide-y divide-border-subtle">
                       {dueOverdue.map((task) => (
-                        <TaskRow key={task.id} task={task} overdue variant="row" />
+                        <TaskRow key={task.id} task={task} overdue variant="row" areaLabel={areaLabels[task.id]} />
                       ))}
                       {dueToday.map((task) => (
-                        <TaskRow key={task.id} task={task} variant="row" />
+                        <TaskRow key={task.id} task={task} variant="row" areaLabel={areaLabels[task.id]} />
                       ))}
                     </ul>
                   )}

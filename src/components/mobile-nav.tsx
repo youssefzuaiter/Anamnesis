@@ -6,8 +6,8 @@ import { usePathname } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { SignOutButton } from "@/components/sign-out-button";
 import { ThemeSwitch } from "@/components/theme-switch";
+import { mobileMoreFor, type Areas } from "@/lib/areas";
 import {
-  MOBILE_MORE,
   MOBILE_TABS,
   isActive,
   type NavBadges,
@@ -22,7 +22,8 @@ const TAB_CLASS =
  * trapping, Escape and the backdrop come from the browser rather than from
  * hand-written state.
  */
-export function MobileNav({ badges }: { badges: NavBadges }) {
+export function MobileNav({ badges, areas }: { badges: NavBadges; areas: Areas }) {
+  const MOBILE_MORE = mobileMoreFor(areas);
   const pathname = usePathname();
   const sheet = useRef<HTMLDialogElement>(null);
   const moreActive = MOBILE_MORE.some((item) => isActive(pathname, item.href));

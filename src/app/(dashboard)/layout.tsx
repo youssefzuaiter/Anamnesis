@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { requireUserId } from "@/lib/session";
 import { CommandPalette } from "@/components/command-palette";
+import { getAreasSetting } from "@/repositories/profile-repository";
+import { parseAreas } from "@/lib/areas";
 import { AppSidebar } from "@/components/app-sidebar";
 import { BrandLockup } from "@/components/brand";
 import { MobileNav } from "@/components/mobile-nav";
@@ -26,10 +28,12 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
   const now = new Date();
   const endOfToday = new Date(now);
   endOfToday.setHours(23, 59, 59, 999);
-  const [tasks, cards] = await Promise.all([
+  const [tasks, cards, areasSetting] = await Promise.all([
     countDueBy(userId, endOfToday),
     countDue(userId, now),
+    getAreasSetting(userId),
   ]);
+  const areas = parseAreas(areasSetting);
   const badges = { tasks, cards };
 
   return (
@@ -43,7 +47,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
           Skip to content
         </a>
         <div className="flex min-h-dvh flex-1 print:block print:min-h-0">
-          <AppSidebar displayName={displayName} badges={badges} />
+          <AppSidebar displayName={displayName} badges={badges} areas={areas} />
 
           <div className="flex min-w-0 flex-1 flex-col print:block">
             <header className="flex min-h-14 items-center print:hidden justify-between gap-3 px-4 sm:justify-end sm:px-8">
@@ -71,7 +75,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
           <AssistantPanel />
         </div>
         <AssistantToggle variant="fab" />
-        <MobileNav badges={badges} />
+        <MobileNav badges={badges} areas={areas} />
         <CommandPalette />
         </TimerProvider>
       </ShortcutsProvider>
