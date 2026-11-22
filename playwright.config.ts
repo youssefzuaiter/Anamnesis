@@ -35,5 +35,7 @@ export default defineConfig({
     url: `http://localhost:${PORT}/login`,
     reuseExistingServer: true,
     timeout: 120_000,
+    // The pasted-post spec must not depend on whether a model is running: rules read the post.
+    env: { POST_INTAKE_ENGINE: "code" },
   },
 });
