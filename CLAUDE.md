@@ -1230,6 +1230,21 @@ any commit in that window (`pending`, the optimistic list or the `cards` prop ch
 alone. No test exercises a late rebuild, so this fix is **unproven** until CI runs it. The same CI runs also failed `study-time.spec.ts` once: it reloaded before the "Include the course" switch had
 saved (the box shows its new state at once); it now waits for the row, as the lines below it already did.
 
+### Code scanning (CodeQL)
+
+CodeQL runs on every pull request, on `main` and weekly (`.github/workflows/codeql.yml`, `security-extended` queries, free on a public repository). Its first run on `main` raised seven alerts; none was a
+vulnerability that could be reached, and what was changed and what was not is recorded here so the next reader does not redo the reasoning.
+
+- **`js/remote-property-injection`, `services/scope-service.ts` (high): changed.** `within[scope.kind] = [entity.id]` wrote a property named by a value from the browser. The kind is one of three
+  strings checked by the strict scope schema before this runs, so no other name could arrive, but the write is now one literal object per kind and no name is ever taken from a value. The scope integration tests (12) pass.
+- **`js/http-to-file-access`, `ops/watch.mjs` (log, medium): changed.** A logged line could carry a line break from an alert title or a reason, and so start a forged entry in `watch.log`. `oneLine` turns
+  line breaks and control characters into a space before the write (unit-tested).
+- **`js/file-access-to-http`, `ops/watch.mjs` (medium): the port is validated, the rest is the feature.** The watcher reads the app's own settings file and sends the ntfy token and topic to the ntfy on
+  `127.0.0.1`: that is what it is for. The only part of that file that reached an *address* was a port; `port()` now accepts only digits in range or the default. The host is fixed. The token and topic
+  still go to the request, so these alerts are expected to stay and were dismissed as used by design.
+- **`js/insufficient-password-hash`, `lib/recovery-codes.ts` (high): not changed, dismissed as a false positive.** A recovery code is 80 random bits, not a chosen password, so a fast hash is the right
+  tool (a slow one defends against guessing short secrets; there is nothing to guess here), and the stored hashes of existing codes would stop matching if the function changed. The reasoning is in the file's own comment.
+
 ## Layout gotcha
 
 `main` in the dashboard shell carries `min-w-0`. It is a flex item, and a flex

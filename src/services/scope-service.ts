@@ -52,7 +52,11 @@ export async function resolveScope(
   }
 
   const members = await scopeRepository.listScopeMembers(userId, scope);
-  const within: SourceFilter = { note: members.notes, task: members.tasks, event: members.events };
-  within[scope.kind] = [entity.id];
+  // The scope's own row is searched too, so its id goes under its own kind. Written out per kind rather than as `within[scope.kind]`, so no
+  // property name is ever taken from a value that came from the browser.
+  const within: SourceFilter =
+    scope.kind === "course"
+      ? { note: members.notes, task: members.tasks, event: members.events, course: [entity.id] }
+      : { note: members.notes, task: members.tasks, event: members.events, project: [entity.id] };
   return { scope, label: entity.label, within };
 }

@@ -175,6 +175,11 @@ export async function publish({ url, token, topic, title, body }) {
   if (!response.ok) throw new Error(`ntfy answered ${response.status}`);
 }
 
+/** A port from the settings file is digits and in range, or the default: the host is always this machine, and nothing else of the file reaches an address. */
+export function port(value, fallback) {
+  return /^\d{1,5}$/.test(value) && Number(value) >= 1 && Number(value) <= 65535 ? String(Number(value)) : fallback;
+}
+
 function settings() {
   const file = process.env.ANAMNESIS_ENV_FILE ?? path.join(ROOT, ".env.production");
   const fromFile = parseEnv(file);
@@ -182,17 +187,22 @@ function settings() {
   return {
     token: get("NTFY_APP_TOKEN"),
     topic: get("ALERT_TOPIC"),
-    ntfyUrl: `http://127.0.0.1:${get("NTFY_PORT", "2586")}`,
-    appUrl: `http://127.0.0.1:${get("ANAMNESIS_PORT", "3200")}`,
+    ntfyUrl: `http://127.0.0.1:${port(get("NTFY_PORT", "2586"), "2586")}`,
+    appUrl: `http://127.0.0.1:${port(get("ANAMNESIS_PORT", "3200"), "3200")}`,
     backupDir: process.env.ANAMNESIS_BACKUP_DIR ?? path.join(os.homedir(), "anamnesis-backups"),
     offsiteConfigured: Boolean(get("OFFSITE_DIR")) || Boolean(get("OFFSITE_RECIPIENT")),
     stateDir: process.env.ANAMNESIS_STATE_DIR ?? path.join(OPS_DIR, "state"),
   };
 }
 
+/** One log line is one line: a line break or control character in what was logged (an alert title, a reason from a reply) cannot start a forged entry. */
+export function oneLine(text) {
+  return String(text).replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ");
+}
+
 function log(stateDir, line) {
   mkdirSync(stateDir, { recursive: true });
-  appendFileSync(path.join(stateDir, "watch.log"), `${new Date().toISOString()}  ${line}\n`, { mode: 0o600 });
+  appendFileSync(path.join(stateDir, "watch.log"), `${new Date().toISOString()}  ${oneLine(line)}\n`, { mode: 0o600 });
   console.log(line);
 }
 
