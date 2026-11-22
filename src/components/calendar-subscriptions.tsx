@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useActionState, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import type { ApiResponse } from "@/lib/api-response";
+import { PROVIDER_STEPS, SYNC_INTERVAL_MINUTES, type ProviderId } from "@/lib/calendar-source";
 import {
   addSubscriptionAction,
   syncSubscriptionAction,
@@ -13,9 +14,13 @@ import {
 export type SubscriptionRow = {
   id: string;
   name: string;
-  url: string;
+  /** Who the link belongs to ("Google Calendar") and its host with an ellipsis: the link itself is a secret and never reaches the browser. */
+  provider: string;
+  address: string;
   lastSyncedAt: string | null;
   lastEventCount: number;
+  /** Why the last try failed, if it did, in words with no address in them. */
+  lastError: string | null;
 };
 
 function AddButton() {
@@ -31,7 +36,7 @@ function AddButton() {
   );
 }
 
-function Row({ subscription }: { subscription: SubscriptionRow }) {
+function Row({ subscription, autoSync }: { subscription: SubscriptionRow; autoSync: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -44,11 +49,21 @@ function Row({ subscription }: { subscription: SubscriptionRow }) {
           {subscription.name}
         </p>
         <p className="truncate text-xs text-text-muted">
+          {subscription.provider} · {subscription.address}
+        </p>
+        <p className="text-xs text-text-muted">
           {subscription.lastEventCount} events
           {subscription.lastSyncedAt
             ? ` · synced ${subscription.lastSyncedAt}`
             : " · not synced yet"}
+          {autoSync ? ` · updates itself about every ${SYNC_INTERVAL_MINUTES} minutes` : ""}
         </p>
+        {subscription.lastError && (
+          <p className="text-xs font-semibold text-warn">
+            The last try failed: {subscription.lastError}{" "}
+            {subscription.lastSyncedAt ? "The events from the last good sync are still shown." : "Nothing has been imported yet."}
+          </p>
+        )}
         {message && <p className="text-xs text-text-muted">{message}</p>}
         {error && (
           <p role="alert" className="text-xs text-danger">
@@ -108,10 +123,34 @@ function Row({ subscription }: { subscription: SubscriptionRow }) {
   );
 }
 
+const HELP_ORDER: ProviderId[] = ["google", "outlook", "apple", "other"];
+
+function FindingTheLink() {
+  return (
+    <details className="rounded-xl border border-border-subtle bg-surface p-4">
+      <summary className="min-h-11 cursor-pointer text-sm font-semibold text-text sm:min-h-0">Where do I find the link?</summary>
+      <div className="mt-3 flex flex-col gap-4">
+        {HELP_ORDER.map((id) => (
+          <section key={id} aria-labelledby={`find-${id}`}>
+            <h3 id={`find-${id}`} className="text-sm font-semibold text-text">{PROVIDER_STEPS[id].title}</h3>
+            <ol className="mt-1 list-decimal pl-5 text-[13px] text-text-muted">
+              {PROVIDER_STEPS[id].steps.map((step) => <li key={step}>{step}</li>)}
+            </ol>
+            {PROVIDER_STEPS[id].note && <p className="mt-1 text-xs text-text-muted">{PROVIDER_STEPS[id].note}</p>}
+          </section>
+        ))}
+        <p className="text-xs text-text-muted">The link is a secret: anyone who has it can read that calendar. The app keeps it on this machine, never shows it again, and never includes it in an export.</p>
+      </div>
+    </details>
+  );
+}
+
 export function CalendarSubscriptions({
   subscriptions,
+  autoSync,
 }: {
   subscriptions: SubscriptionRow[];
+  autoSync: boolean;
 }) {
   const [state, formAction] = useActionState<
     ApiResponse<{ imported: number }> | null,
@@ -160,10 +199,12 @@ export function CalendarSubscriptions({
         </div>
       </form>
 
+      <FindingTheLink />
+
       {subscriptions.length > 0 && (
         <ul className="flex flex-col gap-2">
           {subscriptions.map((subscription) => (
-            <Row key={subscription.id} subscription={subscription} />
+            <Row key={subscription.id} subscription={subscription} autoSync={autoSync} />
           ))}
         </ul>
       )}

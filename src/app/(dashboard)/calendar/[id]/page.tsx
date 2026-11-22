@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUserId } from "@/lib/session";
 import { getEvent, listLaterSeriesEvents } from "@/repositories/event-repository";
+import { getSubscription } from "@/repositories/calendar-repository";
+import { providerOf } from "@/lib/calendar-source";
 import { EventForm } from "@/components/event-form";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { updateEventAction, deleteEventAction, deleteEventSeriesAction } from "@/actions/events";
@@ -22,6 +24,8 @@ export default async function EventPage({ params }: PageProps<"/calendar/[id]">)
   const event = await getEvent(userId, id);
   if (!event) notFound();
 
+  // An imported event says where it came from: the feed's name and its provider, never its link.
+  const source = event.subscriptionId ? await getSubscription(userId, event.subscriptionId) : null;
   const [projects, later] = await Promise.all([
     listProjectOptions(userId),
     event.recurrenceId
@@ -46,6 +50,12 @@ export default async function EventPage({ params }: PageProps<"/calendar/[id]">)
           <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">
             ↻ Recurring
           </span>
+        )}
+        {source && (
+          <p className="mt-2 text-xs text-text-muted">
+            Imported from <strong className="text-text">{source.name}</strong> ({providerOf(source.url).label}). Changes made here are replaced at the next sync.{" "}
+            <Link href="/calendar/subscriptions" className="font-semibold text-accent-ink underline-offset-2 hover:underline">Imported calendars</Link>
+          </p>
         )}
       </header>
 

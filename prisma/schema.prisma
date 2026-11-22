@@ -276,6 +276,9 @@ model CalendarSubscription {
   url            String
   lastSyncedAt   DateTime?
   lastEventCount Int       @default(0)
+  /// The last time a sync was tried (the scheduled one waits an interval after it) and, if that try failed, why, in words with no address in them.
+  lastAttemptAt  DateTime?
+  lastError      String?
   createdAt      DateTime  @default(now())
 
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)

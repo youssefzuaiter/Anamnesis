@@ -2,6 +2,8 @@ import Link from "next/link";
 import { requireUserId } from "@/lib/session";
 import { listSubscriptions } from "@/services/calendar-service";
 import { CalendarSubscriptions } from "@/components/calendar-subscriptions";
+import { maskedAddress, providerOf } from "@/lib/calendar-source";
+import { calendarAutoSyncEnabled } from "@/services/calendar-sync-scheduler";
 
 export const metadata = { title: "Imported calendars · Anamnesis" };
 
@@ -26,8 +28,8 @@ export default async function SubscriptionsPage() {
           Imported calendars
         </h1>
         <p className="mt-1 text-sm text-text-muted">
-          Paste the .ics link your university publishes and its classes appear on
-          your calendar. Syncing again updates the same events rather than
+          Paste the .ics link of a Google, Outlook or Teams calendar, or the one your
+          university publishes, and its events appear on your calendar. Syncing again updates the same events rather than
           duplicating them, and drops any that were cancelled.
         </p>
       </header>
@@ -36,12 +38,15 @@ export default async function SubscriptionsPage() {
         subscriptions={subscriptions.map((subscription) => ({
           id: subscription.id,
           name: subscription.name,
-          url: subscription.url,
+          provider: providerOf(subscription.url).label,
+          address: maskedAddress(subscription.url),
+          lastError: subscription.lastError,
           lastSyncedAt: subscription.lastSyncedAt
             ? WHEN.format(subscription.lastSyncedAt)
             : null,
           lastEventCount: subscription.lastEventCount,
         }))}
+        autoSync={calendarAutoSyncEnabled(process.env)}
       />
 
       <p className="mt-4 text-xs text-text-muted">
