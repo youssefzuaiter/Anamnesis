@@ -12,6 +12,7 @@ import * as courseRepository from "@/repositories/course-repository";
 import * as flashcardRepository from "@/repositories/flashcard-repository";
 import * as noteRepository from "@/repositories/note-repository";
 import type { FlashcardModel as Flashcard } from "@/generated/prisma/models";
+import { assertNotLocked } from "@/services/note-lock-service";
 
 /** Enough note for a 3B model to work from without burying the instruction. */
 const MAX_SOURCE_CHARS = 6000;
@@ -72,6 +73,7 @@ export async function generateCardsForNote(
   if (!note) {
     throw new AppError("RESOURCE_NOT_FOUND", "That note no longer exists.");
   }
+  assertNotLocked(note);
 
   const body = note.content.trim();
   if (body.length < 80) {
@@ -163,6 +165,8 @@ export async function createCardsForNote(
 
   const note = await noteRepository.getNote(userId, noteId);
   if (!note) throw new AppError("RESOURCE_NOT_FOUND", "That note no longer exists.");
+  // A card would hold a copy of the note's text outside its lock.
+  assertNotLocked(note);
 
   const created = await flashcardRepository.createCards(
     userId,

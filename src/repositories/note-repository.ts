@@ -5,7 +5,7 @@ import type { NoteModel as Note } from "@/generated/prisma/models";
 
 export type NoteSummary = Pick<
   Note,
-  "id" | "title" | "tags" | "isFavorite" | "updatedAt"
+  "id" | "title" | "tags" | "isFavorite" | "updatedAt" | "locked"
 > & { excerpt: string };
 
 export type NoteInput = {
@@ -20,15 +20,17 @@ export type NoteInput = {
 const EXCERPT_LENGTH = 160;
 
 function toSummary(
-  note: Pick<Note, "id" | "title" | "tags" | "isFavorite" | "updatedAt" | "content">,
+  note: Pick<Note, "id" | "title" | "tags" | "isFavorite" | "updatedAt" | "content" | "locked">,
 ): NoteSummary {
-  const flattened = note.content.replace(/\s+/g, " ").trim();
+  // A locked note's content is ciphertext: no excerpt of it is ever made.
+  const flattened = note.locked ? "" : note.content.replace(/\s+/g, " ").trim();
   return {
     id: note.id,
     title: note.title,
     tags: note.tags,
     isFavorite: note.isFavorite,
     updatedAt: note.updatedAt,
+    locked: note.locked,
     excerpt:
       flattened.length > EXCERPT_LENGTH
         ? `${flattened.slice(0, EXCERPT_LENGTH).trimEnd()}…`
@@ -62,6 +64,7 @@ export async function listNotes(
       isFavorite: true,
       updatedAt: true,
       content: true,
+      locked: true,
     },
   });
 
@@ -83,6 +86,7 @@ export async function findNotesByIds(
       isFavorite: true,
       updatedAt: true,
       content: true,
+      locked: true,
     },
   });
 
@@ -102,7 +106,7 @@ export async function listNoteTexts(
 ): Promise<{ id: string; title: string; content: string }[]> {
   if (ids.length === 0) return [];
   return prisma.note.findMany({
-    where: { userId, deletedAt: null, id: { in: ids } },
+    where: { userId, deletedAt: null, locked: false, id: { in: ids } },
     select: { id: true, title: true, content: true },
     orderBy: { updatedAt: "desc" },
     take: limit,
@@ -140,6 +144,7 @@ export async function listNotesContaining(
     FROM "Note"
     WHERE "userId" = ${userId}
       AND "deletedAt" IS NULL
+      AND NOT "locked"
       AND NOT ("id" = ANY(${excludeIds}::text[]))
       AND strpos(lower("content"), lower(${text})) > 0
     ORDER BY "updatedAt" DESC
@@ -439,7 +444,8 @@ export async function listNotesChangedBefore(
  */
 export async function listCourseNotesForPrint(userId: string, courseId: string, take: number) {
   return prisma.note.findMany({
-    where: { userId, courseId, deletedAt: null },
+    // Never a locked note: its text is ciphertext, and printing it would print noise (or, once unlocked, a reader's plaintext).
+    where: { userId, courseId, deletedAt: null, locked: false },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: { id: true, title: true, content: true, tags: true, updatedAt: true },
     take,
@@ -454,4 +460,39 @@ export async function listUncoursedNoteTitles(userId: string, take: number): Pro
     select: { id: true, title: true },
     take,
   });
+}
+
+/**
+ * Locks a live, unlocked note of the caller's: stores the envelope in place of the text and says so, in one write whose `where` is the ownership
+ * and the state, so a second lock or another account's id changes nothing. Returns whether a row changed.
+ */
+export async function setLocked(userId: string, noteId: string, envelope: string): Promise<boolean> {
+  const result = await prisma.note.updateMany({
+    where: { id: noteId, userId, deletedAt: null, locked: false },
+    data: { content: envelope, locked: true },
+  });
+  return result.count === 1;
+}
+
+/** Replaces a locked note's title and envelope (its key is the caller's business: this is only the write). */
+export async function saveLockedContent(userId: string, noteId: string, fields: { title: string; envelope: string }): Promise<boolean> {
+  const result = await prisma.note.updateMany({
+    where: { id: noteId, userId, deletedAt: null, locked: true },
+    data: { title: fields.title, content: fields.envelope },
+  });
+  return result.count === 1;
+}
+
+/** Takes the lock off: the text goes back in the column and the note is an ordinary one again. */
+export async function setUnlocked(userId: string, noteId: string, plaintext: string): Promise<boolean> {
+  const result = await prisma.note.updateMany({
+    where: { id: noteId, userId, deletedAt: null, locked: true },
+    data: { content: plaintext, locked: false },
+  });
+  return result.count === 1;
+}
+
+/** Every earlier version of a note, deleted: locking must not leave old plaintext behind in the history. */
+export async function deleteVersionsOf(userId: string, noteId: string): Promise<number> {
+  return (await prisma.noteVersion.deleteMany({ where: { userId, noteId } })).count;
 }

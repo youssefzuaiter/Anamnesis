@@ -6,6 +6,7 @@ import { completeJson, type ChatMessage } from "@/lib/ollama";
 import { GROUNDED_FLOOR, keepGrounded, sections, summaryNote } from "@/lib/summary";
 import { pointsMessages } from "@/lib/summary-prompts";
 import { getNote } from "@/repositories/note-repository";
+import { assertNotLocked } from "@/services/note-lock-service";
 
 /*
  * Summarise a note into a new one (ROADMAP 24): read in sections, each section's key points kept only
@@ -36,6 +37,7 @@ export async function summariseNote(
 ): Promise<SummaryResult> {
   const note = z.uuid().safeParse(noteId).success ? await getNote(userId, noteId) : null;
   if (!note) throw new AppError("RESOURCE_NOT_FOUND", "That note does not exist.");
+  assertNotLocked(note);
   const parts = sections(note.content);
   if (parts.length === 0) throw new AppError("VALIDATION_ERROR", "This note is empty; there is nothing to summarise.");
 

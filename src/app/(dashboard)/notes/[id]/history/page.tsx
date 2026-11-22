@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireUserId } from "@/lib/session";
 import { getNote, listVersions } from "@/repositories/note-repository";
 import { VersionRow } from "@/components/version-row";
@@ -22,6 +22,8 @@ export default async function NoteHistoryPage({
 
   const note = await getNote(userId, id);
   if (!note) notFound();
+  // A locked note keeps no history: the old versions were deleted when it was locked and no new one is taken.
+  if (note.locked) redirect(`/notes/${note.id}`);
 
   const versions = await listVersions(userId, note.id);
 

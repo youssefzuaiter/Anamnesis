@@ -154,6 +154,8 @@ model Note {
   content    String    @db.Text
   tags       String[]
   isFavorite Boolean   @default(false)
+  // A locked note (ROADMAP item 58): `content` then holds only an encrypted envelope (lib/note-lock.ts), never text.
+  locked     Boolean   @default(false)
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
