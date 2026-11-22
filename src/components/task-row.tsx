@@ -11,11 +11,14 @@ export function TaskRow({
   overdue,
   variant = "card",
   checklist,
+  areaLabel,
 }: {
   task: Task;
   overdue?: boolean;
   /** Done and total of the task's checklist, when it has one: shown as a small `2/5`. */
   checklist?: ChecklistCount;
+  /** "School" or "Work", shown when the account keeps both areas (ROADMAP item 56). */
+  areaLabel?: string;
   /** `row` drops the card chrome, for lists that already sit inside a card. */
   variant?: "card" | "row";
 }) {
@@ -71,6 +74,7 @@ export function TaskRow({
               {dueLabel(task.dueDate)}
             </span>
           )}
+          {areaLabel && <span className="rounded-full border border-border-strong px-2 py-0.5 font-semibold text-text-muted">{areaLabel}</span>}
           <span className={PRIORITY_STYLES[task.priority]}>{task.priority}</span>
           <span className="tabular-nums text-text-faint">{task.estimatedMinutes}m</span>
           {checklist && checklist.total > 0 && (

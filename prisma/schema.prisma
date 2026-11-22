@@ -57,6 +57,8 @@ model User {
 model UserProfile {
   id         String @id @default(uuid())
   userId     String @unique
+  // Which areas of life the account keeps (ROADMAP item 56): "school", "work" or "both". NULL means school, so a release that does not know the column keeps working.
+  areas      String?
   // Empty until the user fills them in on /settings. These used to carry the
   // author's own university, program and student number as column defaults —
   // personal data baked into the schema, which is both a design smell and,

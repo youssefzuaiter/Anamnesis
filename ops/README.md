@@ -281,3 +281,9 @@ The code is public, so assume anyone reading it knows exactly how it works.
 ## Dependencies
 
 Dependabot proposes updates weekly (grouped, so each pull request runs the full suite once, not once per package) and raises security fixes as they are published. The "Dependency review" check fails a pull request that introduces a dependency with a known high-severity vulnerability. The dependency graph itself is under Insights → Dependency graph on GitHub.
+
+## Optional: LibreTranslate for note translation
+
+Translating a note (ROADMAP item 57) uses the local model unless `TRANSLATE_URL` is set. To use a self-hosted LibreTranslate instead, start the optional service from `docker-compose.yml`
+(`docker compose --profile translate up -d translate`: the first start downloads about 1 to 2 GB, so it is never part of a plain `up`) and set `TRANSLATE_URL=http://127.0.0.1:5001` in the
+app's environment. If the service is down the model answers instead. Nothing is sent off the machine. Not rehearsed in `ops/rehearse.sh`: the production stack does not include it.

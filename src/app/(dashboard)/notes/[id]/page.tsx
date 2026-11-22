@@ -24,10 +24,7 @@ import { NoteView } from "@/components/note-view";
 import { NoteContent } from "@/components/note-content";
 import { RelatedItems } from "@/components/related-items";
 import { SummaryCard } from "@/components/summary-card";
-import { LockCard } from "@/components/lock-card";
-import { LockedNote } from "@/components/locked-note";
-import { unlockedKey } from "@/services/unlock-session";
-import { readLocked } from "@/services/note-lock-service";
+import { TranslateCard } from "@/components/translate-card";
 import { NoteAttachments } from "@/components/note-attachments";
 import { listForNote as listAttachments } from "@/repositories/attachment-repository";
 import { findRelated } from "@/services/search-service";
@@ -274,18 +271,8 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
           <SummaryCard noteId={note.id} />
         </section>
 
-        <section className={RAIL_CARD} aria-label="Lock">
-          <LockCard
-            noteId={note.id}
-            title={note.title}
-            blocked={
-              attachments.length > 0
-                ? "This note has attached files, which are not encrypted. Remove them to lock it."
-                : cards.length > 0
-                  ? "Flashcards made from this note hold copies of its text. Delete them to lock it."
-                  : null
-            }
-          />
+        <section className={RAIL_CARD} aria-label="Translate">
+          <TranslateCard noteId={note.id} />
         </section>
 
         {todoTitles.length > 0 && (

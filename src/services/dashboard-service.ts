@@ -1,3 +1,4 @@
+import { areaOf, categoryArea, keepForFilter, type Areas, type AreaFilter } from "@/lib/areas";
 import { getExamReadiness, type ExamReadiness } from "@/services/exam-readiness-service";
 import "server-only";
 import { prisma } from "@/lib/prisma";
@@ -47,6 +48,8 @@ export type Dashboard = {
   todayNote: { id: string; updatedAt: Date } | null;
   /** One older note to come back to (ROADMAP item 32), or null. */
   revisit: Revisit | null;
+  /** "School" or "Work" per item id, only when the account keeps both areas; items in neither area are absent. */
+  areaLabels: Record<string, string>;
 };
 
 /**
@@ -68,6 +71,7 @@ const REVISIT_CANDIDATE_LIMIT = 1000;
 export async function getDashboard(
   userId: string,
   now = new Date(),
+  view: { areas: Areas; filter: AreaFilter } = { areas: "school", filter: "all" },
 ): Promise<Dashboard> {
   const startOfToday = new Date(now);
   startOfToday.setHours(0, 0, 0, 0);
@@ -92,7 +96,7 @@ export async function getDashboard(
     taskRepository.listTasks(userId),
     eventRepository.listEventsInRange(userId, startOfToday, endOfToday),
     taskRepository.listScheduledInRange(userId, startOfToday, endOfToday),
-    eventRepository.listUpcomingEvents(userId, now, 1),
+    eventRepository.listUpcomingEvents(userId, now, view.filter === "all" ? 1 : 25),
     noteRepository.listNotes(userId, { take: RECENT_NOTE_COUNT }),
     projectRepository.listProjects(userId),
     goalRepository.listGoals(userId),
@@ -103,19 +107,26 @@ export async function getDashboard(
     getRevisit(userId, now),
   ]);
 
-  const examReadiness = nextAssessment ? await getExamReadiness(userId, nextAssessment, now) : null;
+  // Study things are left out when School is off or Today is looked at as Work; nothing is changed, only not shown.
+  const showStudy = view.areas !== "work" && view.filter !== "work";
+  const exam = showStudy ? nextAssessment : null;
+  const examReadiness = exam ? await getExamReadiness(userId, exam, now) : null;
+
+  const categories = new Map(projects.map((project) => [project.id, project.category]));
+  const inView = (item: { courseId: string | null; projectId: string | null }) => keepForFilter(areaOf(item, categories), view.filter);
 
   const overdueTasks = openTasks.filter(
-    (task) => bucketOf(task, now) === "overdue",
+    (task) => bucketOf(task, now) === "overdue" && inView(task),
   );
-  const todayTasks = openTasks.filter((task) => bucketOf(task, now) === "today");
+  const todayTasks = openTasks.filter((task) => bucketOf(task, now) === "today" && inView(task));
 
   // Only surface a "next up" event when nothing is left today, so the panel
   // never duplicates what the schedule already shows.
-  const remainingToday = todayEvents.some((event) => event.endTime >= now);
-  const nextEvent = remainingToday ? null : (upcoming[0] ?? null);
+  const shownEvents = todayEvents.filter(inView);
+  const remainingToday = shownEvents.some((event) => event.endTime >= now);
+  const nextEvent = remainingToday ? null : (upcoming.find(inView) ?? null);
 
-  const todayBlocks: TodayBlock[] = scheduled.flatMap((task) =>
+  const todayBlocks: TodayBlock[] = scheduled.filter(inView).flatMap((task) =>
     task.scheduledStart && task.scheduledEnd
       ? [{
           id: task.id,
@@ -127,22 +138,32 @@ export async function getDashboard(
       : [],
   );
 
+  const areaLabels: Record<string, string> = {};
+  if (view.areas === "both") {
+    for (const item of [...overdueTasks, ...todayTasks, ...shownEvents, ...scheduled]) {
+      const area = areaOf(item, categories);
+      if (area) areaLabels[item.id] = area === "school" ? "School" : "Work";
+    }
+  }
+
   return {
+    areaLabels,
     overdueTasks,
     todayTasks,
-    todayEvents,
+    todayEvents: shownEvents,
     todayBlocks,
     nextEvent,
     recentNotes,
     activeProjects: projects
+      .filter((project) => keepForFilter(categoryArea(project.category), view.filter))
       .filter((project) => project.progress < 100)
       .slice(0, ACTIVE_PROJECT_COUNT),
     activeGoals: goals
       .filter((goal) => goal.progress < 100)
       .slice(0, ACTIVE_GOAL_COUNT),
-    nextAssessment,
+    nextAssessment: exam,
     examReadiness,
-    cardsDue,
+    cardsDue: showStudy ? cardsDue : 0,
     indexedChunks,
     todayNote,
     revisit,
