@@ -46,7 +46,7 @@ export const DAY_START_HOUR = 9;
 export const DAY_END_HOUR = 21;
 
 /** Below this a gap is not worth switching context into. */
-const MIN_USABLE_MINUTES = 15;
+export const MIN_USABLE_MINUTES = 15;
 
 /** A breather between blocks, so a plan is not a wall of back-to-back work. */
 export const GAP_MINUTES = 10;
@@ -96,7 +96,7 @@ export function freeIntervals(day: Date, busy: Busy[], now: Date): Busy[] {
  * cannot fit everything still fills with the work that matters most, and ties
  * break towards finishing something.
  */
-function byUrgency(a: Plannable, b: Plannable): number {
+export function byUrgency(a: Plannable, b: Plannable): number {
   const priority =
     (PRIORITY_RANK[a.priority] ?? 1) - (PRIORITY_RANK[b.priority] ?? 1);
   if (priority !== 0) return priority;
