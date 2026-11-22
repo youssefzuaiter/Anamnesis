@@ -7,6 +7,7 @@ import { TaskRow } from "@/components/task-row";
 import { createTaskAction } from "@/actions/tasks";
 import { listProjectOptions } from "@/repositories/project-repository";
 import { listCourseOptions } from "@/repositories/course-repository";
+import { PostIntake } from "@/components/post-intake";
 import { listGoalOptions } from "@/repositories/goal-repository";
 import { listTaskTags } from "@/repositories/task-repository";
 import Link from "next/link";
@@ -114,6 +115,8 @@ export default async function TasksPage({
         goals={goals}
         resetOnSuccess
       />
+
+      <PostIntake courses={courses} />
 
       {openCount === 0 && grouped.done.length === 0 && (
         <p className="mt-6 rounded-xl border border-dashed border-border-strong px-4 py-10 text-center text-sm text-text-muted">

@@ -109,7 +109,7 @@ function fold(text: string): string {
   return text.normalize("NFKC").toLowerCase().replace(/[*_|>`#~]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function quotedIn(quote: string, section: string): boolean {
+export function quotedIn(quote: string, section: string): boolean {
   const folded = fold(quote);
   if (folded === "") return false;
   return fold(section).includes(folded) || groundedness(quote, section) >= QUOTE_FLOOR;
