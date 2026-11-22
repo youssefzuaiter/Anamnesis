@@ -24,8 +24,9 @@ export async function lockNoteAction(noteId: string, password: string): Promise<
   try {
     const userId = await requireUserId();
     const result = await lockService.lockNote(userId, parsed.data.noteId, parsed.data.password);
-    await clearUnlockCookie(parsed.data.noteId);
-    // No revalidation here: the caller shows the recovery key first and refreshes when the person has saved it.
+    // Neither a revalidation nor a cookie change here: either one makes Next re-render the page, which is now the locked page, and the card that is
+    // showing the recovery key would be gone before it was read. (An ordinary note has no unlock cookie to clear.) The card refreshes the page itself,
+    // when the person says they saved the key.
     return ok(result);
   } catch (error) {
     return toApiResponse(error);

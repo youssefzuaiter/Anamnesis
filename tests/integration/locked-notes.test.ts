@@ -204,6 +204,29 @@ test("features that read a note's text refuse a locked note, and searches skip i
   assert.equal(await prisma.workspaceEmbedding.count({ where: { sourceId: note.id } }), 0);
 });
 
+test("a locked note in a course is left out of the course's printed notes and of a rebuild of the index", async () => {
+  const me = await newUser();
+  const course = await prisma.course.create({ data: { userId: me, code: "C2", title: "T", term: "Fall 2026" } });
+  const note = await makeNote(me, { courseId: course.id });
+  await lock.lockNote(me, note.id, PW);
+  assert.deepEqual(await noteRepository.listCourseNotesForPrint(me, course.id, 10), []);
+  const report = await reindexEverything(me);
+  assert.equal(report.byType.note ?? 0, 0, "a locked note is not attempted");
+  assert.equal(report.indexed + report.failed, 1, "only the course is");
+});
+
+test("every repository write that locks, saves or unlocks is scoped to the owner on its own", async () => {
+  const { me, note } = await fixture();
+  const stranger = await newUser();
+  assert.equal(await noteRepository.setLocked(stranger, note.id, "nxl1:x"), false);
+  assert.equal((await prisma.note.findUniqueOrThrow({ where: { id: note.id } })).locked, false);
+  await lock.lockNote(me, note.id, PW);
+  const row = await prisma.note.findUniqueOrThrow({ where: { id: note.id } });
+  assert.equal(await noteRepository.saveLockedContent(stranger, note.id, { title: "hijack", envelope: "nxl1:y" }), false);
+  assert.equal(await noteRepository.setUnlocked(stranger, note.id, "plain"), false);
+  assert.deepEqual(await prisma.note.findUniqueOrThrow({ where: { id: note.id } }), row, "nothing about the note changed");
+});
+
 test("the JSON export holds ciphertext only, and a restore skips locked notes and says so", async () => {
   const { me, note } = await fixture();
   await lock.lockNote(me, note.id, PW);
