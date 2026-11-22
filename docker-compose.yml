@@ -17,5 +17,21 @@ services:
       timeout: 5s
       retries: 10
 
+  # Optional, off unless asked for: `docker compose --profile translate up -d translate`, then set TRANSLATE_URL=http://127.0.0.1:5001
+  # in .env (ROADMAP item 57). The first start downloads the image and the language models (about 1 to 2 GB); it is not part of a plain `up`.
+  translate:
+    image: libretranslate/libretranslate:latest
+    profiles: ["translate"]
+    container_name: nexus-translate
+    restart: unless-stopped
+    environment:
+      LT_LOAD_ONLY: "en,tr,ar,de,fr,es,it,pt,ru,zh"
+      LT_DISABLE_WEB_UI: "true"
+    ports:
+      - "127.0.0.1:5001:5000"
+    volumes:
+      - nexus-translate:/home/libretranslate/.local
+
 volumes:
   nexus-pgdata:
+  nexus-translate:

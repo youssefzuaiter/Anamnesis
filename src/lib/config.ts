@@ -9,6 +9,8 @@ const envSchema = z.object({
   OLLAMA_BASE_URL: z.string().url(),
   OLLAMA_CHAT_MODEL: z.string().min(1),
   OLLAMA_EMBEDDING_MODEL: z.string().min(1),
+  /** Optional address of a self-hosted LibreTranslate (ROADMAP item 57). Unset: the local model translates. */
+  TRANSLATE_URL: z.string().url().optional(),
   /** Optional invite code for accounts after the first; see "Registration" in CLAUDE.md. */
   REGISTRATION_CODE: registrationCode,
 });
