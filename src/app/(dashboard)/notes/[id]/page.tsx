@@ -28,6 +28,7 @@ import { LockCard } from "@/components/lock-card";
 import { LockedNote } from "@/components/locked-note";
 import { unlockedKey } from "@/services/unlock-session";
 import { readLocked } from "@/services/note-lock-service";
+import { TranslateCard } from "@/components/translate-card";
 import { NoteAttachments } from "@/components/note-attachments";
 import { listForNote as listAttachments } from "@/repositories/attachment-repository";
 import { findRelated } from "@/services/search-service";
@@ -286,6 +287,10 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
                   : null
             }
           />
+        </section>
+
+        <section className={RAIL_CARD} aria-label="Translate">
+          <TranslateCard noteId={note.id} />
         </section>
 
         {todoTitles.length > 0 && (

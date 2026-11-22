@@ -17,6 +17,7 @@ import { quickSearch } from "@/repositories/search-repository";
 import { summariseNote } from "@/services/summary-service";
 import { proposeTodoTasks } from "@/services/todo-service";
 import { generateCardsForNote, createCardsForNote } from "@/services/flashcard-service";
+import { translateNote } from "@/services/translate-service";
 import { proposeAssessments } from "@/services/syllabus-service";
 import { addLink, suggestLinks } from "@/services/link-suggestion-service";
 import { mergeNotes } from "@/services/duplicate-service";
@@ -184,6 +185,7 @@ test("features that read a note's text refuse a locked note, and searches skip i
   await lock.lockNote(me, note.id, PW);
   const course = await prisma.course.create({ data: { userId: me, code: "C1", title: "T", term: "Fall 2026" } });
   await rejectsWith(summariseNote(me, note.id), "FORBIDDEN", "summary");
+  await rejectsWith(translateNote(me, note.id, "tr", { engine: async () => { throw new Error("must not be called"); } }), "FORBIDDEN", "translation");
   await rejectsWith(proposeTodoTasks(me, note.id), "FORBIDDEN", "todo lines");
   await rejectsWith(generateCardsForNote(me, note.id, 3), "FORBIDDEN", "card generation");
   await rejectsWith(createCardsForNote(me, note.id, { kind: "basic", question: "q", answer: "a" }), "FORBIDDEN", "a card by hand");

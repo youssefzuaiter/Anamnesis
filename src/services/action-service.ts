@@ -12,7 +12,7 @@ import { getTask } from "@/repositories/task-repository";
 import { assertNotLocked } from "@/services/note-lock-service";
 
 export type ActorType = "USER" | "AI_AGENT" | "SYSTEM";
-export type ActionSource = "assistant" | "capture" | "summary";
+export type ActionSource = "assistant" | "capture" | "summary" | "translation";
 
 export type ExecutedAction = {
   entityType: "Task" | "Event" | "Note" | "Goal";

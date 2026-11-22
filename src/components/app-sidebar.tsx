@@ -5,7 +5,8 @@ import { usePathname } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { CommandPaletteTrigger } from "@/components/command-palette-trigger";
 import { SignOutButton } from "@/components/sign-out-button";
-import { NAV_GROUPS, isActive, type NavBadges } from "@/components/nav-items";
+import { isActive, type NavBadges } from "@/components/nav-items";
+import { navGroupsFor, type Areas } from "@/lib/areas";
 import { BrandLockup } from "@/components/brand";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { ShortcutsButton } from "@/components/shortcuts-provider";
@@ -18,9 +19,11 @@ function initials(name: string): string {
 export function AppSidebar({
   displayName,
   badges,
+  areas,
 }: {
   displayName: string;
   badges: NavBadges;
+  areas: Areas;
 }) {
   const pathname = usePathname();
 
@@ -33,7 +36,7 @@ export function AppSidebar({
       <CommandPaletteTrigger />
 
       <nav aria-label="Primary" className="flex flex-1 flex-col gap-4">
-        {NAV_GROUPS.map((group) => (
+        {navGroupsFor(areas).map((group) => (
           <div key={group.label ?? "home"} className="flex flex-col gap-0.5">
             {group.label && (
               <p className="px-2.5 pb-1 text-xs font-semibold text-text-faint">
