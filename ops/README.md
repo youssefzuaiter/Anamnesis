@@ -170,6 +170,15 @@ token in the address is the credential (ROADMAP item 13). Three things follow fo
 Only a SHA-256 of the token is in the database (and so in a backup), so a stolen dump cannot rebuild an address. The migration
 that added the two columns is additive and nullable, so the rule under "The migration rule" holds.
 
+## Imported calendars update themselves
+
+A calendar added under Calendar, Imported calendars (a Google, Outlook or Teams secret link, or a university timetable) is read again every 30 minutes while the app runs (ROADMAP item 54). It is a timer
+inside the app server, started with it like the reminder scheduler, one run every five minutes that reads at most 20 calendars not tried for 30 minutes. **On in production, off in development**:
+set `CALENDAR_AUTO_SYNC=0` in `.env.production` to turn it off, or `=1` to turn it on anywhere. Nothing to pay and no account to register: the link itself is the credential, read over HTTPS through the same
+guarded fetcher as before (no local or private addresses, at most 3 redirects, 5 MB, 20 s). **What leaves the machine:** one request per calendar per half hour, to the provider's own address; nothing else.
+A failed read is recorded on the calendar (Imported calendars shows why) and keeps the events of the last good read; nothing is retried before its half hour is up. The migration (`lastAttemptAt`, `lastError`) is two
+nullable columns, so the previous release keeps working.
+
 ## Phone reminders
 
 While no Anamnesis tab is open, reminders reach the phone through a self-hosted [ntfy](https://ntfy.sh)

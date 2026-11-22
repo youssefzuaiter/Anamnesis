@@ -2322,6 +2322,37 @@ action doesn't return to the client, so — like several other click-triggered
 (non-`<form>`) mutations in this app — the sync and remove buttons call
 `router.refresh()` themselves after the action resolves.
 
+### Calendar sync, the free way first
+
+ROADMAP item 54 (*M, security*; not tagged *demo*, built from the roadmap sentence and looked at in the browser). **No account, no developer registration, no cost:** a student pastes the calendar's own secret
+iCal address (Google: Settings, "Secret address in iCal format"; Outlook or Teams on the web: Publish a calendar, ICS link; iCloud: public calendar; a university timetable) into the Imported calendars page that
+already existed, and the app now keeps it current by itself. The two-way connection (OAuth with Google Calendar or Microsoft Graph, so planned blocks could be written back) is **not built**: it needs an app
+registration with each provider and, for a school Microsoft 365 account, usually an administrator's consent a student cannot give, so it waits for the owner's decision (item 55).
+
+- **Scheduled sync** (`services/calendar-sync-scheduler.ts`, started from `src/instrumentation.ts` beside the reminder scheduler): a timer in the app server, one run every five minutes, each run reading the
+  calendars not tried for 30 minutes (`SYNC_INTERVAL_MINUTES`), never-tried first then longest waiting, at most 20 per run (`MAX_PER_TICK`), one after another, one run at a time. **On in production, off
+  elsewhere**, so a development server never fetches a real calendar link by itself and the browser tests see only what they set up (`CALENDAR_AUTO_SYNC=1` / `=0` override). `runCalendarSyncTick` is the
+  one place the app reads rows that are not a signed-in person's (`listDueSubscriptions`, ids only); each read and write after it is scoped by the row's own `userId`.
+- **A failure is recorded and does not delete anything.** Two nullable columns, `lastAttemptAt` and `lastError` (additive, the previous release keeps working). A failed try stores when and why in words with
+  **no address in them** (`safeSyncError`: an `AppError`'s own message with any `scheme://...` taken out, anything else "The sync failed."), keeps the events of the last good sync, and waits its half hour like any
+  other, so a dead link is not hammered. A good sync clears the error. Imported calendars shows "The last try failed: ..." and that the last good events are still shown.
+- **The link is a bearer secret and never reaches the browser.** The page passes the provider's name (`providerOf`: by host, a host is a match only if it is that name or a subdomain of it, so
+  `calendar.google.com.evil.example` is "Calendar link") and the host with an ellipsis (`maskedAddress`), not the link; before this the whole link was in the page's data though the component did not print it. The
+  browser test checks the secret part of a link is nowhere in the page's HTML. An imported event's detail page says "Imported from <name> (<provider>). Changes made here are replaced at the next sync."
+- **Finding the link** is a "Where do I find the link?" help on the page with the steps for Google, Outlook or Teams, iCloud and others (`PROVIDER_STEPS`), including the honest limit: a school or university
+  Microsoft 365 account often has publishing turned off by its administrator.
+- **Unchanged and relied on:** the guarded fetcher (`lib/safe-fetch.ts`: no local or private addresses, redirects checked by hand, 5 MB and 20 s), the ICS reader's caps, the idempotent `(subscription, uid)` upsert,
+  and that a link is never exported (only its host).
+
+**Tests.** 6 unit (`calendar-source`: providers and look-alike hosts, only the host shown, due-ness, failure text, the steps), 7 + 2 integration (`calendar-sync` and `calendar-sync-scheduler`: which calendars are due,
+oldest first and fresh ones left, each read as its own owner's, one failure not stopping the rest, the per-run cap, a failure recorded without an address and the last good events kept, a good sync clearing it, another
+account's calendar refused and not written to, the repository scoped on its own, the gating by environment, one run at a time and a failing run not stopping the timer) and 2 browser (`calendar-sync.spec.ts`: provider and host
+shown, the secret in neither the page nor its data, the failure, the help, the event's source; a phone with no overflow). Eight mutants, each caught (one, an unscoped failure write, first survived because the service
+never reaches it with a foreign id, and a repository-level test now holds it). **Not run:** a real fetch from Google or Outlook (no link of mine to use: the fetch path is the old, tested one and the tick is tested with
+a scripted sync), `pnpm build`, the whole e2e suite and the container rehearsal; CI runs them.
+
+**Not done:** a per-calendar "sync now" showing progress; changing a calendar's link or name without removing it; the two-way connection above; reading Teams assignments (item 55); a different interval per calendar.
+
 ## Web clipper
 
 `/notes/import` has a **Clip a web page** card (ROADMAP item 20): paste a link, and the page's readable
