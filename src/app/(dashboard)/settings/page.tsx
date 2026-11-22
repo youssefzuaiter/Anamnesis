@@ -12,6 +12,8 @@ import { PushRemindersCard } from "@/components/push-reminders-card";
 import { getPushSettings } from "@/services/reminder-push-service";
 import { TwoFactorCard } from "@/components/two-factor-card";
 import { twoFactorStatus } from "@/services/two-factor-service";
+import { AreasCard } from "@/components/areas-card";
+import { parseAreas } from "@/lib/areas";
 import { SessionsCard } from "@/components/sessions-card";
 import { listSessions } from "@/services/session-service";
 
@@ -42,7 +44,9 @@ export default async function SettingsPage() {
         </p>
       </header>
 
-      <h2 className="mb-2 text-xs font-semibold text-text-faint">
+      <AreasCard initial={parseAreas(profile.areas)} />
+
+      <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
         Profile
       </h2>
       <ProfileForm
