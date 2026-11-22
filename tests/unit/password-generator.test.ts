@@ -98,4 +98,5 @@ test("strength is named from bits, with the plain thresholds", () => {
   assert.equal(strengthLabel(45), "Fair");
   assert.equal(strengthLabel(60), "Strong");
   assert.equal(strengthLabel(80), "Very strong");
+  for (const [bits, label] of [[44.9, "Weak"], [59.9, "Fair"], [79.9, "Strong"]] as const) assert.equal(strengthLabel(bits), label, String(bits));
 });
