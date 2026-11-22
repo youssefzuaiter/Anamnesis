@@ -24,6 +24,7 @@ import { NoteView } from "@/components/note-view";
 import { NoteContent } from "@/components/note-content";
 import { RelatedItems } from "@/components/related-items";
 import { SummaryCard } from "@/components/summary-card";
+import { TranslateCard } from "@/components/translate-card";
 import { NoteAttachments } from "@/components/note-attachments";
 import { listForNote as listAttachments } from "@/repositories/attachment-repository";
 import { findRelated } from "@/services/search-service";
@@ -252,6 +253,10 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
 
         <section className={RAIL_CARD} aria-label="Summary">
           <SummaryCard noteId={note.id} />
+        </section>
+
+        <section className={RAIL_CARD} aria-label="Translate">
+          <TranslateCard noteId={note.id} />
         </section>
 
         {todoTitles.length > 0 && (
