@@ -45,6 +45,7 @@ export default async function SettingsPage() {
       </header>
 
       <AreasCard initial={parseAreas(profile.areas)} />
+      <p className="mt-2 text-[13px] text-text-muted">A signature for forms? <Link href="/signature" className="font-semibold text-accent-ink hover:underline">Draw and keep one</Link>.</p>
 
       <h2 className="mb-2 mt-6 text-xs font-semibold text-text-faint">
         Profile

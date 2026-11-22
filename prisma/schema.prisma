@@ -43,6 +43,7 @@ model User {
   conversations      Conversation[]
   messages           Message[]
   attachments        Attachment[]
+  signatures         Signature[]
   taskChecklistItems TaskChecklistItem[]
   goals              Goal[]
   studySessions      StudySession[]
@@ -658,4 +659,21 @@ model CardReview {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, reviewedAt])
+}
+
+/// A drawn signature saved as a transparent PNG (ROADMAP item 60). The bytes are a file on disk beside the attachments; this is its record. Private to
+/// the account, and never presented as a legally binding electronic signature.
+model Signature {
+  id         String   @id @default(uuid())
+  userId     String
+  name       String
+  storageKey String   @unique
+  byteSize   Int
+  width      Int
+  height     Int
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
