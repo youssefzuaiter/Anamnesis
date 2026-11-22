@@ -88,3 +88,13 @@ export async function findUserIdByFeedHash(hash: string): Promise<string | null>
   return row?.userId ?? null;
 }
 
+
+/** The caller's areas setting as stored (null when never chosen); a read that does not create a profile row. */
+export async function getAreasSetting(userId: string): Promise<string | null> {
+  const row = await prisma.userProfile.findUnique({ where: { userId }, select: { areas: true } });
+  return row?.areas ?? null;
+}
+
+export async function setAreasSetting(userId: string, areas: string): Promise<void> {
+  await prisma.userProfile.upsert({ where: { userId }, create: { userId, areas }, update: { areas } });
+}
