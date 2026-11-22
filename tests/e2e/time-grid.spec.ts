@@ -902,3 +902,44 @@ test.describe("dragging", () => {
     await expect.poll(async () => stored("task", id)).toEqual([at(sunday, 10).getTime(), at(sunday, 11).getTime()]);
   });
 });
+
+// --- Where the grid opens (ROADMAP item 52) ---------------------------------------------------------------------
+
+async function addEventViaForm(page: Page, d: Date, from: string, to: string, title: string) {
+  await page.fill('input[name="title"]', title);
+  await page.fill('input[name="startTime"]', `${iso(d)}T${from}`);
+  await page.fill('input[name="endTime"]', `${iso(d)}T${to}`);
+  await main(page).getByRole("button", { name: "Add event" }).click();
+}
+
+test("a week whose first event is before 07:00 opens an hour above it, so the event is in view", async ({ page }) => {
+  const d = day(200, 2);
+  const title = `Early ${Date.now()}`;
+  await page.goto(weekUrl(200));
+  await addEventViaForm(page, d, "05:30", "06:30", title);
+  await expect(column(page, label(d)).getByRole("button", { name: new RegExp(`^${title},`) })).toBeVisible();
+  await page.goto(weekUrl(200));
+  // Read after hydration: the scroll is set by an effect.
+  await expect.poll(async () => Math.abs((await grid(page).evaluate((el) => el.scrollTop)) - 4 * 56), "opens at 04:00, an hour before the 05:30 event, on the hour").toBeLessThanOrEqual(2);
+  const frame = await must(grid(page));
+  const box = await must(column(page, label(d)).getByRole("button", { name: new RegExp(`^${title},`) }));
+  expect(box.y).toBeGreaterThanOrEqual(frame.y - 1);
+  expect(box.y + box.height).toBeLessThanOrEqual(frame.y + frame.height + 1);
+});
+
+test("a week whose first event is in the evening opens near it, and an ordinary week still opens at 07:00", async ({ page }) => {
+  const d = day(201, 1);
+  const title = `Late ${Date.now()}`;
+  await page.goto(weekUrl(201));
+  await addEventViaForm(page, d, "19:00", "20:30", title);
+  await expect(column(page, label(d)).getByRole("button", { name: new RegExp(`^${title},`) })).toBeVisible();
+  await page.goto(weekUrl(201));
+  await expect.poll(async () => Math.abs((await grid(page).evaluate((el) => el.scrollTop)) - 14 * 56), "opens at 14:00, the latest start that still ends the frame at midnight").toBeLessThanOrEqual(2);
+  const frame = await must(grid(page));
+  const box = await must(column(page, label(d)).getByRole("button", { name: new RegExp(`^${title},`) }));
+  expect(box.y).toBeGreaterThanOrEqual(frame.y - 1);
+  expect(box.y + box.height).toBeLessThanOrEqual(frame.y + frame.height + 1);
+
+  await page.goto(weekUrl(202));
+  await expect.poll(async () => Math.abs((await grid(page).evaluate((el) => el.scrollTop)) - 7 * 56)).toBeLessThanOrEqual(2);
+});

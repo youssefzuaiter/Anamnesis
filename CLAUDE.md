@@ -3105,6 +3105,11 @@ migration and no new dependency. The council-style forks were decided inline by 
   taken from the server's render). **Only an item that starts and ends on one local day is a grid item** (ending at exactly
   midnight counts); anything else is drawn once in an **All day** strip over the columns it touches and is edited on its own page.
   The Day view also shows an event's location and says so when the day is empty.
+- **Where it opens** (ROADMAP item 52; the entry said 00:00, but the grid had opened at 07:00 since this section was written: checked in the browser, `scrollTop` 392). The rule is
+  `openAtMinutes` (`lib/time-grid.ts`, pure): 07:00, **unless** the first thing in view would be above it or too near the bottom of the 10-hour frame (`VIEW_MINUTES`), in which case an hour
+  before it, on the hour, kept so the frame stays inside the day (so 14:00 at the latest). The first thing is the earliest item of any shown day; with no items and today shown, the current
+  time. The grid is remounted for each week or day (the page keys it), so the effect runs once per range and never while an item is being moved. A 09:00 event leaves it at 07:00, as before.
+  Browser tests read the scroll through `expect.poll`: it is set by an effect, and a read straight after `goto` saw 0.
 - **The rules are pure and shared.** `lib/time-grid.ts` has no Prisma and no React: `toGrid`, `layoutDay`, `moveRange`,
   `resizeRange`, `nudge`, `dropRange`, `applyRange`, `findItem`, `estimateFromDragTypes` and `checkRange`. Every step is taken on
   the local wall clock, so a day is a calendar day and a block at 09:00 is still at 09:00 the day after the clocks change (tested in
