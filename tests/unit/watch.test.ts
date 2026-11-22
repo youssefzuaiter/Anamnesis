@@ -241,3 +241,17 @@ test("--notify with no alert topic configured sends nothing and says so", () => 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+import { oneLine, port } from "../../ops/watch.mjs";
+
+test("a port from the settings file is digits in range, or the default", () => {
+  assert.equal(port("2586", "1"), "2586");
+  assert.equal(port("03200", "1"), "3200");
+  for (const bad of ["", "0", "65536", "99999", "-1", "80a", "1.5", " 80", "127.0.0.1:80", "80/../x", "x".repeat(1000)]) assert.equal(port(bad, "2586"), "2586", bad.slice(0, 12));
+});
+
+test("a logged line is one line: breaks and control characters cannot start a forged entry", () => {
+  assert.equal(oneLine("alert sent: Backup failed"), "alert sent: Backup failed");
+  assert.equal(oneLine("a\nb\r\nc\u0000d e"), "a b c d e");
+  assert.ok(!/[\n\r]/.test(oneLine("x\n2026-01-01T00:00:00Z  alert sent: forged")));
+});
