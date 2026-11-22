@@ -3,6 +3,7 @@ import { AppError } from "@/lib/api-response";
 import { assertPublicUrl, safeFetchText, SafeFetchError } from "@/lib/safe-fetch";
 import { parseIcs, MAX_EVENTS_PER_FEED } from "@/lib/ics";
 import { deleteEntityEmbeddings } from "@/lib/vector";
+import { SYNC_INTERVAL_MS, safeSyncError } from "@/lib/calendar-source";
 import { indexEvent } from "@/services/event-service";
 import * as calendarRepository from "@/repositories/calendar-repository";
 import type { CalendarSubscriptionModel as CalendarSubscription } from "@/generated/prisma/models";
@@ -62,6 +63,18 @@ export async function syncSubscription(
   userId: string,
   subscriptionId: string,
 ): Promise<SyncResult> {
+  try {
+    return await readFeedInto(userId, subscriptionId);
+  } catch (error) {
+    // The calendar keeps the events of its last good sync; what is stored is only that a try failed and, in words with no address, why.
+    if (!(error instanceof AppError && error.code === "RESOURCE_NOT_FOUND")) {
+      await calendarRepository.markSyncFailed(userId, subscriptionId, safeSyncError(error), new Date());
+    }
+    throw error;
+  }
+}
+
+async function readFeedInto(userId: string, subscriptionId: string): Promise<SyncResult> {
   const subscription = await calendarRepository.getSubscription(
     userId,
     subscriptionId,
@@ -170,4 +183,29 @@ export async function listSubscriptions(
   userId: string,
 ): Promise<CalendarSubscription[]> {
   return calendarRepository.listSubscriptions(userId);
+}
+
+
+/** The most calendars one scheduled run reads, so a long list is spread over runs and a run never lasts long. */
+export const MAX_PER_TICK = 20;
+
+/**
+ * One run of the scheduled sync (ROADMAP item 54): every calendar not tried for `SYNC_INTERVAL_MS` is read again, oldest first, one after another.
+ * A calendar that fails is recorded and waits its interval like any other (no hammering a dead link); the others are not held up by it.
+ */
+export async function runCalendarSyncTick(
+  now: Date = new Date(),
+  sync: (userId: string, subscriptionId: string) => Promise<unknown> = syncSubscription,
+  take: number = MAX_PER_TICK,
+): Promise<{ tried: number; failed: number }> {
+  const due = await calendarRepository.listDueSubscriptions(new Date(now.getTime() - SYNC_INTERVAL_MS), take);
+  let failed = 0;
+  for (const item of due) {
+    try {
+      await sync(item.userId, item.id);
+    } catch {
+      failed += 1;
+    }
+  }
+  return { tried: due.length, failed };
 }
