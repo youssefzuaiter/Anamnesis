@@ -42,27 +42,43 @@ async function loadLocked(userId: string, noteId: string) {
 }
 
 /**
- * Locks one of the caller's notes. Refused while the note has attachments (their files are not encrypted) or cards (they hold copies of its text), and
+ * Locks one of the caller's notes (the two functions below choose which password; this is what they share). Refused while the note has attachments (their files are not encrypted) or cards (they hold copies of its text), and
  * never for a note that is already locked or in the trash. The old text is removed from everywhere this app keeps it: the history, the search index and the
  * links read out of it. Returns the recovery key, which is shown once and kept nowhere.
  */
-export async function lockNote(userId: string, noteId: string, password: string, how: LockVia = "own", now = Date.now()): Promise<{ recoveryKey: string }> {
+/** A separate password for this note, at least MIN_PASSWORD characters. */
+export async function lockWithNotePassword(userId: string, noteId: string, password: string): Promise<{ recoveryKey: string }> {
   try {
-    checkPassword(password, how === "account" ? 1 : MIN_PASSWORD);
+    checkPassword(password, MIN_PASSWORD);
   } catch (error) {
     throw new AppError("VALIDATION_ERROR", (error as Error).message);
   }
-  if (how === "account") {
-    // "Use my sign-in password": it must be the real one, so a typing slip cannot lock a note behind a password nobody has.
-    const bucket = `${userId}:account`;
-    checkAttempts(bucket, now);
-    const user = await db.user.findUnique({ where: { id: userId }, select: { passwordHash: true } });
-    if (!user || !(await verifyPassword(password, user.passwordHash))) {
-      noteFailure(bucket, now);
-      throw new AppError("FORBIDDEN", "That is not your sign-in password.");
-    }
-    failures.delete(bucket);
+  return sealAndStore(userId, noteId, password, "own");
+}
+
+/**
+ * "Use my sign-in password": the typed password must be the account's real one, so a typing slip cannot lock a note behind a password nobody has. This is
+ * a check of the caller's own secret before a lock they are already allowed to make, not a permission: every path through the two lock functions still
+ * needs the session's user to own the note, which `sealAndStore` checks.
+ */
+export async function lockWithSigninPassword(userId: string, noteId: string, password: string, now = Date.now()): Promise<{ recoveryKey: string }> {
+  try {
+    checkPassword(password, 1);
+  } catch (error) {
+    throw new AppError("VALIDATION_ERROR", (error as Error).message);
   }
+  const bucket = `${userId}:account`;
+  checkAttempts(bucket, now);
+  const user = await db.user.findUnique({ where: { id: userId }, select: { passwordHash: true } });
+  if (!user || !(await verifyPassword(password, user.passwordHash))) {
+    noteFailure(bucket, now);
+    throw new AppError("FORBIDDEN", "That is not your sign-in password.");
+  }
+  failures.delete(bucket);
+  return sealAndStore(userId, noteId, password, "account");
+}
+
+async function sealAndStore(userId: string, noteId: string, password: string, how: LockVia): Promise<{ recoveryKey: string }> {
   const note = await noteRepository.getNote(userId, noteId);
   if (!note) throw new AppError("RESOURCE_NOT_FOUND", "That note no longer exists.");
   if (note.locked) throw new AppError("VALIDATION_ERROR", "This note is already locked.");
