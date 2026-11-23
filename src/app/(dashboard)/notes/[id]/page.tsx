@@ -24,10 +24,10 @@ import { NoteView } from "@/components/note-view";
 import { NoteContent } from "@/components/note-content";
 import { RelatedItems } from "@/components/related-items";
 import { SummaryCard } from "@/components/summary-card";
-import { LockCard } from "@/components/lock-card";
+import { LockButton } from "@/components/lock-card";
 import { LockedNote } from "@/components/locked-note";
 import { unlockedKey } from "@/services/unlock-session";
-import { readLocked } from "@/services/note-lock-service";
+import { lockViaOf, readLocked } from "@/services/note-lock-service";
 import { TranslateCard } from "@/components/translate-card";
 import { NoteAttachments } from "@/components/note-attachments";
 import { listForNote as listAttachments } from "@/repositories/attachment-repository";
@@ -85,6 +85,7 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
         noteId={note.id}
         title={opened?.title ?? note.title}
         unlocked={opened !== null}
+        via={await lockViaOf(userId, note.id)}
         text={opened?.text ?? null}
         body={opened ? <NoteContent content={opened.text} links={{}} /> : null}
       />
@@ -151,6 +152,17 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
             >
               Quiz me on this note
             </Link>
+            <LockButton
+              noteId={note.id}
+              title={note.title}
+              blocked={
+                attachments.length > 0
+                  ? "This note has attached files, which are not encrypted. Remove them to lock it."
+                  : cards.length > 0
+                    ? "Flashcards made from this note hold copies of its text. Delete them to lock it."
+                    : null
+              }
+            />
             <Link
               href={`/notes/${note.id}/history`}
               className="inline-flex shrink-0 items-center gap-1.5 font-medium transition-colors hover:text-text"
@@ -275,19 +287,6 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
           <SummaryCard noteId={note.id} />
         </section>
 
-        <section className={RAIL_CARD} aria-label="Lock">
-          <LockCard
-            noteId={note.id}
-            title={note.title}
-            blocked={
-              attachments.length > 0
-                ? "This note has attached files, which are not encrypted. Remove them to lock it."
-                : cards.length > 0
-                  ? "Flashcards made from this note hold copies of its text. Delete them to lock it."
-                  : null
-            }
-          />
-        </section>
 
         <section className={RAIL_CARD} aria-label="Translate">
           <TranslateCard noteId={note.id} />
