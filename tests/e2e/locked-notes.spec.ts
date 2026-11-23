@@ -107,3 +107,22 @@ test("on a phone the lock card and the unlock page fit", async ({ page }) => {
   await expect(page.getByLabel("Password or recovery key")).toBeVisible();
   expect(await fits()).toBeLessThanOrEqual(0);
 });
+
+test("the lock card can make a strong password and fill both fields with it, and that password locks the note", async ({ page }) => {
+  await page.goto(`/notes/${noteId}`);
+  const card = lockCard(page);
+  await card.getByText("Make a strong password").click();
+  await card.getByRole("button", { name: "Make one" }).click();
+  const made = await card.getByLabel("Result").inputValue();
+  expect(made.length).toBeGreaterThanOrEqual(10);
+  await card.getByRole("button", { name: "Use this" }).click();
+  await expect(card.getByLabel("Password", { exact: true })).toHaveValue(made);
+  await expect(card.getByLabel("Password again")).toHaveValue(made);
+  await card.getByRole("button", { name: "Lock this note" }).click();
+  await page.getByTestId("recovery-key").waitFor();
+  await page.getByLabel("I have saved the recovery key").check();
+  await page.getByRole("button", { name: "Done" }).click();
+  await page.getByLabel("Password or recovery key").fill(made);
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await expect(main(page)).toContainText(SECRET);
+});
