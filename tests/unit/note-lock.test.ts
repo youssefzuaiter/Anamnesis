@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sealNote, openWithSecret, openWithKey, resealWithKey, rewrapPassword, isLockedEnvelope, newRecoveryKey, MIN_PASSWORD } from "@/lib/note-lock";
+import { lockVia, sealNote, openWithSecret, openWithKey, resealWithKey, rewrapPassword, isLockedEnvelope, newRecoveryKey, MIN_PASSWORD } from "@/lib/note-lock";
 
 const ids = { userId: "u1", noteId: "n1" };
 const PW = "correct horse battery";
@@ -91,4 +91,26 @@ test("an empty note and a 100,000-character note both round-trip", async () => {
     const { envelope } = await sealNote(t, PW, ids);
     assert.equal((await openWithSecret(envelope, PW, ids))?.plaintext, t);
   }
+});
+
+test("a lock made with the sign-in password may be short, says so on the lock screen, and is otherwise the same", async () => {
+  const { envelope } = await sealNote("text", "short1", ids, "account");
+  assert.equal(lockVia(envelope), "account");
+  assert.equal((await openWithSecret(envelope, "short1", ids))?.plaintext, "text");
+  assert.equal(await openWithSecret(envelope, "short2", ids), null);
+  await assert.rejects(sealNote("x", "", ids, "account"), /at least 1/);
+  await assert.rejects(sealNote("x", "short1", ids, "own"), /at least 10/);
+  await assert.rejects(sealNote("x", "x".repeat(201), ids, "account"), /at most/);
+});
+
+test("a note's own password is the default, an unlabelled or damaged lock asks for it, and a new password makes the lock the note's own", async () => {
+  const own = await sealNote("t", PW, ids);
+  assert.equal(lockVia(own.envelope), "own");
+  assert.equal(lockVia("nxl1:garbage"), "own");
+  assert.equal(lockVia("plain text"), "own");
+  const account = await sealNote("t", "signin1", ids, "account");
+  const { key } = (await openWithSecret(account.envelope, "signin1", ids))!;
+  const changed = await rewrapPassword(account.envelope, key, "a brand new passphrase", ids);
+  assert.equal(lockVia(changed), "own");
+  assert.equal((await openWithSecret(changed, "a brand new passphrase", ids))?.plaintext, "t");
 });

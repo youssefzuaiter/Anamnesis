@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { AppError } from "@/lib/api-response";
 import { isLockedEnvelope } from "@/lib/note-lock";
+import { hashPassword } from "@/lib/password";
 import * as lock from "@/services/note-lock-service";
 import { updateNote, restoreVersion, searchNotes } from "@/services/note-service";
 import * as noteRepository from "@/repositories/note-repository";
@@ -60,7 +61,7 @@ const dump = async (userId: string) => JSON.stringify(await Promise.all([
 
 test("locking leaves no plaintext in the row, the history, the index or the links, and returns a recovery key", async () => {
   const { me, note, other } = await fixture();
-  const { recoveryKey } = await lock.lockNote(me, note.id, PW);
+  const { recoveryKey } = await lock.lockWithNotePassword(me, note.id, PW);
   assert.match(recoveryKey, /^[A-Z2-7]{4}(-[A-Z2-7]{4}){7}$/);
   const row = await prisma.note.findUniqueOrThrow({ where: { id: note.id } });
   assert.equal(row.locked, true);
@@ -70,30 +71,30 @@ test("locking leaves no plaintext in the row, the history, the index or the link
   assert.equal(await prisma.workspaceEmbedding.count({ where: { sourceId: note.id } }), 0);
   assert.equal(await prisma.entityLink.count({ where: { sourceId: note.id } }), 0);
   assert.equal((await prisma.note.findUniqueOrThrow({ where: { id: other.id } })).content, "other text", "another note is untouched");
-  await rejectsWith(lock.lockNote(me, note.id, PW), "VALIDATION_ERROR", "already locked");
+  await rejectsWith(lock.lockWithNotePassword(me, note.id, PW), "VALIDATION_ERROR", "already locked");
 });
 
 test("a note with attached files or cards, a short password, a trashed or foreign note, cannot be locked", async () => {
   const me = await newUser();
   const stranger = await newUser();
   const a = await makeNote(me);
-  await rejectsWith(lock.lockNote(me, a.id, "short"), "VALIDATION_ERROR", "short");
+  await rejectsWith(lock.lockWithNotePassword(me, a.id, "short"), "VALIDATION_ERROR", "short");
   await prisma.attachment.create({ data: { userId: me, noteId: a.id, filename: "f.png", mimeType: "image/png", byteSize: 1, storageKey: randomUUID() } });
-  await rejectsWith(lock.lockNote(me, a.id, PW), "VALIDATION_ERROR", "attachment");
+  await rejectsWith(lock.lockWithNotePassword(me, a.id, PW), "VALIDATION_ERROR", "attachment");
   const b = await makeNote(me);
   await prisma.flashcard.create({ data: { userId: me, noteId: b.id, question: "q", answer: "a" } });
-  await rejectsWith(lock.lockNote(me, b.id, PW), "VALIDATION_ERROR", "cards");
+  await rejectsWith(lock.lockWithNotePassword(me, b.id, PW), "VALIDATION_ERROR", "cards");
   const c = await makeNote(me, { deletedAt: new Date() });
-  await rejectsWith(lock.lockNote(me, c.id, PW), "RESOURCE_NOT_FOUND", "trashed");
+  await rejectsWith(lock.lockWithNotePassword(me, c.id, PW), "RESOURCE_NOT_FOUND", "trashed");
   const theirs = await makeNote(stranger);
-  await rejectsWith(lock.lockNote(me, theirs.id, PW), "RESOURCE_NOT_FOUND", "foreign");
+  await rejectsWith(lock.lockWithNotePassword(me, theirs.id, PW), "RESOURCE_NOT_FOUND", "foreign");
   assert.equal((await prisma.note.findUniqueOrThrow({ where: { id: theirs.id } })).locked, false);
   for (const n of [a, b]) assert.equal((await prisma.note.findUniqueOrThrow({ where: { id: n.id } })).content, n.content, "a refused lock changes nothing");
 });
 
 test("the password or the recovery key opens it; a wrong one does not and is counted; five wrong attempts stop even the right one", async () => {
   const { me, note } = await fixture();
-  const { recoveryKey } = await lock.lockNote(me, note.id, PW);
+  const { recoveryKey } = await lock.lockWithNotePassword(me, note.id, PW);
   const t0 = 1_000_000;
   const byPw = await lock.unlockNote(me, note.id, PW, t0);
   assert.equal((await lock.readLocked(me, note.id, byPw.key))?.text, `# Plans\n\n${SECRET}\n\nSee [[Other]].`);
@@ -107,7 +108,7 @@ test("the password or the recovery key opens it; a wrong one does not and is cou
 test("a note cannot be unlocked, read, saved or changed through another account's id, or one that is not locked", async () => {
   const { me, note } = await fixture();
   const stranger = await newUser();
-  await lock.lockNote(me, note.id, PW);
+  await lock.lockWithNotePassword(me, note.id, PW);
   const { key } = await lock.unlockNote(me, note.id, PW);
   await rejectsWith(lock.unlockNote(stranger, note.id, PW), "RESOURCE_NOT_FOUND");
   await rejectsWith(lock.readLocked(stranger, note.id, key), "RESOURCE_NOT_FOUND");
@@ -121,7 +122,7 @@ test("a note cannot be unlocked, read, saved or changed through another account'
 
 test("ciphertext moved to another note does not open", async () => {
   const { me, note } = await fixture();
-  await lock.lockNote(me, note.id, PW);
+  await lock.lockWithNotePassword(me, note.id, PW);
   const row = await prisma.note.findUniqueOrThrow({ where: { id: note.id } });
   const decoy = await makeNote(me, { content: row.content, locked: true, title: "Decoy" });
   await rejectsWith(lock.unlockNote(me, decoy.id, PW), "FORBIDDEN");
@@ -129,7 +130,7 @@ test("ciphertext moved to another note does not open", async () => {
 
 test("saving a locked note re-encrypts it under the same key, with no plaintext, version, vector or link made", async () => {
   const { me, note } = await fixture();
-  await lock.lockNote(me, note.id, PW);
+  await lock.lockWithNotePassword(me, note.id, PW);
   const { key } = await lock.unlockNote(me, note.id, PW);
   const before = (await prisma.note.findUniqueOrThrow({ where: { id: note.id } })).content;
   await lock.saveLocked(me, note.id, key, { title: "Plans v2", content: "new text with $x$ and [[Other]] and the password is hunter2" });
@@ -146,7 +147,7 @@ test("saving a locked note re-encrypts it under the same key, with no plaintext,
 
 test("a changed password opens it and the old one no longer does; the recovery key is unchanged", async () => {
   const { me, note } = await fixture();
-  const { recoveryKey } = await lock.lockNote(me, note.id, PW);
+  const { recoveryKey } = await lock.lockWithNotePassword(me, note.id, PW);
   const { key } = await lock.unlockNote(me, note.id, PW);
   await rejectsWith(lock.changeLockPassword(me, note.id, key, "short"), "VALIDATION_ERROR");
   await lock.changeLockPassword(me, note.id, key, "a brand new passphrase");
@@ -157,7 +158,7 @@ test("a changed password opens it and the old one no longer does; the recovery k
 
 test("removing the lock puts the text back as an ordinary, searchable note; a wrong key removes nothing", async () => {
   const { me, note } = await fixture();
-  await lock.lockNote(me, note.id, PW);
+  await lock.lockWithNotePassword(me, note.id, PW);
   const { key } = await lock.unlockNote(me, note.id, PW);
   await rejectsWith(lock.removeLock(me, note.id, Buffer.alloc(32)), "FORBIDDEN");
   assert.equal((await prisma.note.findUniqueOrThrow({ where: { id: note.id } })).locked, true);
@@ -169,7 +170,7 @@ test("removing the lock puts the text back as an ordinary, searchable note; a wr
 
 test("an ordinary save, a version restore and the note's own listings never touch a locked note's text", async () => {
   const { me, note } = await fixture();
-  await lock.lockNote(me, note.id, PW);
+  await lock.lockWithNotePassword(me, note.id, PW);
   const row = await prisma.note.findUniqueOrThrow({ where: { id: note.id } });
   const input = { title: "Plans", content: "overwritten", tags: [], isFavorite: false, projectId: null, courseId: null };
   await rejectsWith(updateNote(me, note.id, input), "FORBIDDEN");
@@ -182,7 +183,7 @@ test("an ordinary save, a version restore and the note's own listings never touc
 
 test("features that read a note's text refuse a locked note, and searches skip its ciphertext", async () => {
   const { me, note, other } = await fixture();
-  await lock.lockNote(me, note.id, PW);
+  await lock.lockWithNotePassword(me, note.id, PW);
   const course = await prisma.course.create({ data: { userId: me, code: "C1", title: "T", term: "Fall 2026" } });
   await rejectsWith(summariseNote(me, note.id), "FORBIDDEN", "summary");
   await rejectsWith(translateNote(me, note.id, "tr", { engine: async () => { throw new Error("must not be called"); } }), "FORBIDDEN", "translation");
@@ -210,7 +211,7 @@ test("a locked note in a course is left out of the course's printed notes and of
   const me = await newUser();
   const course = await prisma.course.create({ data: { userId: me, code: "C2", title: "T", term: "Fall 2026" } });
   const note = await makeNote(me, { courseId: course.id });
-  await lock.lockNote(me, note.id, PW);
+  await lock.lockWithNotePassword(me, note.id, PW);
   assert.deepEqual(await noteRepository.listCourseNotesForPrint(me, course.id, 10), []);
   const report = await reindexEverything(me);
   assert.equal(report.byType.note ?? 0, 0, "a locked note is not attempted");
@@ -222,7 +223,7 @@ test("every repository write that locks, saves or unlocks is scoped to the owner
   const stranger = await newUser();
   assert.equal(await noteRepository.setLocked(stranger, note.id, "nxl1:x"), false);
   assert.equal((await prisma.note.findUniqueOrThrow({ where: { id: note.id } })).locked, false);
-  await lock.lockNote(me, note.id, PW);
+  await lock.lockWithNotePassword(me, note.id, PW);
   const row = await prisma.note.findUniqueOrThrow({ where: { id: note.id } });
   assert.equal(await noteRepository.saveLockedContent(stranger, note.id, { title: "hijack", envelope: "nxl1:y" }), false);
   assert.equal(await noteRepository.setUnlocked(stranger, note.id, "plain"), false);
@@ -231,7 +232,7 @@ test("every repository write that locks, saves or unlocks is scoped to the owner
 
 test("the JSON export holds ciphertext only, and a restore skips locked notes and says so", async () => {
   const { me, note } = await fixture();
-  await lock.lockNote(me, note.id, PW);
+  await lock.lockWithNotePassword(me, note.id, PW);
   const file = JSON.stringify(await buildFullExport(me));
   assert.ok(!file.includes("swordfish"), "the export holds no plaintext of a locked note");
   const target = await newUser();
@@ -242,4 +243,42 @@ test("the JSON export holds ciphertext only, and a restore skips locked notes an
   const restored = await prisma.note.findMany({ where: { userId: target } });
   assert.ok(restored.every((n) => !n.locked && !isLockedEnvelope(n.content)), "no ciphertext came in as text");
   assert.ok(!restored.some((n) => n.title === "Plans"));
+});
+
+test("lock with the sign-in password: it must be the real one, may be short, opens the note, and the lock screen is told which password to ask for", async () => {
+  const me = await newUser();
+  await prisma.user.update({ where: { id: me }, data: { passwordHash: await hashPassword("signin1") } });
+  const note = await makeNote(me);
+  await rejectsWith(lock.lockWithSigninPassword(me, note.id, "wrong-one"), "FORBIDDEN", "a wrong sign-in password");
+  await rejectsWith(lock.lockWithSigninPassword(me, note.id, ""), "VALIDATION_ERROR", "empty");
+  assert.equal((await prisma.note.findUniqueOrThrow({ where: { id: note.id } })).locked, false, "a refused lock changed nothing");
+  const { recoveryKey } = await lock.lockWithSigninPassword(me, note.id, "signin1");
+  assert.match(recoveryKey, /^[A-Z2-7]{4}(-[A-Z2-7]{4}){7}$/);
+  assert.equal(await lock.lockViaOf(me, note.id), "account");
+  const { key } = await lock.unlockNote(me, note.id, "signin1");
+  assert.ok(await lock.readLocked(me, note.id, key));
+  await rejectsWith(lock.unlockNote(me, note.id, "signin2"), "FORBIDDEN");
+  assert.ok(await lock.unlockNote(me, note.id, recoveryKey), "the recovery key still opens it");
+  // A separate password must still be long enough, and says "own".
+  const other = await makeNote(me);
+  await rejectsWith(lock.lockWithNotePassword(me, other.id, "short1"), "VALIDATION_ERROR");
+  await lock.lockWithNotePassword(me, other.id, PW);
+  assert.equal(await lock.lockViaOf(me, other.id), "own");
+  const k2 = (await lock.unlockNote(me, other.id, PW)).key;
+  await lock.changeLockPassword(me, note.id, key, "a brand new passphrase");
+  assert.equal(await lock.lockViaOf(me, note.id), "own", "a new password makes it the note's own");
+  assert.ok(k2);
+});
+
+test("guessing the sign-in password through the lock dialog is limited, and lockViaOf is the owner's only", async () => {
+  const me = await newUser();
+  const stranger = await newUser();
+  await prisma.user.update({ where: { id: me }, data: { passwordHash: await hashPassword("signin1") } });
+  const note = await makeNote(me);
+  const t0 = 5_000_000;
+  for (let i = 0; i < 5; i += 1) await rejectsWith(lock.lockWithSigninPassword(me, note.id, `guess-${i}`, t0 + i), "FORBIDDEN");
+  await rejectsWith(lock.lockWithSigninPassword(me, note.id, "signin1", t0 + 10), "RATE_LIMITED", "even the right one is held back");
+  assert.ok(await lock.lockWithSigninPassword(me, note.id, "signin1", t0 + 16 * 60 * 1000), "the window passes");
+  await rejectsWith(lock.lockViaOf(stranger, note.id), "RESOURCE_NOT_FOUND");
+  await rejectsWith(lock.lockViaOf(me, (await makeNote(me)).id), "RESOURCE_NOT_FOUND", "an ordinary note");
 });

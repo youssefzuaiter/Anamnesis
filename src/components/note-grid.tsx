@@ -1,5 +1,6 @@
 "use client";
 
+import { Icon } from "@/components/icons";
 import Link from "next/link";
 import { useState } from "react";
 import { NoteBulkBar } from "@/components/note-bulk-bar";
@@ -75,6 +76,12 @@ export function NoteGrid({
                           ★
                         </span>
                         <span className="sr-only">Favourite: </span>
+                      </>
+                    )}
+                    {note.locked && (
+                      <>
+                        <Icon name="lock" className="mr-1.5 inline size-4 align-[-2px] text-text-faint" />
+                        <span className="sr-only">Locked: </span>
                       </>
                     )}
                     {note.title}

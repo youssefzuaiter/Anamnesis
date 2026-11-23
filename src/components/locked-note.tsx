@@ -4,6 +4,8 @@ import { useId, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { changeLockPasswordAction, lockNowAction, removeLockAction, saveLockedNoteAction, unlockNoteAction } from "@/actions/note-lock";
 import { MAX_NOTE_LENGTH } from "@/lib/see-also";
+import { Icon } from "@/components/icons";
+import type { LockVia } from "@/lib/note-lock";
 
 const FIELD = "min-h-11 w-full min-w-0 rounded-lg border border-control bg-surface px-3 text-sm text-text focus:border-accent focus:outline-none";
 const BUTTON = "inline-flex min-h-11 items-center justify-center rounded-lg px-4 text-sm font-semibold transition-colors disabled:opacity-60";
@@ -12,7 +14,7 @@ const BUTTON = "inline-flex min-h-11 items-center justify-center rounded-lg px-4
  * A locked note's page (ROADMAP 58). Locked, it is only a title and a password box. Unlocked in this browser (a five-minute cookie the server checks),
  * it shows the text and a plain editor; the page has none of the cards that read a note's text (related notes, summary, cards, translation).
  */
-export function LockedNote({ noteId, title, unlocked, text, body }: { noteId: string; title: string; unlocked: boolean; text: string | null; body: ReactNode }) {
+export function LockedNote({ noteId, title, unlocked, via, text, body }: { noteId: string; title: string; unlocked: boolean; via: LockVia; text: string | null; body: ReactNode }) {
   const router = useRouter();
   const id = useId();
   const busy = useRef(false);
@@ -46,13 +48,16 @@ export function LockedNote({ noteId, title, unlocked, text, body }: { noteId: st
   }
 
   if (!unlocked) {
+    const ask = via === "account" ? "Enter your sign-in password to view this note." : "Enter this note's password to view it.";
     return (
-      <div className="mx-auto max-w-xl">
-        <h1 className="text-2xl font-semibold tracking-tight text-text">{title}</h1>
-        <p className="mt-1 text-sm text-text-muted">This note is locked. Its text is encrypted and is shown only after you enter its password.</p>
-        <form onSubmit={(event) => { event.preventDefault(); const value = typed; run(() => unlockNoteAction(noteId, value), "", () => setTyped("")); }} className="mt-4 flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-4">
-          <label htmlFor={`${id}-u`} className="text-[13px] font-semibold text-text">Password or recovery key</label>
-          <input id={`${id}-u`} type="password" autoComplete="off" value={typed} onChange={(event) => setTyped(event.target.value)} maxLength={200} className={FIELD} />
+      <div className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center gap-3 px-2 text-center">
+        <Icon name="lock" className="size-20 text-text-faint" />
+        <h1 className="text-2xl font-bold tracking-tight text-text">This note is locked.</h1>
+        <p className="text-sm text-text-muted"><span className="font-semibold text-text">{title}</span></p>
+        <p className="text-base text-text">{ask}</p>
+        <form onSubmit={(event) => { event.preventDefault(); const value = typed; run(() => unlockNoteAction(noteId, value), "", () => setTyped("")); }} className="flex w-full max-w-sm flex-col gap-2">
+          <label htmlFor={`${id}-u`} className="sr-only">{via === "account" ? "Sign-in password or recovery key" : "Password or recovery key"}</label>
+          <input id={`${id}-u`} type="password" autoComplete="off" value={typed} onChange={(event) => setTyped(event.target.value)} maxLength={200} placeholder="Password or recovery key" className={`${FIELD} text-center`} />
           {error && <p role="alert" className="text-[13px] font-semibold text-danger">{error}</p>}
           <button type="submit" disabled={pending || typed === ""} className={`${BUTTON} bg-accent text-on-accent hover:bg-accent-hover`}>{pending ? "Unlocking…" : "Unlock"}</button>
           <p className="text-xs text-text-muted">It stays open in this browser for five minutes, then locks again by itself.</p>
@@ -65,7 +70,7 @@ export function LockedNote({ noteId, title, unlocked, text, body }: { noteId: st
     <div className="mx-auto max-w-3xl">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight text-text">{title}</h1>
-        <button type="button" disabled={pending} onClick={() => run(() => lockNowAction(noteId), "")} className={`${BUTTON} border border-border-strong text-text hover:bg-surface-subtle`}>Lock now</button>
+        <button type="button" disabled={pending} onClick={() => run(() => lockNowAction(noteId), "")} className={`${BUTTON} gap-1.5 border border-border-strong text-text hover:bg-surface-subtle`}><Icon name="lock" className="size-4" />Lock now</button>
       </div>
       <p className="mt-1 text-sm text-text-muted">Unlocked in this browser. It locks again by itself after five minutes. This page offers no summary, translation, cards or suggestions: they would have to read the text.</p>
 

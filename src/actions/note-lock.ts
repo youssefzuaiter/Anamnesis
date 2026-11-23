@@ -18,12 +18,14 @@ const id = z.uuid();
 const secret = z.string().min(1).max(MAX_PASSWORD);
 
 /** Locks a note with a password. Returns the recovery key, once. */
-export async function lockNoteAction(noteId: string, password: string): Promise<ApiResponse<{ recoveryKey: string }>> {
-  const parsed = z.object({ noteId: id, password: secret }).strict().safeParse({ noteId, password });
+export async function lockNoteAction(noteId: string, password: string, how: string): Promise<ApiResponse<{ recoveryKey: string }>> {
+  const parsed = z.object({ noteId: id, password: secret, how: z.enum(["account", "own"]) }).strict().safeParse({ noteId, password, how });
   if (!parsed.success) return fail("VALIDATION_ERROR", "Choose a note and a password.");
   try {
     const userId = await requireUserId();
-    const result = await lockService.lockNote(userId, parsed.data.noteId, parsed.data.password);
+    const result = await parsed.data.how === "account"
+      ? await lockService.lockWithSigninPassword(userId, parsed.data.noteId, parsed.data.password)
+      : await lockService.lockWithNotePassword(userId, parsed.data.noteId, parsed.data.password);
     // Neither a revalidation nor a cookie change here: either one makes Next re-render the page, which is now the locked page, and the card that is
     // showing the recovery key would be gone before it was read. (An ordinary note has no unlock cookie to clear.) The card refreshes the page itself,
     // when the person says they saved the key.

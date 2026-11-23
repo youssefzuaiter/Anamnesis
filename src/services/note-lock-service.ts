@@ -2,7 +2,9 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { AppError } from "@/lib/api-response";
 import { deleteEntityEmbeddings } from "@/lib/vector";
-import { checkPassword, isLockedEnvelope, openWithKey, openWithSecret, resealWithKey, rewrapPassword, sealNote } from "@/lib/note-lock";
+import { prisma as db } from "@/lib/prisma";
+import { verifyPassword } from "@/lib/password";
+import { checkPassword, isLockedEnvelope, lockVia, MIN_PASSWORD, type LockVia, openWithKey, openWithSecret, resealWithKey, rewrapPassword, sealNote } from "@/lib/note-lock";
 import * as noteRepository from "@/repositories/note-repository";
 import * as linkRepository from "@/repositories/link-repository";
 import { syncNoteIndex, syncNoteLinks } from "@/services/note-service";
@@ -40,16 +42,43 @@ async function loadLocked(userId: string, noteId: string) {
 }
 
 /**
- * Locks one of the caller's notes. Refused while the note has attachments (their files are not encrypted) or cards (they hold copies of its text), and
+ * Locks one of the caller's notes (the two functions below choose which password; this is what they share). Refused while the note has attachments (their files are not encrypted) or cards (they hold copies of its text), and
  * never for a note that is already locked or in the trash. The old text is removed from everywhere this app keeps it: the history, the search index and the
  * links read out of it. Returns the recovery key, which is shown once and kept nowhere.
  */
-export async function lockNote(userId: string, noteId: string, password: string): Promise<{ recoveryKey: string }> {
+/** A separate password for this note, at least MIN_PASSWORD characters. */
+export async function lockWithNotePassword(userId: string, noteId: string, password: string): Promise<{ recoveryKey: string }> {
   try {
-    checkPassword(password);
+    checkPassword(password, MIN_PASSWORD);
   } catch (error) {
     throw new AppError("VALIDATION_ERROR", (error as Error).message);
   }
+  return sealAndStore(userId, noteId, password, "own");
+}
+
+/**
+ * "Use my sign-in password": the typed password must be the account's real one, so a typing slip cannot lock a note behind a password nobody has. This is
+ * a check of the caller's own secret before a lock they are already allowed to make, not a permission: every path through the two lock functions still
+ * needs the session's user to own the note, which `sealAndStore` checks.
+ */
+export async function lockWithSigninPassword(userId: string, noteId: string, password: string, now = Date.now()): Promise<{ recoveryKey: string }> {
+  try {
+    checkPassword(password, 1);
+  } catch (error) {
+    throw new AppError("VALIDATION_ERROR", (error as Error).message);
+  }
+  const bucket = `${userId}:account`;
+  checkAttempts(bucket, now);
+  const user = await db.user.findUnique({ where: { id: userId }, select: { passwordHash: true } });
+  if (!user || !(await verifyPassword(password, user.passwordHash))) {
+    noteFailure(bucket, now);
+    throw new AppError("FORBIDDEN", "That is not your sign-in password.");
+  }
+  failures.delete(bucket);
+  return sealAndStore(userId, noteId, password, "account");
+}
+
+async function sealAndStore(userId: string, noteId: string, password: string, how: LockVia): Promise<{ recoveryKey: string }> {
   const note = await noteRepository.getNote(userId, noteId);
   if (!note) throw new AppError("RESOURCE_NOT_FOUND", "That note no longer exists.");
   if (note.locked) throw new AppError("VALIDATION_ERROR", "This note is already locked.");
@@ -60,7 +89,7 @@ export async function lockNote(userId: string, noteId: string, password: string)
   if (attachments > 0) throw new AppError("VALIDATION_ERROR", "This note has attached files, which are not encrypted. Remove them first.");
   if (cards > 0) throw new AppError("VALIDATION_ERROR", "Flashcards made from this note hold copies of its text. Delete them first.");
 
-  const { envelope, recoveryKey } = await sealNote(note.content, password, { userId, noteId });
+  const { envelope, recoveryKey } = await sealNote(note.content, password, { userId, noteId }, how);
   if (!(await noteRepository.setLocked(userId, noteId, envelope))) throw new AppError("RESOURCE_NOT_FOUND", "That note could not be locked. Reload and try again.");
   await Promise.all([
     noteRepository.deleteVersionsOf(userId, noteId),
@@ -82,6 +111,11 @@ export async function unlockNote(userId: string, noteId: string, secret: string,
   }
   failures.delete(bucket);
   return { key: opened.key };
+}
+
+/** Which password a locked note asks for, for its lock screen: the caller's own locked note only. */
+export async function lockViaOf(userId: string, noteId: string): Promise<LockVia> {
+  return lockVia((await loadLocked(userId, noteId)).content);
 }
 
 /** The note's text, for a caller holding its key; null when the key does not open it. */

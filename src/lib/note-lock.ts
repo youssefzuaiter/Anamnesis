@@ -16,7 +16,9 @@ const KEY_BYTES = 32;
 
 type Part = { iv: string; tag: string; ct: string };
 type Wrap = Part & { salt: string };
-type Envelope = { v: 1; kdf: typeof KDF; wraps: { password: Wrap; recovery: Wrap }; content: Part };
+/** `via` is only a label for the lock screen ("your sign-in password" or "this note's password"): it is not authenticated and decides nothing. */
+export type LockVia = "account" | "own";
+type Envelope = { v: 1; kdf: typeof KDF; via?: LockVia; wraps: { password: Wrap; recovery: Wrap }; content: Part };
 export type Ids = { userId: string; noteId: string };
 
 const b64 = (buffer: Buffer) => buffer.toString("base64");
@@ -67,8 +69,9 @@ function parse(text: string): Envelope | null {
 
 const stringify = (envelope: Envelope): string => PREFIX + Buffer.from(JSON.stringify(envelope)).toString("base64url");
 
-export function checkPassword(password: string): void {
-  if (password.length < MIN_PASSWORD) throw new Error(`The password must be at least ${MIN_PASSWORD} characters.`);
+/** A separate note password must be at least MIN_PASSWORD long; a sign-in password was chosen under the account's own rules, so only the upper bound applies. */
+export function checkPassword(password: string, minimum: number = MIN_PASSWORD): void {
+  if (password.length < Math.max(1, minimum)) throw new Error(`The password must be at least ${Math.max(1, minimum)} characters.`);
   if (password.length > MAX_PASSWORD) throw new Error(`The password must be at most ${MAX_PASSWORD} characters.`);
 }
 
@@ -107,12 +110,12 @@ async function unwrapKey(secret: string, wrap: Wrap, label: string, ids: Ids): P
 }
 
 /** Encrypts a note's text under a new data key wrapped by the password and by a new recovery key (returned once, never stored). */
-export async function sealNote(plaintext: string, password: string, ids: Ids): Promise<{ envelope: string; recoveryKey: string }> {
-  checkPassword(password);
+export async function sealNote(plaintext: string, password: string, ids: Ids, via: LockVia = "own"): Promise<{ envelope: string; recoveryKey: string }> {
+  checkPassword(password, via === "account" ? 1 : MIN_PASSWORD);
   const key = randomBytes(KEY_BYTES);
   const recoveryKey = newRecoveryKey();
   const [pw, rec] = await Promise.all([wrapKey(password, key, "wrap-password", ids), wrapKey(normaliseRecovery(recoveryKey), key, "wrap-recovery", ids)]);
-  const envelope: Envelope = { v: 1, kdf: KDF, wraps: { password: pw, recovery: rec }, content: encrypt(key, Buffer.from(plaintext, "utf8"), aad("content", ids)) };
+  const envelope: Envelope = { v: 1, kdf: KDF, via, wraps: { password: pw, recovery: rec }, content: encrypt(key, Buffer.from(plaintext, "utf8"), aad("content", ids)) };
   return { envelope: stringify(envelope), recoveryKey };
 }
 
@@ -147,5 +150,10 @@ export async function rewrapPassword(text: string, key: Buffer, password: string
   checkPassword(password);
   const envelope = parse(text);
   if (!envelope) throw new Error("Not a locked note.");
-  return stringify({ ...envelope, wraps: { ...envelope.wraps, password: await wrapKey(password, key, "wrap-password", ids) } });
+  return stringify({ ...envelope, via: "own", wraps: { ...envelope.wraps, password: await wrapKey(password, key, "wrap-password", ids) } });
+}
+
+/** Which password the lock screen should ask for. Read without opening anything; an envelope with no label (an older one) asks for the note's own. */
+export function lockVia(text: string): LockVia {
+  return parse(text)?.via === "account" ? "account" : "own";
 }
