@@ -29,7 +29,8 @@ export async function reindexEverything(
 ): Promise<ReindexReport> {
   const [notes, tasks, events, projects, courses, goals] = await Promise.all([
     prisma.note.findMany({
-      where: { userId, deletedAt: null },
+      // A locked note is never embedded: its text is ciphertext.
+      where: { userId, deletedAt: null, locked: false },
       select: { id: true, title: true, content: true, tags: true },
     }),
     prisma.task.findMany({

@@ -54,6 +54,7 @@ export async function noteTextsWithAt(userId: string, take: number): Promise<str
     FROM "Note"
     WHERE "userId" = ${userId}
       AND "deletedAt" IS NULL
+      AND NOT "locked"
       AND strpos("content", '@') > 0
     ORDER BY "updatedAt" DESC
     LIMIT ${take}`;
@@ -72,6 +73,7 @@ export function notesContaining(userId: string, text: string, take: number): Pro
     FROM "Note"
     WHERE "userId" = ${userId}
       AND "deletedAt" IS NULL
+      AND NOT "locked"
       AND strpos("content", ${text}) > 0
     ORDER BY "updatedAt" DESC
     LIMIT ${take}`;

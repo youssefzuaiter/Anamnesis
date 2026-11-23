@@ -24,6 +24,10 @@ import { NoteView } from "@/components/note-view";
 import { NoteContent } from "@/components/note-content";
 import { RelatedItems } from "@/components/related-items";
 import { SummaryCard } from "@/components/summary-card";
+import { LockCard } from "@/components/lock-card";
+import { LockedNote } from "@/components/locked-note";
+import { unlockedKey } from "@/services/unlock-session";
+import { readLocked } from "@/services/note-lock-service";
 import { TranslateCard } from "@/components/translate-card";
 import { NoteAttachments } from "@/components/note-attachments";
 import { listForNote as listAttachments } from "@/repositories/attachment-repository";
@@ -70,6 +74,22 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
 
   const note = await getNote(userId, id);
   if (!note) notFound();
+
+  // A locked note gets its own page, built before anything reads its text: none of the cards below (related notes, summary, cards, tasks from lines)
+  // may see ciphertext, and none of them can, because none of them is rendered.
+  if (note.locked) {
+    const key = await unlockedKey(userId, note.id);
+    const opened = key ? await readLocked(userId, note.id, key) : null;
+    return (
+      <LockedNote
+        noteId={note.id}
+        title={opened?.title ?? note.title}
+        unlocked={opened !== null}
+        text={opened?.text ?? null}
+        body={opened ? <NoteContent content={opened.text} links={{}} /> : null}
+      />
+    );
+  }
   const todoTitles = await proposeTodoTasks(userId, note.id);
 
   const cited = citedKeys(note.content);
@@ -253,6 +273,20 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
 
         <section className={RAIL_CARD} aria-label="Summary">
           <SummaryCard noteId={note.id} />
+        </section>
+
+        <section className={RAIL_CARD} aria-label="Lock">
+          <LockCard
+            noteId={note.id}
+            title={note.title}
+            blocked={
+              attachments.length > 0
+                ? "This note has attached files, which are not encrypted. Remove them to lock it."
+                : cards.length > 0
+                  ? "Flashcards made from this note hold copies of its text. Delete them to lock it."
+                  : null
+            }
+          />
         </section>
 
         <section className={RAIL_CARD} aria-label="Translate">

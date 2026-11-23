@@ -204,7 +204,9 @@ test("the now line follows the clock", async ({ page }) => {
   const topOf = () => line.evaluate((el) => parseFloat((el as HTMLElement).style.top));
   const before = await topOf();
   await page.clock.fastForward("10:00");
-  await expect.poll(topOf).toBeCloseTo(before + (10 * 56) / 60, 0);
+  // Ten minutes is 9.33 px. The page reads the real seconds at load and the fake clock moves from a rounded start, so the line can sit up to a pixel off the
+  // sum (CI measured 0.93 px); a tolerance of 1.5 px still tells ten minutes from none or from an hour.
+  await expect.poll(async () => Math.abs((await topOf()) - (before + (10 * 56) / 60))).toBeLessThan(1.5);
 });
 
 test("overlapping events sit side by side and a lone one has the whole column", async ({ page }) => {

@@ -11,6 +11,7 @@ import { assessmentMessages } from "@/lib/syllabus-prompts";
 import * as courseRepository from "@/repositories/course-repository";
 import * as noteRepository from "@/repositories/note-repository";
 import { indexCourse } from "@/services/course-service";
+import { assertNotLocked } from "@/services/note-lock-service";
 
 /*
  * Syllabus to assessments (ROADMAP 50): a note is read in sections, the model lists what looks like an assessment with the line it came from, and
@@ -58,6 +59,7 @@ export async function proposeAssessments(
   if (!course) throw new AppError("RESOURCE_NOT_FOUND", "That course no longer exists.");
   const note = z.uuid().safeParse(noteId).success ? await noteRepository.getNote(userId, noteId) : null;
   if (!note) throw new AppError("RESOURCE_NOT_FOUND", "That note no longer exists.");
+  assertNotLocked(note);
   const parts = sections(note.content).slice(0, MAX_SYLLABUS_SECTIONS);
   if (parts.length === 0) throw new AppError("VALIDATION_ERROR", "This note is empty; there is nothing to read.");
 

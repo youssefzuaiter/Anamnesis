@@ -5,6 +5,7 @@ import { titleKey } from "@/lib/assistant-edits";
 import * as noteRepository from "@/repositories/note-repository";
 import * as taskRepository from "@/repositories/task-repository";
 import { createTask } from "@/services/task-service";
+import { assertNotLocked } from "@/services/note-lock-service";
 
 /**
  * Turns a note's TODO lines into tasks (ROADMAP item 33). Proposal and confirmation follow Plan my day: the note is
@@ -16,6 +17,7 @@ import { createTask } from "@/services/task-service";
 async function ownNote(userId: string, noteId: string) {
   const note = await noteRepository.getNote(userId, noteId);
   if (!note) throw new AppError("RESOURCE_NOT_FOUND", "That note does not exist.");
+  assertNotLocked(note);
   return note;
 }
 

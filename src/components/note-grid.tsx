@@ -10,6 +10,8 @@ export type NoteCard = {
   id: string;
   title: string;
   excerpt: string;
+  /** A locked note shows no excerpt, only that it is locked. */
+  locked: boolean;
   tags: string[];
   isFavorite: boolean;
   updated: string;
@@ -79,7 +81,9 @@ export function NoteGrid({
                   </h2>
                 </div>
                 <p className="text-xs text-text-faint">{note.updated}</p>
-                {note.excerpt && (
+                {note.locked ? (
+                  <p className="mt-1 text-sm text-text-muted">Locked. Open it and enter its password to read.</p>
+                ) : note.excerpt && (
                   <p className="mt-1 line-clamp-2 text-sm text-text-muted">
                     {note.excerpt}
                   </p>

@@ -9,6 +9,7 @@ import * as goalService from "@/services/goal-service";
 import { appendedContent } from "@/lib/assistant-edits";
 import { getNote } from "@/repositories/note-repository";
 import { getTask } from "@/repositories/task-repository";
+import { assertNotLocked } from "@/services/note-lock-service";
 
 export type ActorType = "USER" | "AI_AGENT" | "SYSTEM";
 export type ActionSource = "assistant" | "capture" | "summary" | "translation";
@@ -62,6 +63,7 @@ async function applyEdit(
   if (proposal.kind === "note_append") {
     const note = await getNote(userId, proposal.targetId);
     if (!note) throw new AppError("RESOURCE_NOT_FOUND", "That note no longer exists.");
+    assertNotLocked(note);
     if (note.updatedAt.toISOString() !== proposal.noteUpdatedAt) throw CHANGED("That note");
     const content = appendedContent(note.content, proposal.text);
     if (content === null) throw new AppError("VALIDATION_ERROR", "That would make the note longer than 100,000 characters.");

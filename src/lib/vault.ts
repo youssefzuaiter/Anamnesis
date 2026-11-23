@@ -167,6 +167,8 @@ export function manifestJson(facts: {
   notes: number;
   attachments: number;
   missing: { note: string; name: string }[];
+  /** Locked notes left out: their text is encrypted, and a Markdown file of it would be noise or, worse, a copy outside the lock. */
+  lockedNotes?: number;
 }): string {
   return `${JSON.stringify(
     {
@@ -175,6 +177,7 @@ export function manifestJson(facts: {
       notes: facts.notes,
       attachments: facts.attachments,
       missing: facts.missing,
+      ...(facts.lockedNotes ? { lockedNotesLeftOut: facts.lockedNotes } : {}),
       notIncluded: VAULT_NOT_INCLUDED,
     },
     null,

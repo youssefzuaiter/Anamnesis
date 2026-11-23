@@ -8,6 +8,7 @@ import { MAX_LINKS, normalizeTitle, parseWikiLinks } from "@/lib/wiki-links";
 import * as linkRepository from "@/repositories/link-repository";
 import * as noteRepository from "@/repositories/note-repository";
 import * as noteService from "@/services/note-service";
+import { assertNotLocked } from "@/services/note-lock-service";
 
 /**
  * Measured, not guessed (CLAUDE.md, "Link suggestions"): under nomic-embed-text,
@@ -104,7 +105,7 @@ async function similarNotes(
  */
 export async function suggestLinks(userId: string, noteId: string): Promise<LinkSuggestion[]> {
   const note = await noteRepository.getNote(userId, noteId);
-  if (!note) return [];
+  if (!note || note.locked) return [];
 
   const [all, outgoing, similar] = await Promise.all([
     noteRepository.listNoteTitles(userId),
@@ -219,6 +220,8 @@ export async function addLink(
   if (!from || !to) {
     throw new AppError("RESOURCE_NOT_FOUND", "That note no longer exists.");
   }
+  // A link is written into the first note's text, which a locked note cannot take.
+  assertNotLocked(from);
   const result = { fromTitle: from.title, toTitle: to.title };
 
   if (linksTo(from.content, to.title)) return { added: false, ...result };

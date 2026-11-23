@@ -168,6 +168,7 @@ export default async function NotesPage({
               id: note.id,
               title: note.title,
               excerpt: note.excerpt,
+              locked: note.locked,
               tags: note.tags,
               isFavorite: note.isFavorite,
               updated: formatDate(note.updatedAt),
