@@ -4,6 +4,7 @@ import { useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { lockNoteAction } from "@/actions/note-lock";
 import { MIN_PASSWORD } from "@/lib/note-lock";
+import { PasswordGenerator } from "@/components/password-generator";
 
 /** Prints or saves the recovery key without the rest of the page: a hidden frame with only the key in it. */
 function printKey(title: string, key: string) {
@@ -90,6 +91,13 @@ export function LockCard({ noteId, title, blocked }: { noteId: string; title: st
           <label htmlFor={`${id}-a`} className="text-[13px] font-semibold text-text">Password again</label>
           <input id={`${id}-a`} type="password" autoComplete="new-password" value={again} onChange={(event) => setAgain(event.target.value)} maxLength={200} className="min-h-11 w-full min-w-0 rounded-lg border border-control bg-surface px-3 text-sm text-text focus:border-accent focus:outline-none" />
           <p className="text-xs text-text-muted">At least {MIN_PASSWORD} characters. Save any edits first: only what is already saved is locked.</p>
+          <details className="rounded-lg border border-border-subtle p-2">
+            <summary className="min-h-11 cursor-pointer py-2.5 text-[13px] font-semibold text-text">Make a strong password</summary>
+            <div className="mt-2 flex flex-col gap-2">
+              <PasswordGenerator onUse={(made) => { setPassword(made); setAgain(made); setError(null); }} />
+              <p className="text-xs text-text-muted">The note&apos;s password is not kept anywhere you can read it back. Write down what you use, together with the recovery key shown next.</p>
+            </div>
+          </details>
           {error && <p role="alert" className="text-xs text-danger">{error}</p>}
           <button type="submit" disabled={pending} className="min-h-11 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-text transition-colors hover:bg-surface-subtle disabled:opacity-60">{pending ? "Locking…" : "Lock this note"}</button>
         </form>
