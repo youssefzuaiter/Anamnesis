@@ -91,11 +91,16 @@ async function* writeVault(userId: string, options: { maxOffset?: number }): Asy
   const missing = [...unsupported.values()].flat();
   let noteCount = 0;
   let attachmentCount = 0;
+  let lockedLeftOut = 0;
 
   for await (const page of pagesOf(tables.notes, userId, tables.notes.size)) {
     for (const note of page) {
       const fileName = names.get(`n:${note.id}`);
       if (!fileName) continue; // created after the names were chosen: not in this vault
+      if (note.locked) {
+        lockedLeftOut += 1; // never written as a file: it would be ciphertext, and its attachments are refused while it is locked
+        continue;
+      }
 
       // Attachments first, one at a time, so the note can list exactly those that were written.
       const linked: string[] = [];
@@ -136,7 +141,7 @@ async function* writeVault(userId: string, options: { maxOffset?: number }): Asy
     yield await writer.add({ name: VAULT.referencesPath, data: Buffer.from(`${bib}\n`, "utf8"), modified: new Date() });
   }
 
-  const info = manifestJson({ exportedAt: new Date(), notes: noteCount, attachments: attachmentCount, missing });
+  const info = manifestJson({ exportedAt: new Date(), notes: noteCount, attachments: attachmentCount, missing, lockedNotes: lockedLeftOut });
   yield await writer.add({ name: VAULT.manifestPath, data: Buffer.from(info, "utf8"), modified: new Date() });
   yield writer.finish();
 }

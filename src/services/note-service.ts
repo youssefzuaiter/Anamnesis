@@ -30,7 +30,12 @@ export type NoteSearchResult = {
  * rows: the note then simply misses from semantic search until it is saved
  * again, which is recoverable in a way that serving stale chunks is not.
  */
-async function syncNoteIndex(userId: string, note: Note): Promise<void> {
+export async function syncNoteIndex(userId: string, note: Note): Promise<void> {
+  // A locked note's content is ciphertext: it is never embedded, and any vectors of an earlier plaintext are dropped.
+  if (note.locked) {
+    await deleteEntityEmbeddings(userId, "note", note.id).catch(() => {});
+    return;
+  }
   try {
     await indexEntity(userId, "note", note.id, embeddableTextFor.note(note), { pages: true });
   } catch (error) {
@@ -40,7 +45,8 @@ async function syncNoteIndex(userId: string, note: Note): Promise<void> {
 }
 
 export async function syncNoteLinks(userId: string, note: Note): Promise<void> {
-  const titles = parseWikiLinks(note.content);
+  // A locked note's links would reveal what it says, so it has none going out (links into it are other notes' own).
+  const titles = note.locked ? [] : parseWikiLinks(note.content);
   const { resolved } = await linkRepository.resolveNoteTitles(userId, titles);
   await linkRepository.replaceOutgoingLinks(
     userId,
@@ -98,6 +104,8 @@ export async function updateNote(
   await assertCourseOwned(userId, input.courseId);
 
   const before = await noteRepository.getNote(userId, noteId);
+  // The only way to change a locked note's text is through its key (note-lock-service); a plain save would overwrite ciphertext with text.
+  if (before?.locked) throw new AppError("FORBIDDEN", "This note is locked. Unlock it to edit.");
 
   // Snapshot the outgoing text before it is overwritten. A save that changes
   // nothing is not worth a version, and the editor replaces content wholesale,
@@ -146,6 +154,7 @@ export async function restoreVersion(
   if (!current) {
     throw new AppError("RESOURCE_NOT_FOUND", "That note no longer exists.");
   }
+  if (current.locked) throw new AppError("FORBIDDEN", "This note is locked, so it has no history to restore.");
 
   return updateNote(userId, version.noteId, {
     title: version.title,
@@ -205,7 +214,8 @@ async function keywordSearch(
       deletedAt: null,
       OR: [
         { title: { contains: query, mode: "insensitive" } },
-        { content: { contains: query, mode: "insensitive" } },
+        // Never the text of a locked note: it is ciphertext, and matching it would be matching noise.
+        { locked: false, content: { contains: query, mode: "insensitive" } },
       ],
     },
     orderBy: { updatedAt: "desc" },

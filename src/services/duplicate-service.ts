@@ -18,6 +18,7 @@ import { normalizeTitle } from "@/lib/wiki-links";
 import * as repo from "@/repositories/duplicate-repository";
 import * as noteRepository from "@/repositories/note-repository";
 import * as noteService from "@/services/note-service";
+import { assertNotLocked } from "@/services/note-lock-service";
 
 /*
  * Duplicate-note cleanup (ROADMAP item 36). A pair is offered when the stored vectors say two notes are about the same thing
@@ -98,7 +99,7 @@ export async function listDuplicates(userId: string): Promise<DuplicateOverview>
   const ids = [...new Set([...candidates.values()].flatMap((pair) => [pair.a, pair.b]))];
   const rows = ids.length
     ? await prisma.note.findMany({
-        where: { userId, deletedAt: null, id: { in: ids } },
+        where: { userId, deletedAt: null, locked: false, id: { in: ids } },
         select: { id: true, title: true, content: true, tags: true, updatedAt: true },
       })
     : [];
@@ -157,6 +158,9 @@ async function liveNotes(userId: string, first: string, second: string) {
   const a = rows.find((row) => row.id === first);
   const b = rows.find((row) => row.id === second);
   if (!a || !b) throw new AppError("RESOURCE_NOT_FOUND", NOT_FOUND);
+  // Merging reads and rewrites both texts, which a locked note cannot offer.
+  assertNotLocked(a);
+  assertNotLocked(b);
   return { a, b };
 }
 

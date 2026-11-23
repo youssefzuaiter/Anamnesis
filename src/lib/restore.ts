@@ -95,15 +95,21 @@ export const rowSchemas = {
     maxScore: z.number().min(0.01).max(1000),
     dueDate: optionalDate,
   }),
-  notes: z.object({
-    id,
-    title: title(200),
-    content: z.preprocess((value) => value ?? "", noteContent),
-    tags,
-    isFavorite: z.boolean().catch(false),
-    projectId: refId,
-    courseId: refId,
-  }),
+  // A locked note's row carries ciphertext (ROADMAP item 58) bound to its old owner and id, so it cannot open here: its content is dropped unread and
+  // the row is counted and skipped by the restore. The lock itself is kept safe by the database backup.
+  notes: z.preprocess(
+    (row) => (row && typeof row === "object" && (row as { locked?: unknown }).locked === true ? { ...row, content: "" } : row),
+    z.object({
+      id,
+      title: title(200),
+      content: z.preprocess((value) => value ?? "", noteContent),
+      locked: z.boolean().catch(false),
+      tags,
+      isFavorite: z.boolean().catch(false),
+      projectId: refId,
+      courseId: refId,
+    }),
+  ),
   tasks: z.object({
     id,
     title: title(200),
@@ -185,6 +191,7 @@ export const NOT_RESTORED: Readonly<Record<string, string>> = {
   conversations: "Assistant threads and their messages.",
   focusTelemetry: "Writing-time and study-time records.",
   noteVersions: "Older versions of notes.",
+  lockedNotes: "Locked notes: their text is encrypted for the place they were made and cannot be opened by a restore. A database backup keeps them.",
   attachments: "Attached files: the file holds their records, not the files themselves.",
   calendarSubscriptions: "Calendar feeds: the file holds only each feed's host. Add the feed again to bring its events back.",
   links: "Links between notes are rebuilt from the notes' text.",

@@ -62,6 +62,8 @@ export type RestoreReport = {
   renamed: { from: string; to: string }[];
   /** Events a calendar feed brought in: not restored; adding the feed again brings them back. */
   fromFeed: number;
+  /** Locked notes in the file: counted and skipped (see NOT_RESTORED). */
+  lockedNotes: number;
   /** Rows whose write failed (a reference with a duplicate key, say). */
   failed: number;
   notRestored: Readonly<Record<string, string>>;
@@ -87,6 +89,7 @@ export async function runJsonRestore(userId: string, bytes: Uint8Array, options:
     overCap,
     renamed: [],
     fromFeed: 0,
+    lockedNotes: 0,
     failed: 0,
     notRestored: NOT_RESTORED,
   };
@@ -218,7 +221,9 @@ export async function runJsonRestore(userId: string, bytes: Uint8Array, options:
     if (!noteIdByKey.has(key)) noteIdByKey.set(key, note.id);
   }
   const incoming = new Map<string, (typeof rows.notes)[number]>();
-  const parsedNotes: ParsedNote[] = rows.notes.map((row, index) => {
+  const openNotes = rows.notes.filter((row) => !row.locked);
+  report.lockedNotes = rows.notes.length - openNotes.length;
+  const parsedNotes: ParsedNote[] = openNotes.map((row, index) => {
     const path = String(index).padStart(8, "0");
     incoming.set(path, row);
     return {

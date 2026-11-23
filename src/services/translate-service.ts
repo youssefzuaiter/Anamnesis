@@ -9,6 +9,7 @@ import {
 } from "@/lib/translate";
 import { translateMessages } from "@/lib/translate-prompts";
 import { getNote } from "@/repositories/note-repository";
+import { assertNotLocked } from "@/services/note-lock-service";
 
 /*
  * Translate a note into a new one (ROADMAP 57). Code takes maths, code, links and addresses out and puts them back (`lib/translate.ts`); an engine
@@ -103,6 +104,8 @@ export async function translateNote(
   if (!target.success) throw new AppError("VALIDATION_ERROR", "Choose a language from the list.");
   const note = z.uuid().safeParse(noteId).success ? await getNote(userId, noteId) : null;
   if (!note) throw new AppError("RESOURCE_NOT_FOUND", "That note does not exist.");
+  // A locked note's text is ciphertext: translating it would send noise to an engine (and, unlocked, the text to a service).
+  assertNotLocked(note);
   if (note.content.length > MAX_TRANSLATE_CHARS) {
     throw new AppError("VALIDATION_ERROR", `This note is longer than ${MAX_TRANSLATE_CHARS.toLocaleString("en-US")} characters, which is more than can be translated in one go here. Translate part of it.`);
   }

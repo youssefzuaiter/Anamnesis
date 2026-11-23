@@ -43,6 +43,8 @@ export async function uploadAttachmentAction(
     // The note must be the caller's own — the id came from the browser.
     const note = await getNote(userId, parsedId.data);
     if (!note) return fail("RESOURCE_NOT_FOUND", "That note no longer exists.");
+    // A file attached to a locked note would sit on the disk unencrypted beside a note that is not.
+    if (note.locked) return fail("FORBIDDEN", "This note is locked, so files cannot be attached. Remove the lock first.");
 
     const bytes = new Uint8Array(await file.arrayBuffer());
     const storageKey = await putAttachment(bytes, file.type);

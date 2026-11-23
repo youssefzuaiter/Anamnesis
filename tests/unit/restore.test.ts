@@ -34,7 +34,8 @@ test("only the fields a row may carry survive: an owner, a hash and derived valu
   assert.ok(result.ok);
   if (!result.ok) return;
   const note = result.file.rows.notes[0];
-  assert.deepEqual(Object.keys(note).sort(), ["content", "courseId", "id", "isFavorite", "projectId", "tags", "title"]);
+  assert.deepEqual(Object.keys(note).sort(), ["content", "courseId", "id", "isFavorite", "locked", "projectId", "tags", "title"]);
+  assert.equal(note.locked, false);
   assert.equal(note.title, "Limits");
   assert.equal(note.content, "a\nb", "line breaks are LF, as every note is stored");
   assert.deepEqual(note.tags, ["b", "a"]);
@@ -150,4 +151,12 @@ test("a schedule keeps an end only when it follows a start", () => {
 
 test("every kind has a schema and a label for the report", () => {
   assert.equal(RESTORE_KINDS.length, 11);
+});
+
+test("a locked note's row is read without its ciphertext, flagged, and never fails the parse for its size", () => {
+  const result = parse({ notes: [{ id: "n1", title: "Plans", content: "nxl1:" + "A".repeat(150_000), locked: true, tags: [] }] });
+  assert.ok(result.ok);
+  if (!result.ok) return;
+  assert.equal(result.file.rows.notes.length, 1);
+  assert.deepEqual([result.file.rows.notes[0].locked, result.file.rows.notes[0].content], [true, ""]);
 });

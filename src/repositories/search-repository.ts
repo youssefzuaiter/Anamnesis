@@ -40,7 +40,7 @@ export async function quickSearch(
       where: {
         userId,
         deletedAt: null,
-        OR: [{ title: contains }, { content: contains }],
+        OR: [{ title: contains }, { locked: false, content: contains }],
       },
       orderBy: { updatedAt: "desc" },
       take: PER_KIND,

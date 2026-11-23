@@ -62,6 +62,7 @@ function Findings({ report }: { report: RestoreReport }) {
           </ul>
         </li>
       )}
+      {report.lockedNotes > 0 && <li>{plural(report.lockedNotes, "locked note is", "locked notes are")} not restored: {report.lockedNotes === 1 ? "its" : "their"} text is encrypted for the place {report.lockedNotes === 1 ? "it was" : "they were"} made and cannot be opened here. A database backup keeps {report.lockedNotes === 1 ? "it" : "them"}.</li>}
       {report.fromFeed > 0 && <li>{plural(report.fromFeed, "imported calendar event is", "imported calendar events are")} not restored: add the calendar feed again and {report.fromFeed === 1 ? "it comes" : "they come"} back.</li>}
       {report.invalidTotal > 0 && <li>{plural(report.invalidTotal, "row", "rows")} could not be read and {report.invalidTotal === 1 ? "was" : "were"} skipped.</li>}
       {report.overCap > 0 && <li>{plural(report.overCap, "row is", "rows are")} beyond what one file restores and {report.overCap === 1 ? "was" : "were"} left.</li>}
