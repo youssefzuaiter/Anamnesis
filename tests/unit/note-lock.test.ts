@@ -15,7 +15,7 @@ test("a sealed note opens with its password or its recovery key and with nothing
   const byRecovery = await openWithSecret(envelope, recoveryKey, ids);
   assert.equal(byRecovery?.plaintext, TEXT);
   assert.deepEqual(byRecovery?.key, byPassword?.key, "both open the same data key");
-  for (const wrong of ["correct horse batterY", "", PW + " ", recoveryKey.slice(0, -1) + "A"]) assert.equal(await openWithSecret(envelope, wrong, ids), null, wrong);
+  for (const wrong of ["correct horse batterY", "", PW + " ", recoveryKey.slice(0, -1) + (recoveryKey.endsWith("A") ? "B" : "A")]) assert.equal(await openWithSecret(envelope, wrong, ids), null, wrong);
 });
 
 test("the password is normalised, so the same word typed another way opens it", async () => {
