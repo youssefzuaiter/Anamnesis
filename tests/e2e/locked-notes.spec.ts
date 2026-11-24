@@ -24,6 +24,7 @@ test.beforeEach(async () => {
   noteId = (await sql(`INSERT INTO "Note" ("id","userId","title","content","updatedAt") VALUES (gen_random_uuid(), $1, $2, $3, now()) RETURNING "id"`, [userId, title, `# Plans\n\n${SECRET}`]))[0].id;
 });
 test.afterEach(async () => {
+  await sql(`DELETE FROM "Passkey" WHERE "userId" = (SELECT "userId" FROM "Note" WHERE "id" = $1)`, [noteId]);
   await sql(`DELETE FROM "Note" WHERE "id" = $1`, [noteId]);
 });
 
@@ -168,4 +169,63 @@ test("a note locked with its own password says so on the lock screen, and the no
   await expect(main(page)).toContainText("Enter this note's password to view it.");
   await page.goto("/notes");
   await expect(main(page).getByRole("link", { name: new RegExp(`Locked: ${title}`) })).toBeVisible();
+});
+
+// --- Passkeys: a virtual authenticator that supports the PRF extension stands in for Touch ID ---------------------------------------------------------
+
+async function withVirtualAuthenticator(page: Page) {
+  const client = await page.context().newCDPSession(page);
+  await client.send("WebAuthn.enable");
+  const { authenticatorId } = await client.send("WebAuthn.addVirtualAuthenticator", {
+    options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true, hasPrf: true },
+  });
+  return { client, authenticatorId };
+}
+
+test("a passkey can be added to a locked note and then unlocks it without the password", async ({ page }) => {
+  await withVirtualAuthenticator(page);
+  await lockIt(page, "own");
+  await page.getByLabel("Password or recovery key").fill(PW);
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await expect(main(page)).toContainText(SECRET);
+  const section = main(page).getByLabel("Touch ID or passkey");
+  await section.getByRole("button", { name: "Add this device" }).click();
+  await expect(main(page).getByRole("status").filter({ hasText: "This device can now open this note." })).toBeVisible();
+  await expect(section).toContainText("(on for this note)");
+  // No secret or key sits in the stored row.
+  const row = (await sql(`SELECT "content" FROM "Note" WHERE "id" = $1`, [noteId]))[0].content;
+  expect(row).not.toContain("swordfish");
+  await main(page).getByRole("button", { name: "Lock now" }).click();
+  await expect(page.getByRole("button", { name: "Unlock with Touch ID or a passkey" })).toBeVisible();
+  await page.getByRole("button", { name: "Unlock with Touch ID or a passkey" }).click();
+  await expect(main(page)).toContainText(SECRET);
+});
+
+test("with no passkey for the note, the lock screen offers none; turning it off takes it away again", async ({ page }) => {
+  await withVirtualAuthenticator(page);
+  await lockIt(page, "own");
+  await expect(page.getByRole("button", { name: "Unlock with Touch ID or a passkey" })).toHaveCount(0);
+  await page.getByLabel("Password or recovery key").fill(PW);
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  const section = main(page).getByLabel("Touch ID or passkey");
+  await section.getByRole("button", { name: "Add this device" }).click();
+  await expect(section).toContainText("(on for this note)");
+  await section.getByRole("button", { name: "Turn off" }).click();
+  await expect(main(page).getByRole("status").filter({ hasText: "Turned off for this note." })).toBeVisible();
+  await main(page).getByRole("button", { name: "Lock now" }).click();
+  await expect(page.getByRole("button", { name: "Unlock with Touch ID or a passkey" })).toHaveCount(0);
+  await sql(`DELETE FROM "Passkey" WHERE "userId" = (SELECT "userId" FROM "Note" WHERE "id" = $1)`, [noteId]);
+});
+
+test("a cancelled passkey changes nothing and says so", async ({ page }) => {
+  const { client, authenticatorId } = await withVirtualAuthenticator(page);
+  await lockIt(page, "own");
+  await page.getByLabel("Password or recovery key").fill(PW);
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  const section = main(page).getByLabel("Touch ID or passkey");
+  // The device now refuses to verify the person, as if the fingerprint were wrong or the prompt cancelled.
+  await client.send("WebAuthn.setUserVerified", { authenticatorId, isUserVerified: false });
+  await section.getByRole("button", { name: "Add this device" }).click();
+  await expect(main(page).getByRole("alert")).toContainText(/passkey/i);
+  await expect(section).not.toContainText("(on for this note)");
 });

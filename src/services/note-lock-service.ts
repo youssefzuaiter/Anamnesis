@@ -4,7 +4,8 @@ import { AppError } from "@/lib/api-response";
 import { deleteEntityEmbeddings } from "@/lib/vector";
 import { prisma as db } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/password";
-import { checkPassword, isLockedEnvelope, lockVia, MIN_PASSWORD, type LockVia, openWithKey, openWithSecret, resealWithKey, rewrapPassword, sealNote } from "@/lib/note-lock";
+import * as passkeyRepository from "@/repositories/passkey-repository";
+import { addPasskeyWrap, openWithPasskey, passkeyIdsOf, removePasskeyWrap, checkPassword, isLockedEnvelope, lockVia, MIN_PASSWORD, type LockVia, openWithKey, openWithSecret, resealWithKey, rewrapPassword, sealNote } from "@/lib/note-lock";
 import * as noteRepository from "@/repositories/note-repository";
 import * as linkRepository from "@/repositories/link-repository";
 import { syncNoteIndex, syncNoteLinks } from "@/services/note-service";
@@ -157,6 +158,74 @@ export async function removeLock(userId: string, noteId: string, key: Buffer): P
     await syncNoteIndex(userId, fresh);
     await syncNoteLinks(userId, fresh);
   }
+}
+
+// --- Passkeys ---------------------------------------------------------------------------------------------------------------------------------------
+
+export const MAX_PASSKEYS = 10;
+const CREDENTIAL_ID = /^[A-Za-z0-9_-]{16,1024}$/;
+const SALT = /^[A-Za-z0-9_-]{43}$/;
+
+/** Records a passkey the browser just made. Only its public facts: the credential id and the 32-byte salt the browser feeds to the authenticator. */
+export async function registerPasskey(userId: string, rawName: string, credentialId: string, prfSalt: string) {
+  if (!CREDENTIAL_ID.test(credentialId) || !SALT.test(prfSalt)) throw new AppError("VALIDATION_ERROR", "That passkey could not be read.");
+  if ((await passkeyRepository.countPasskeys(userId)) >= MAX_PASSKEYS) throw new AppError("VALIDATION_ERROR", `You can keep ${MAX_PASSKEYS} passkeys. Remove one first.`);
+  const name = rawName.replace(/\s+/g, " ").replace(/[\p{Cc}\p{Cf}]/gu, "").trim().slice(0, 60) || "This device";
+  try {
+    return await passkeyRepository.createPasskey(userId, { name, credentialId, prfSalt });
+  } catch {
+    // The credential id is unique: a second registration of the same one is a refusal, not an error to show.
+    throw new AppError("VALIDATION_ERROR", "That passkey is already registered.");
+  }
+}
+
+export const listUserPasskeys = passkeyRepository.listPasskeys;
+
+export async function removePasskey(userId: string, id: string): Promise<void> {
+  if (!(await passkeyRepository.deletePasskey(userId, id))) throw new AppError("RESOURCE_NOT_FOUND", "That passkey no longer exists.");
+}
+
+/** The caller's passkeys that can open this locked note, for the lock screen to ask the browser for one of them. Nothing here is secret. */
+export async function passkeysForNote(userId: string, noteId: string): Promise<{ id: string; name: string; credentialId: string; prfSalt: string }[]> {
+  const note = await loadLocked(userId, noteId);
+  const has = new Set(passkeyIdsOf(note.content));
+  return (await passkeyRepository.listPasskeys(userId)).filter((p) => has.has(p.id)).map((p) => ({ id: p.id, name: p.name, credentialId: p.credentialId, prfSalt: p.prfSalt }));
+}
+
+/** Lets one of the caller's passkeys open this note, from a note that is already unlocked (the key is the proof). */
+export async function enablePasskeyForNote(userId: string, noteId: string, key: Buffer, passkeyId: string, secret: Uint8Array): Promise<void> {
+  const note = await loadLocked(userId, noteId);
+  if (!(await passkeyRepository.getPasskey(userId, passkeyId))) throw new AppError("RESOURCE_NOT_FOUND", "That passkey no longer exists.");
+  if (openWithKey(note.content, key, { userId, noteId }) === null) throw new AppError("FORBIDDEN", "This note is locked again. Unlock it first.");
+  let envelope: string;
+  try {
+    envelope = addPasskeyWrap(note.content, key, passkeyId, secret, { userId, noteId });
+  } catch (error) {
+    throw new AppError("VALIDATION_ERROR", (error as Error).message);
+  }
+  if (!(await noteRepository.saveLockedContent(userId, noteId, { title: note.title, envelope }))) throw new AppError("RESOURCE_NOT_FOUND", "That note no longer exists.");
+}
+
+export async function disablePasskeyForNote(userId: string, noteId: string, key: Buffer, passkeyId: string): Promise<void> {
+  const note = await loadLocked(userId, noteId);
+  if (openWithKey(note.content, key, { userId, noteId }) === null) throw new AppError("FORBIDDEN", "This note is locked again. Unlock it first.");
+  const envelope = removePasskeyWrap(note.content, passkeyId);
+  if (!(await noteRepository.saveLockedContent(userId, noteId, { title: note.title, envelope }))) throw new AppError("RESOURCE_NOT_FOUND", "That note no longer exists.");
+}
+
+/** Unlocks with a passkey's secret. A wrong one counts like a wrong password and shares its limit. */
+export async function unlockWithPasskey(userId: string, noteId: string, passkeyId: string, secret: Uint8Array, now = Date.now()): Promise<{ key: Buffer }> {
+  const note = await loadLocked(userId, noteId);
+  const bucket = `${userId}:${noteId}`;
+  checkAttempts(bucket, now);
+  // The passkey must be this caller's own, so a wrap made for another account's passkey id can never be tried here.
+  const opened = (await passkeyRepository.getPasskey(userId, passkeyId)) ? openWithPasskey(note.content, passkeyId, secret, { userId, noteId }) : null;
+  if (!opened) {
+    noteFailure(bucket, now);
+    throw new AppError("FORBIDDEN", "That passkey did not open this note.");
+  }
+  failures.delete(bucket);
+  return { key: opened.key };
 }
 
 /** Test hook: forgets the counted wrong attempts. */

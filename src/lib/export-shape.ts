@@ -47,6 +47,8 @@ export const NOT_EXPORTED: Readonly<Record<string, string>> = {
     "A log of when each card was reviewed, kept for the stats page. The cards keep their own schedule (and it is exported); a restore starts the log again.",
   Signature:
     "Drawn signatures are PNG files on this server's disk; the table holds only their records, which mean nothing without the files, and the files are not in a JSON export (the same as attachment files). Download each one from the Signature page.",
+  Passkey:
+    "A passkey's credential id and salt mean something only to this server and the device that made it; a note's wrap under it is in the note's locked text, which a restore skips anyway. Register the device again on the new server.",
   ReminderDelivery:
     "A log of which reminders this server already sent, kept only so a restart does not send them twice; it means nothing to another server and is deleted after 30 days.",
 };

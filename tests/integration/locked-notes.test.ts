@@ -282,3 +282,114 @@ test("guessing the sign-in password through the lock dialog is limited, and lock
   await rejectsWith(lock.lockViaOf(stranger, note.id), "RESOURCE_NOT_FOUND");
   await rejectsWith(lock.lockViaOf(me, (await makeNote(me)).id), "RESOURCE_NOT_FOUND", "an ordinary note");
 });
+
+// --- Passkeys -------------------------------------------------------------------------------------------------------------------------------------------
+
+import { randomBytes as rb } from "node:crypto";
+const credId = () => rb(32).toString("base64url");
+const salt = () => rb(32).toString("base64url");
+const secretOf = () => new Uint8Array(rb(32));
+
+async function lockedWithKey(userId: string) {
+  const note = await makeNote(userId);
+  await lock.lockWithNotePassword(userId, note.id, PW);
+  const { key } = await lock.unlockNote(userId, note.id, PW);
+  return { note, key };
+}
+
+test("a passkey is registered with only its public facts, a clean name, a cap and no duplicates", async () => {
+  const me = await newUser();
+  const stranger = await newUser();
+  const row = await lock.registerPasskey(me, "  My   MacBook\u0000 ", credId(), salt());
+  assert.equal(row.name, "My MacBook");
+  assert.equal((await lock.registerPasskey(me, "", credId(), salt())).name, "This device");
+  const dup = credId();
+  await lock.registerPasskey(stranger, "x", dup, salt());
+  await rejectsWith(lock.registerPasskey(me, "x", dup, salt()), "VALIDATION_ERROR", "a credential id is unique");
+  for (const [c, s] of [["short", salt()], [credId(), "short"], ["has spaces and ~~", salt()], [credId(), "!".repeat(43)]]) await rejectsWith(lock.registerPasskey(me, "x", c, s), "VALIDATION_ERROR", `${c}`);
+  for (let i = 0; i < 8; i += 1) await lock.registerPasskey(me, `p${i}`, credId(), salt());
+  await rejectsWith(lock.registerPasskey(me, "one more", credId(), salt()), "VALIDATION_ERROR", "the cap of 10");
+  assert.equal((await lock.listUserPasskeys(stranger)).length, 1, "each account sees only its own");
+  await rejectsWith(lock.removePasskey(stranger, row.id), "RESOURCE_NOT_FOUND");
+  await lock.removePasskey(me, row.id);
+  await rejectsWith(lock.removePasskey(me, row.id), "RESOURCE_NOT_FOUND");
+});
+
+test("a passkey opens a note it was enabled for, only with its own secret, and the password still works", async () => {
+  const me = await newUser();
+  const { note, key } = await lockedWithKey(me);
+  const pk = await lock.registerPasskey(me, "Mac", credId(), salt());
+  const secret = secretOf();
+  await rejectsWith(lock.unlockWithPasskey(me, note.id, pk.id, secret), "FORBIDDEN", "not enabled yet");
+  await lock.enablePasskeyForNote(me, note.id, key, pk.id, secret);
+  assert.deepEqual((await lock.passkeysForNote(me, note.id)).map((p) => p.id), [pk.id]);
+  const opened = await lock.unlockWithPasskey(me, note.id, pk.id, secret);
+  assert.deepEqual(opened.key, key);
+  assert.equal((await lock.readLocked(me, note.id, opened.key))?.text, `# Plans\n\n${SECRET}\n\nSee [[Other]].`);
+  await rejectsWith(lock.unlockWithPasskey(me, note.id, pk.id, secretOf()), "FORBIDDEN", "another secret");
+  assert.ok(await lock.unlockNote(me, note.id, PW), "the password still opens it");
+  // Saving the text and changing the password keep the passkey.
+  await lock.saveLocked(me, note.id, key, { title: "Plans 2", content: "new" });
+  await lock.changeLockPassword(me, note.id, key, "a brand new passphrase");
+  assert.ok(await lock.unlockWithPasskey(me, note.id, pk.id, secret));
+});
+
+test("a passkey of another account, an unknown one, a short secret and a locked-again note are all refused, and nothing is written", async () => {
+  const me = await newUser();
+  const stranger = await newUser();
+  const { note, key } = await lockedWithKey(me);
+  const theirs = await lock.registerPasskey(stranger, "theirs", credId(), salt());
+  const mine = await lock.registerPasskey(me, "mine", credId(), salt());
+  const before = (await prisma.note.findUniqueOrThrow({ where: { id: note.id } })).content;
+  await rejectsWith(lock.enablePasskeyForNote(me, note.id, key, theirs.id, secretOf()), "RESOURCE_NOT_FOUND", "another account's passkey");
+  await rejectsWith(lock.enablePasskeyForNote(me, note.id, key, randomUUID(), secretOf()), "RESOURCE_NOT_FOUND", "unknown");
+  await rejectsWith(lock.enablePasskeyForNote(me, note.id, key, mine.id, new Uint8Array(4)), "VALIDATION_ERROR", "short secret");
+  await rejectsWith(lock.enablePasskeyForNote(me, note.id, Buffer.alloc(32), mine.id, secretOf()), "FORBIDDEN", "a wrong key");
+  await rejectsWith(lock.enablePasskeyForNote(stranger, note.id, key, theirs.id, secretOf()), "RESOURCE_NOT_FOUND", "another account's note");
+  assert.equal((await prisma.note.findUniqueOrThrow({ where: { id: note.id } })).content, before, "nothing changed");
+  // A wrap made for my passkey cannot be tried through someone else's passkey id.
+  const secret = secretOf();
+  await lock.enablePasskeyForNote(me, note.id, key, mine.id, secret);
+  await rejectsWith(lock.unlockWithPasskey(stranger, note.id, mine.id, secret), "RESOURCE_NOT_FOUND");
+  await rejectsWith(lock.unlockWithPasskey(me, note.id, theirs.id, secret), "FORBIDDEN");
+});
+
+test("wrong passkey secrets are counted and limited like wrong passwords, and a right one is held back too", async () => {
+  const me = await newUser();
+  const { note, key } = await lockedWithKey(me);
+  const pk = await lock.registerPasskey(me, "Mac", credId(), salt());
+  const secret = secretOf();
+  await lock.enablePasskeyForNote(me, note.id, key, pk.id, secret);
+  const t0 = 9_000_000;
+  for (let i = 0; i < 5; i += 1) await rejectsWith(lock.unlockWithPasskey(me, note.id, pk.id, secretOf(), t0 + i), "FORBIDDEN");
+  await rejectsWith(lock.unlockWithPasskey(me, note.id, pk.id, secret, t0 + 10), "RATE_LIMITED");
+  assert.ok(await lock.unlockWithPasskey(me, note.id, pk.id, secret, t0 + 16 * 60 * 1000));
+});
+
+test("turning a passkey off for a note removes its wrap; removing the passkey itself leaves nothing that opens", async () => {
+  const me = await newUser();
+  const { note, key } = await lockedWithKey(me);
+  const pk = await lock.registerPasskey(me, "Mac", credId(), salt());
+  const secret = secretOf();
+  await lock.enablePasskeyForNote(me, note.id, key, pk.id, secret);
+  await rejectsWith(lock.disablePasskeyForNote(me, note.id, Buffer.alloc(32), pk.id), "FORBIDDEN", "a wrong key");
+  await lock.disablePasskeyForNote(me, note.id, key, pk.id);
+  assert.deepEqual(await lock.passkeysForNote(me, note.id), []);
+  await rejectsWith(lock.unlockWithPasskey(me, note.id, pk.id, secret), "FORBIDDEN");
+  await lock.enablePasskeyForNote(me, note.id, key, pk.id, secret);
+  await lock.removePasskey(me, pk.id);
+  await rejectsWith(lock.unlockWithPasskey(me, note.id, pk.id, secret), "FORBIDDEN", "its row is gone, so its wrap is never tried");
+  assert.deepEqual(await lock.passkeysForNote(me, note.id), [], "and it is not offered");
+});
+
+test("the database holds no passkey secret: only ids, a salt and a wrapped key", async () => {
+  const me = await newUser();
+  const { note, key } = await lockedWithKey(me);
+  const pk = await lock.registerPasskey(me, "Mac", credId(), salt());
+  const secret = secretOf();
+  await lock.enablePasskeyForNote(me, note.id, key, pk.id, secret);
+  const everything = JSON.stringify([await prisma.note.findMany({ where: { userId: me } }), await prisma.passkey.findMany({ where: { userId: me } })]);
+  for (const form of [Buffer.from(secret).toString("base64"), Buffer.from(secret).toString("base64url"), Buffer.from(secret).toString("hex"), key.toString("base64"), key.toString("hex")]) {
+    assert.ok(!everything.includes(form), "neither the secret nor the data key appears in the rows");
+  }
+});

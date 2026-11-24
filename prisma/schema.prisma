@@ -44,6 +44,7 @@ model User {
   messages           Message[]
   attachments        Attachment[]
   signatures         Signature[]
+  passkeys           Passkey[]
   taskChecklistItems TaskChecklistItem[]
   goals              Goal[]
   studySessions      StudySession[]
@@ -674,6 +675,22 @@ model Signature {
   width      Int
   height     Int
   createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// A passkey (Touch ID, a security key) registered to unlock locked notes (ROADMAP item 58, follow-up). Only public facts live here: its credential id and the
+/// salt the browser feeds to the authenticator's PRF. The secret the authenticator derives never reaches the database; a note holds a wrap of its data key
+/// under it.
+model Passkey {
+  id           String   @id @default(uuid())
+  userId       String
+  name         String
+  credentialId String   @unique
+  prfSalt      String
+  createdAt    DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
