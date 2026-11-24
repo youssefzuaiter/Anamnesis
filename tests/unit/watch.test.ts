@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { decide, parseEnv, publish, sendFailure, EMPTY_STATE, THRESHOLD, WATCH_CHECKS } from "../../ops/watch.mjs";
+import { decide, parseEnv, publish, sendFailure, sendAlert, EMPTY_STATE, THRESHOLD, WATCH_CHECKS } from "../../ops/watch.mjs";
 
 const NOW = Date.parse("2026-11-14T12:00:00Z");
 const healthy = {
@@ -263,4 +263,17 @@ test("the reason an alert was not sent is one of three fixed phrases, whatever t
     assert.equal(sendFailure(hostile), "could not send", String(hostile));
   }
   for (const input of [new Error("ntfy answered 500"), new Error("ntfy did not answer (x)"), new Error("other")]) assert.match(sendFailure(input), /^[a-z ]+$/);
+});
+
+test("an alert that could not be sent comes back with a fixed reason, never the server's or the error's own text", async () => {
+  const denied = await fakeNtfy(403);
+  try {
+    const refused = await sendAlert({ ntfyUrl: denied.url, token: "tk_secret", topic: "anamnesis-ops-x" }, "T", "B");
+    assert.deepEqual(refused, { sent: false, reason: "ntfy refused it" });
+  } finally {
+    await denied.close();
+  }
+  const none = await sendAlert({ ntfyUrl: "http://127.0.0.1:1", token: "tk_secret", topic: "anamnesis-ops-x" }, "T", "B");
+  assert.deepEqual(none, { sent: false, reason: "ntfy did not answer" });
+  assert.equal((await sendAlert({ ntfyUrl: "http://127.0.0.1:1", token: "", topic: "" }, "T", "B")).sent, false);
 });

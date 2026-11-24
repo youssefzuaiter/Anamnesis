@@ -217,7 +217,7 @@ function log(stateDir, line) {
   console.log(line);
 }
 
-async function sendAlert(cfg, title, body) {
+export async function sendAlert(cfg, title, body) {
   if (!cfg.token || !cfg.topic) return { sent: false, reason: "ALERT_TOPIC is not set, so nothing is sent" };
   try {
     await publish({ url: cfg.ntfyUrl, token: cfg.token, topic: cfg.topic, title, body });
