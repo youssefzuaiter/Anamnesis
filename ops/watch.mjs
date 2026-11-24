@@ -200,19 +200,30 @@ export function oneLine(text) {
   return String(text).replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ");
 }
 
+/**
+ * Why an alert was not delivered, as one of three fixed phrases chosen here: nothing a server answered with, or an error's own text, is ever copied into the
+ * log. (The phrase says all the owner needs; the exact error is on the console of the run that hit it.)
+ */
+export function sendFailure(error) {
+  const message = error instanceof Error ? error.message : "";
+  if (/^ntfy answered \d{3}$/.test(message)) return "ntfy refused it";
+  if (message.startsWith("ntfy did not answer")) return "ntfy did not answer";
+  return "could not send";
+}
+
 function log(stateDir, line) {
   mkdirSync(stateDir, { recursive: true });
   appendFileSync(path.join(stateDir, "watch.log"), `${new Date().toISOString()}  ${oneLine(line)}\n`, { mode: 0o600 });
   console.log(line);
 }
 
-async function sendAlert(cfg, title, body) {
+export async function sendAlert(cfg, title, body) {
   if (!cfg.token || !cfg.topic) return { sent: false, reason: "ALERT_TOPIC is not set, so nothing is sent" };
   try {
     await publish({ url: cfg.ntfyUrl, token: cfg.token, topic: cfg.topic, title, body });
     return { sent: true };
   } catch (error) {
-    return { sent: false, reason: error instanceof Error ? error.message : "could not send" };
+    return { sent: false, reason: sendFailure(error) };
   }
 }
 
