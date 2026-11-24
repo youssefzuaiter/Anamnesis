@@ -146,7 +146,7 @@ export function LockedNote({ noteId, title, unlocked, via, text, body, passkeys 
                   if (!saved.success) return saved;
                   const got = await derivePasskeySecret([{ id: saved.data.id, credentialId: made.credentialId, prfSalt: made.prfSalt }]);
                   return enablePasskeyAction(noteId, got.id, got.secret);
-                }, "This device can now open this note.")} className={`${BUTTON} border border-border-strong text-text hover:bg-surface-subtle`}>Add this device</button>
+                }, "This device can now open this note.")} className={`${BUTTON} border border-border-strong text-text hover:bg-surface-subtle`}>{passkeys.length > 0 ? "Add another device" : "Add this device"}</button>
               </div>
               {passkeys.length > 0 && (
                 <details className="text-xs text-text-muted">

@@ -229,3 +229,19 @@ test("a cancelled passkey changes nothing and says so", async ({ page }) => {
   await expect(main(page).getByRole("alert")).toContainText(/passkey/i);
   await expect(section).not.toContainText("(on for this note)");
 });
+
+test("on a phone the passkey settings and the lock screen's passkey button fit", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await withVirtualAuthenticator(page);
+  await lockIt(page, "own");
+  await page.getByLabel("Password or recovery key").fill(PW);
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  const section = main(page).getByLabel("Touch ID or passkey");
+  await section.getByRole("button", { name: "Add this device" }).click();
+  await expect(section).toContainText("(on for this note)");
+  const fits = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(await fits()).toBeLessThanOrEqual(0);
+  await main(page).getByRole("button", { name: "Lock now" }).click();
+  await expect(page.getByRole("button", { name: "Unlock with Touch ID or a passkey" })).toBeVisible();
+  expect(await fits()).toBeLessThanOrEqual(0);
+});

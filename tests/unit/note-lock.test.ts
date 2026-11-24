@@ -175,3 +175,15 @@ test("a tampered passkey wrap or content is refused, never read as text", async 
   const bad = "nxl1:" + Buffer.from(JSON.stringify(body)).toString("base64url");
   assert.equal(openWithPasskey(bad, "pk-1", secret, ids), null);
 });
+
+test("an envelope with a malformed passkey entry is refused as a whole, so a broken wrap is never listed or tried", async () => {
+  const { envelope } = await sealNote("t", PW, ids);
+  const body = JSON.parse(Buffer.from(envelope.slice(5), "base64url").toString());
+  for (const junk of [{ x: "not an object" }, { x: { iv: 1 } }, "text", null, [1]]) {
+    const copy = structuredClone(body);
+    copy.wraps.passkeys = junk;
+    const bad = "nxl1:" + Buffer.from(JSON.stringify(copy)).toString("base64url");
+    assert.deepEqual(passkeyIdsOf(bad), [], JSON.stringify(junk));
+    assert.equal(await openWithSecret(bad, PW, ids), null, JSON.stringify(junk));
+  }
+});
