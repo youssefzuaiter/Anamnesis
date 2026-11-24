@@ -9,6 +9,9 @@ import { noteContent } from "@/lib/note-text";
 import { clearUnlockCookie, setUnlockCookie, unlockedKey } from "@/services/unlock-session";
 import * as lockService from "@/services/note-lock-service";
 
+/** A passkey's PRF output: exactly 32 bytes, as base64url. Anything else is refused before the service sees it. */
+const secretBytes = z.string().max(64).regex(/^[A-Za-z0-9_-]{43}$/).transform((text) => new Uint8Array(Buffer.from(text, "base64url"))).refine((bytes) => bytes.length === 32);
+
 /*
  * Locked notes (ROADMAP 58). The browser sends a note id and what the person typed; the owner is always the session's. A wrong id of any kind (another
  * account's, a trashed note, one that is not locked) answers the same way, and nothing here echoes a password or a key.
@@ -113,6 +116,79 @@ export async function removeLockAction(noteId: string): Promise<ApiResponse<{ re
     return ok({ removed: true });
   } catch (error) {
     if (error instanceof AppError) return toApiResponse(error);
+    return toApiResponse(error);
+  }
+}
+
+/** Records a passkey the browser has just made (its public facts only). */
+export async function registerPasskeyAction(name: string, credentialId: string, prfSalt: string): Promise<ApiResponse<{ id: string }>> {
+  const parsed = z.object({ name: z.string().max(200), credentialId: z.string().max(1100), prfSalt: z.string().max(64) }).strict().safeParse({ name, credentialId, prfSalt });
+  if (!parsed.success) return fail("VALIDATION_ERROR", "That passkey could not be read.");
+  try {
+    const userId = await requireUserId();
+    const row = await lockService.registerPasskey(userId, parsed.data.name, parsed.data.credentialId, parsed.data.prfSalt);
+    revalidatePath("/notes", "layout");
+    return ok({ id: row.id });
+  } catch (error) {
+    return toApiResponse(error);
+  }
+}
+
+export async function removePasskeyAction(passkeyId: string): Promise<ApiResponse<{ removed: true }>> {
+  const parsed = id.safeParse(passkeyId);
+  if (!parsed.success) return fail("VALIDATION_ERROR", "Unknown passkey.");
+  try {
+    const userId = await requireUserId();
+    await lockService.removePasskey(userId, parsed.data);
+    revalidatePath("/notes", "layout");
+    return ok({ removed: true });
+  } catch (error) {
+    return toApiResponse(error);
+  }
+}
+
+/** Lets a passkey open this note too. The note must be unlocked in this browser, and the browser sends the passkey's secret once. */
+export async function enablePasskeyAction(noteId: string, passkeyId: string, secret: string): Promise<ApiResponse<{ enabled: true }>> {
+  const parsed = z.object({ noteId: id, passkeyId: id, secret: secretBytes }).strict().safeParse({ noteId, passkeyId, secret });
+  if (!parsed.success) return fail("VALIDATION_ERROR", "That passkey could not be used.");
+  try {
+    const userId = await requireUserId();
+    const key = await unlockedKey(userId, parsed.data.noteId);
+    if (!key) return fail("FORBIDDEN", LOCKED_AGAIN);
+    await lockService.enablePasskeyForNote(userId, parsed.data.noteId, key, parsed.data.passkeyId, parsed.data.secret);
+    revalidatePath(`/notes/${parsed.data.noteId}`);
+    return ok({ enabled: true });
+  } catch (error) {
+    return toApiResponse(error);
+  }
+}
+
+export async function disablePasskeyAction(noteId: string, passkeyId: string): Promise<ApiResponse<{ disabled: true }>> {
+  const parsed = z.object({ noteId: id, passkeyId: id }).strict().safeParse({ noteId, passkeyId });
+  if (!parsed.success) return fail("VALIDATION_ERROR", "Unknown passkey.");
+  try {
+    const userId = await requireUserId();
+    const key = await unlockedKey(userId, parsed.data.noteId);
+    if (!key) return fail("FORBIDDEN", LOCKED_AGAIN);
+    await lockService.disablePasskeyForNote(userId, parsed.data.noteId, key, parsed.data.passkeyId);
+    revalidatePath(`/notes/${parsed.data.noteId}`);
+    return ok({ disabled: true });
+  } catch (error) {
+    return toApiResponse(error);
+  }
+}
+
+/** Unlocks this note in this browser for five minutes with a passkey's secret. */
+export async function unlockWithPasskeyAction(noteId: string, passkeyId: string, secret: string): Promise<ApiResponse<{ unlocked: true }>> {
+  const parsed = z.object({ noteId: id, passkeyId: id, secret: secretBytes }).strict().safeParse({ noteId, passkeyId, secret });
+  if (!parsed.success) return fail("VALIDATION_ERROR", "That passkey could not be used.");
+  try {
+    const userId = await requireUserId();
+    const { key } = await lockService.unlockWithPasskey(userId, parsed.data.noteId, parsed.data.passkeyId, parsed.data.secret);
+    await setUnlockCookie(userId, parsed.data.noteId, key);
+    revalidatePath(`/notes/${parsed.data.noteId}`);
+    return ok({ unlocked: true });
+  } catch (error) {
     return toApiResponse(error);
   }
 }

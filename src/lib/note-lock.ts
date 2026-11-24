@@ -5,7 +5,7 @@
 // forgetting it is survivable only with the recovery key: nothing else, including this server and its backups, can read the note. Every piece is bound
 // to the owner and the note (the AAD), so ciphertext moved to another note or account does not open, and any changed byte fails the GCM check.
 
-import { createCipheriv, createDecipheriv, randomBytes, scrypt as scryptCallback, type ScryptOptions } from "node:crypto";
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, scrypt as scryptCallback, type ScryptOptions } from "node:crypto";
 
 export const MIN_PASSWORD = 10;
 export const MAX_PASSWORD = 200;
@@ -18,7 +18,9 @@ type Part = { iv: string; tag: string; ct: string };
 type Wrap = Part & { salt: string };
 /** `via` is only a label for the lock screen ("your sign-in password" or "this note's password"): it is not authenticated and decides nothing. */
 export type LockVia = "account" | "own";
-type Envelope = { v: 1; kdf: typeof KDF; via?: LockVia; wraps: { password: Wrap; recovery: Wrap }; content: Part };
+/** One passkey's wrap. A list, not an object keyed by the passkey's id, so no property name is ever taken from a value. */
+type PasskeyWrap = Part & { id: string };
+type Envelope = { v: 1; kdf: typeof KDF; via?: LockVia; wraps: { password: Wrap; recovery: Wrap; passkeys?: PasskeyWrap[] }; content: Part };
 export type Ids = { userId: string; noteId: string };
 
 const b64 = (buffer: Buffer) => buffer.toString("base64");
@@ -61,6 +63,8 @@ function parse(text: string): Envelope | null {
     const partOk = (p: unknown): p is Part => !!p && typeof p === "object" && ["iv", "tag", "ct"].every((k) => typeof (p as Record<string, unknown>)[k] === "string");
     const wrapOk = (w: unknown): w is Wrap => partOk(w) && typeof (w as Wrap).salt === "string";
     if (body.v !== 1 || body.kdf?.N !== KDF.N || body.kdf?.r !== KDF.r || body.kdf?.p !== KDF.p) return null;
+    const passkeys = body.wraps?.passkeys;
+    if (passkeys !== undefined && (!Array.isArray(passkeys) || passkeys.length > 50 || passkeys.some((p) => !partOk(p) || typeof (p as PasskeyWrap).id !== "string"))) return null;
     return wrapOk(body.wraps?.password) && wrapOk(body.wraps?.recovery) && partOk(body.content) ? body : null;
   } catch {
     return null;
@@ -156,4 +160,47 @@ export async function rewrapPassword(text: string, key: Buffer, password: string
 /** Which password the lock screen should ask for. Read without opening anything; an envelope with no label (an older one) asks for the note's own. */
 export function lockVia(text: string): LockVia {
   return parse(text)?.via === "account" ? "account" : "own";
+}
+
+// --- Passkeys (Touch ID, a security key) ----------------------------------------------------------------------------------------------------------------
+// A passkey's authenticator derives a 32-byte secret (the WebAuthn PRF extension) that only that device can produce, after the person verifies with a
+// fingerprint or a PIN. The browser hands the server that secret at unlock time, the way it hands over a password; the server wraps the note's data key under a
+// key made from it and stores only the wrap. The secret itself is never stored.
+
+const MIN_PASSKEY_SECRET = 16;
+const passkeyKey = (secret: Uint8Array, passkeyId: string, ids: Ids): Buffer => Buffer.from(hkdfSync("sha256", secret, `${ids.userId}|${ids.noteId}`, `nxl1-passkey|${passkeyId}`, KEY_BYTES));
+
+/** The passkeys that can open this note, from the stored text alone (their ids are not secret). */
+export function passkeyIdsOf(text: string): string[] {
+  return (parse(text)?.wraps.passkeys ?? []).map((wrap) => wrap.id);
+}
+
+/** Lets a passkey open this note too: the data key wrapped under that passkey's secret. Needs the data key, so the note must be unlocked. */
+export function addPasskeyWrap(text: string, key: Buffer, passkeyId: string, secret: Uint8Array, ids: Ids): string {
+  const envelope = parse(text);
+  if (!envelope) throw new Error("Not a locked note.");
+  if (key.length !== KEY_BYTES) throw new Error("The note's key is not usable.");
+  if (secret.length < MIN_PASSKEY_SECRET) throw new Error("The passkey's secret is too short.");
+  const wrap: PasskeyWrap = { id: passkeyId, ...encrypt(passkeyKey(secret, passkeyId, ids), key, aad(`wrap-passkey|${passkeyId}`, ids)) };
+  // One wrap per passkey: a second enabling replaces the first.
+  const others = (envelope.wraps.passkeys ?? []).filter((existing) => existing.id !== passkeyId);
+  return stringify({ ...envelope, wraps: { ...envelope.wraps, passkeys: [...others, wrap] } });
+}
+
+/** Opens with a passkey's secret. Null for a wrong secret, a passkey with no wrap here, and anything damaged or belonging to another note. */
+export function openWithPasskey(text: string, passkeyId: string, secret: Uint8Array, ids: Ids): { plaintext: string; key: Buffer } | null {
+  const envelope = parse(text);
+  const wrap = envelope?.wraps.passkeys?.find((existing) => existing.id === passkeyId);
+  if (!envelope || !wrap || secret.length < MIN_PASSKEY_SECRET) return null;
+  const key = decrypt(passkeyKey(secret, passkeyId, ids), wrap, aad(`wrap-passkey|${passkeyId}`, ids));
+  if (!key || key.length !== KEY_BYTES) return null;
+  const plaintext = openWithKey(text, key, ids);
+  return plaintext === null ? null : { plaintext, key };
+}
+
+export function removePasskeyWrap(text: string, passkeyId: string): string {
+  const envelope = parse(text);
+  if (!envelope) throw new Error("Not a locked note.");
+  const rest = (envelope.wraps.passkeys ?? []).filter((existing) => existing.id !== passkeyId);
+  return stringify({ ...envelope, wraps: { ...envelope.wraps, passkeys: rest.length > 0 ? rest : undefined } });
 }

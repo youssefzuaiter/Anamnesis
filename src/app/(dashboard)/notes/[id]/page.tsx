@@ -27,7 +27,7 @@ import { SummaryCard } from "@/components/summary-card";
 import { LockButton } from "@/components/lock-card";
 import { LockedNote } from "@/components/locked-note";
 import { unlockedKey } from "@/services/unlock-session";
-import { lockViaOf, readLocked } from "@/services/note-lock-service";
+import { listUserPasskeys, lockViaOf, passkeysForNote, readLocked } from "@/services/note-lock-service";
 import { TranslateCard } from "@/components/translate-card";
 import { NoteAttachments } from "@/components/note-attachments";
 import { listForNote as listAttachments } from "@/repositories/attachment-repository";
@@ -68,6 +68,13 @@ const mentionRow = (item: LinkSuggestion): LinkRow => ({
   snippet: item.snippet,
 });
 
+/** The caller's passkeys as the lock screen and the lock settings need them: public facts only, and which ones already open this note. */
+async function passkeyRows(userId: string, noteId: string) {
+  const [all, enabled] = await Promise.all([listUserPasskeys(userId), passkeysForNote(userId, noteId)]);
+  const on = new Set(enabled.map((p) => p.id));
+  return all.map((p) => ({ id: p.id, name: p.name, credentialId: p.credentialId, prfSalt: p.prfSalt, enabled: on.has(p.id) }));
+}
+
 export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
   const userId = await requireUserId();
   const { id } = await params;
@@ -86,6 +93,7 @@ export default async function NotePage({ params }: PageProps<"/notes/[id]">) {
         title={opened?.title ?? note.title}
         unlocked={opened !== null}
         via={await lockViaOf(userId, note.id)}
+        passkeys={await passkeyRows(userId, note.id)}
         text={opened?.text ?? null}
         body={opened ? <NoteContent content={opened.text} links={{}} /> : null}
       />

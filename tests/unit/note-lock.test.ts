@@ -114,3 +114,92 @@ test("a note's own password is the default, an unlabelled or damaged lock asks f
   assert.equal(lockVia(changed), "own");
   assert.equal((await openWithSecret(changed, "a brand new passphrase", ids))?.plaintext, "t");
 });
+
+import { randomBytes } from "node:crypto";
+import { addPasskeyWrap, openWithPasskey, passkeyIdsOf, removePasskeyWrap } from "@/lib/note-lock";
+
+test("a passkey's secret opens the note without the password, and any other secret does not", async () => {
+  const { envelope } = await sealNote(TEXT, PW, ids);
+  const { key } = (await openWithSecret(envelope, PW, ids))!;
+  const secret = new Uint8Array(randomBytes(32));
+  const withKey = addPasskeyWrap(envelope, key, "pk-1", secret, ids);
+  assert.deepEqual(passkeyIdsOf(withKey), ["pk-1"]);
+  const opened = openWithPasskey(withKey, "pk-1", secret, ids);
+  assert.equal(opened?.plaintext, TEXT);
+  assert.deepEqual(opened?.key, key);
+  assert.equal(openWithPasskey(withKey, "pk-1", new Uint8Array(randomBytes(32)), ids), null, "another secret");
+  assert.equal(openWithPasskey(withKey, "pk-2", secret, ids), null, "a passkey with no wrap");
+  assert.equal((await openWithSecret(withKey, PW, ids))?.plaintext, TEXT, "the password still opens it");
+});
+
+test("a passkey wrap is bound to its owner, its note and its passkey, and a short or empty secret is refused", async () => {
+  const { envelope } = await sealNote("t", PW, ids);
+  const { key } = (await openWithSecret(envelope, PW, ids))!;
+  const secret = new Uint8Array(randomBytes(32));
+  const withKey = addPasskeyWrap(envelope, key, "pk-1", secret, ids);
+  assert.equal(openWithPasskey(withKey, "pk-1", secret, { userId: "u2", noteId: "n1" }), null);
+  assert.equal(openWithPasskey(withKey, "pk-1", secret, { userId: "u1", noteId: "n2" }), null);
+  for (const bad of [new Uint8Array(), new Uint8Array(15), new Uint8Array(0)]) {
+    assert.throws(() => addPasskeyWrap(envelope, key, "pk-1", bad, ids), /secret/i);
+    assert.equal(openWithPasskey(withKey, "pk-1", bad, ids), null);
+  }
+  assert.throws(() => addPasskeyWrap(envelope, Buffer.alloc(31), "pk-1", secret, ids), /key/i);
+});
+
+test("a passkey can be removed, several can coexist, and saving the text or changing the password keeps them", async () => {
+  const { envelope } = await sealNote("one", PW, ids);
+  const { key } = (await openWithSecret(envelope, PW, ids))!;
+  const a = new Uint8Array(randomBytes(32));
+  const b = new Uint8Array(randomBytes(32));
+  let current = addPasskeyWrap(addPasskeyWrap(envelope, key, "pk-a", a, ids), key, "pk-b", b, ids);
+  assert.deepEqual(passkeyIdsOf(current).sort(), ["pk-a", "pk-b"]);
+  current = resealWithKey(current, key, "two", ids);
+  assert.equal(openWithPasskey(current, "pk-a", a, ids)?.plaintext, "two");
+  current = await rewrapPassword(current, key, "a brand new passphrase", ids);
+  assert.equal(openWithPasskey(current, "pk-b", b, ids)?.plaintext, "two");
+  current = removePasskeyWrap(current, "pk-a");
+  assert.deepEqual(passkeyIdsOf(current), ["pk-b"]);
+  assert.equal(openWithPasskey(current, "pk-a", a, ids), null);
+  assert.equal(passkeyIdsOf("nxl1:garbage").length, 0);
+  assert.equal(passkeyIdsOf("plain").length, 0);
+});
+
+test("a tampered passkey wrap or content is refused, never read as text", async () => {
+  const { envelope } = await sealNote("secret text", PW, ids);
+  const { key } = (await openWithSecret(envelope, PW, ids))!;
+  const secret = new Uint8Array(randomBytes(32));
+  const withKey = addPasskeyWrap(envelope, key, "pk-1", secret, ids);
+  const body = JSON.parse(Buffer.from(withKey.slice(5), "base64url").toString());
+  const flip = (s: string) => Buffer.from(Buffer.from(s, "base64").map((x, i) => (i === 0 ? x ^ 1 : x))).toString("base64");
+  body.wraps.passkeys[0].ct = flip(body.wraps.passkeys[0].ct);
+  const bad = "nxl1:" + Buffer.from(JSON.stringify(body)).toString("base64url");
+  assert.equal(openWithPasskey(bad, "pk-1", secret, ids), null);
+});
+
+test("an envelope with a malformed passkey entry is refused as a whole, so a broken wrap is never listed or tried", async () => {
+  const { envelope } = await sealNote("t", PW, ids);
+  const body = JSON.parse(Buffer.from(envelope.slice(5), "base64url").toString());
+  for (const junk of [{ x: "not a list" }, [{ id: "x", iv: 1 }], [{ iv: "a", tag: "b", ct: "c" }], "text", null, [1], Array.from({ length: 51 }, () => ({ id: "x", iv: "a", tag: "b", ct: "c" }))]) {
+    const copy = structuredClone(body);
+    copy.wraps.passkeys = junk;
+    const bad = "nxl1:" + Buffer.from(JSON.stringify(copy)).toString("base64url");
+    assert.deepEqual(passkeyIdsOf(bad), [], JSON.stringify(junk));
+    assert.equal(await openWithSecret(bad, PW, ids), null, JSON.stringify(junk));
+  }
+});
+
+test("a passkey id that is an object property name is just a name: nothing is written to the envelope's own properties", async () => {
+  const { envelope } = await sealNote("t", PW, ids);
+  const { key } = (await openWithSecret(envelope, PW, ids))!;
+  const secret = new Uint8Array(randomBytes(32));
+  for (const name of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+    const withKey = addPasskeyWrap(envelope, key, name, secret, ids);
+    assert.deepEqual(passkeyIdsOf(withKey), [name]);
+    assert.equal(openWithPasskey(withKey, name, secret, ids)?.plaintext, "t");
+    assert.equal(({} as Record<string, unknown>).polluted, undefined);
+    assert.equal(Object.getPrototypeOf({}), Object.prototype);
+    assert.deepEqual(passkeyIdsOf(removePasskeyWrap(withKey, name)), []);
+  }
+  const twice = addPasskeyWrap(addPasskeyWrap(envelope, key, "pk-1", secret, ids), key, "pk-1", secret, ids);
+  assert.deepEqual(passkeyIdsOf(twice), ["pk-1"], "enabling twice keeps one wrap");
+});
