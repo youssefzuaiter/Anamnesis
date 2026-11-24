@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { decide, parseEnv, publish, EMPTY_STATE, THRESHOLD, WATCH_CHECKS } from "../../ops/watch.mjs";
+import { decide, parseEnv, publish, sendFailure, EMPTY_STATE, THRESHOLD, WATCH_CHECKS } from "../../ops/watch.mjs";
 
 const NOW = Date.parse("2026-11-14T12:00:00Z");
 const healthy = {
@@ -254,4 +254,13 @@ test("a logged line is one line: breaks and control characters cannot start a fo
   assert.equal(oneLine("alert sent: Backup failed"), "alert sent: Backup failed");
   assert.equal(oneLine("a\nb\r\nc\u0000d e"), "a b c d e");
   assert.ok(!/[\n\r]/.test(oneLine("x\n2026-01-01T00:00:00Z  alert sent: forged")));
+});
+
+test("the reason an alert was not sent is one of three fixed phrases, whatever the error or the server said", () => {
+  assert.equal(sendFailure(new Error("ntfy answered 403")), "ntfy refused it");
+  assert.equal(sendFailure(new Error("ntfy did not answer (the connection was refused)")), "ntfy did not answer");
+  for (const hostile of [new Error("ntfy answered 403\nFORGED ENTRY"), new Error("boom\r\n2026-01-01 alert sent: x"), "text", null, undefined, new Error("")]) {
+    assert.equal(sendFailure(hostile), "could not send", String(hostile));
+  }
+  for (const input of [new Error("ntfy answered 500"), new Error("ntfy did not answer (x)"), new Error("other")]) assert.match(sendFailure(input), /^[a-z ]+$/);
 });
