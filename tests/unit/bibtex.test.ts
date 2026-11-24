@@ -169,6 +169,8 @@ test("many broken or repeated entries cost time in proportion to the text, not m
     time(unit.repeat(5_000)); // warm up
     const small = Math.min(time(unit.repeat(20_000)), time(unit.repeat(20_000)), time(unit.repeat(20_000)));
     const large = Math.min(time(unit.repeat(40_000)), time(unit.repeat(40_000)), time(unit.repeat(40_000)));
-    assert.ok(large / small < 3, `${JSON.stringify(unit)}: ${small.toFixed(0)} ms then ${large.toFixed(0)} ms`);
+    // When both runs are a few milliseconds the ratio is noise (CI measured 9 ms then 32 ms for a linear parser, a garbage-collection pause). A quadratic
+    // parser takes seconds at this size, so a large run under 250 ms is linear whatever the ratio.
+    assert.ok(large < 250 || large / small < 3, `${JSON.stringify(unit)}: ${small.toFixed(0)} ms then ${large.toFixed(0)} ms`);
   }
 });
