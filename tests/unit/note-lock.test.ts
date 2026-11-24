@@ -171,7 +171,7 @@ test("a tampered passkey wrap or content is refused, never read as text", async 
   const withKey = addPasskeyWrap(envelope, key, "pk-1", secret, ids);
   const body = JSON.parse(Buffer.from(withKey.slice(5), "base64url").toString());
   const flip = (s: string) => Buffer.from(Buffer.from(s, "base64").map((x, i) => (i === 0 ? x ^ 1 : x))).toString("base64");
-  body.wraps.passkeys["pk-1"].ct = flip(body.wraps.passkeys["pk-1"].ct);
+  body.wraps.passkeys[0].ct = flip(body.wraps.passkeys[0].ct);
   const bad = "nxl1:" + Buffer.from(JSON.stringify(body)).toString("base64url");
   assert.equal(openWithPasskey(bad, "pk-1", secret, ids), null);
 });
@@ -179,11 +179,27 @@ test("a tampered passkey wrap or content is refused, never read as text", async 
 test("an envelope with a malformed passkey entry is refused as a whole, so a broken wrap is never listed or tried", async () => {
   const { envelope } = await sealNote("t", PW, ids);
   const body = JSON.parse(Buffer.from(envelope.slice(5), "base64url").toString());
-  for (const junk of [{ x: "not an object" }, { x: { iv: 1 } }, "text", null, [1]]) {
+  for (const junk of [{ x: "not a list" }, [{ id: "x", iv: 1 }], [{ iv: "a", tag: "b", ct: "c" }], "text", null, [1], Array.from({ length: 51 }, () => ({ id: "x", iv: "a", tag: "b", ct: "c" }))]) {
     const copy = structuredClone(body);
     copy.wraps.passkeys = junk;
     const bad = "nxl1:" + Buffer.from(JSON.stringify(copy)).toString("base64url");
     assert.deepEqual(passkeyIdsOf(bad), [], JSON.stringify(junk));
     assert.equal(await openWithSecret(bad, PW, ids), null, JSON.stringify(junk));
   }
+});
+
+test("a passkey id that is an object property name is just a name: nothing is written to the envelope's own properties", async () => {
+  const { envelope } = await sealNote("t", PW, ids);
+  const { key } = (await openWithSecret(envelope, PW, ids))!;
+  const secret = new Uint8Array(randomBytes(32));
+  for (const name of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+    const withKey = addPasskeyWrap(envelope, key, name, secret, ids);
+    assert.deepEqual(passkeyIdsOf(withKey), [name]);
+    assert.equal(openWithPasskey(withKey, name, secret, ids)?.plaintext, "t");
+    assert.equal(({} as Record<string, unknown>).polluted, undefined);
+    assert.equal(Object.getPrototypeOf({}), Object.prototype);
+    assert.deepEqual(passkeyIdsOf(removePasskeyWrap(withKey, name)), []);
+  }
+  const twice = addPasskeyWrap(addPasskeyWrap(envelope, key, "pk-1", secret, ids), key, "pk-1", secret, ids);
+  assert.deepEqual(passkeyIdsOf(twice), ["pk-1"], "enabling twice keeps one wrap");
 });

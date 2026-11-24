@@ -18,7 +18,9 @@ type Part = { iv: string; tag: string; ct: string };
 type Wrap = Part & { salt: string };
 /** `via` is only a label for the lock screen ("your sign-in password" or "this note's password"): it is not authenticated and decides nothing. */
 export type LockVia = "account" | "own";
-type Envelope = { v: 1; kdf: typeof KDF; via?: LockVia; wraps: { password: Wrap; recovery: Wrap; passkeys?: Record<string, Part> }; content: Part };
+/** One passkey's wrap. A list, not an object keyed by the passkey's id, so no property name is ever taken from a value. */
+type PasskeyWrap = Part & { id: string };
+type Envelope = { v: 1; kdf: typeof KDF; via?: LockVia; wraps: { password: Wrap; recovery: Wrap; passkeys?: PasskeyWrap[] }; content: Part };
 export type Ids = { userId: string; noteId: string };
 
 const b64 = (buffer: Buffer) => buffer.toString("base64");
@@ -62,7 +64,7 @@ function parse(text: string): Envelope | null {
     const wrapOk = (w: unknown): w is Wrap => partOk(w) && typeof (w as Wrap).salt === "string";
     if (body.v !== 1 || body.kdf?.N !== KDF.N || body.kdf?.r !== KDF.r || body.kdf?.p !== KDF.p) return null;
     const passkeys = body.wraps?.passkeys;
-    if (passkeys !== undefined && (typeof passkeys !== "object" || passkeys === null || Object.values(passkeys).some((p) => !partOk(p)))) return null;
+    if (passkeys !== undefined && (!Array.isArray(passkeys) || passkeys.length > 50 || passkeys.some((p) => !partOk(p) || typeof (p as PasskeyWrap).id !== "string"))) return null;
     return wrapOk(body.wraps?.password) && wrapOk(body.wraps?.recovery) && partOk(body.content) ? body : null;
   } catch {
     return null;
@@ -170,7 +172,7 @@ const passkeyKey = (secret: Uint8Array, passkeyId: string, ids: Ids): Buffer => 
 
 /** The passkeys that can open this note, from the stored text alone (their ids are not secret). */
 export function passkeyIdsOf(text: string): string[] {
-  return Object.keys(parse(text)?.wraps.passkeys ?? {});
+  return (parse(text)?.wraps.passkeys ?? []).map((wrap) => wrap.id);
 }
 
 /** Lets a passkey open this note too: the data key wrapped under that passkey's secret. Needs the data key, so the note must be unlocked. */
@@ -179,14 +181,16 @@ export function addPasskeyWrap(text: string, key: Buffer, passkeyId: string, sec
   if (!envelope) throw new Error("Not a locked note.");
   if (key.length !== KEY_BYTES) throw new Error("The note's key is not usable.");
   if (secret.length < MIN_PASSKEY_SECRET) throw new Error("The passkey's secret is too short.");
-  const wrap = encrypt(passkeyKey(secret, passkeyId, ids), key, aad(`wrap-passkey|${passkeyId}`, ids));
-  return stringify({ ...envelope, wraps: { ...envelope.wraps, passkeys: { ...(envelope.wraps.passkeys ?? {}), [passkeyId]: wrap } } });
+  const wrap: PasskeyWrap = { id: passkeyId, ...encrypt(passkeyKey(secret, passkeyId, ids), key, aad(`wrap-passkey|${passkeyId}`, ids)) };
+  // One wrap per passkey: a second enabling replaces the first.
+  const others = (envelope.wraps.passkeys ?? []).filter((existing) => existing.id !== passkeyId);
+  return stringify({ ...envelope, wraps: { ...envelope.wraps, passkeys: [...others, wrap] } });
 }
 
 /** Opens with a passkey's secret. Null for a wrong secret, a passkey with no wrap here, and anything damaged or belonging to another note. */
 export function openWithPasskey(text: string, passkeyId: string, secret: Uint8Array, ids: Ids): { plaintext: string; key: Buffer } | null {
   const envelope = parse(text);
-  const wrap = envelope?.wraps.passkeys?.[passkeyId];
+  const wrap = envelope?.wraps.passkeys?.find((existing) => existing.id === passkeyId);
   if (!envelope || !wrap || secret.length < MIN_PASSKEY_SECRET) return null;
   const key = decrypt(passkeyKey(secret, passkeyId, ids), wrap, aad(`wrap-passkey|${passkeyId}`, ids));
   if (!key || key.length !== KEY_BYTES) return null;
@@ -197,7 +201,6 @@ export function openWithPasskey(text: string, passkeyId: string, secret: Uint8Ar
 export function removePasskeyWrap(text: string, passkeyId: string): string {
   const envelope = parse(text);
   if (!envelope) throw new Error("Not a locked note.");
-  const { [passkeyId]: _removed, ...rest } = envelope.wraps.passkeys ?? {};
-  void _removed;
-  return stringify({ ...envelope, wraps: { ...envelope.wraps, ...(Object.keys(rest).length > 0 ? { passkeys: rest } : { passkeys: undefined }) } });
+  const rest = (envelope.wraps.passkeys ?? []).filter((existing) => existing.id !== passkeyId);
+  return stringify({ ...envelope, wraps: { ...envelope.wraps, passkeys: rest.length > 0 ? rest : undefined } });
 }
